@@ -4,10 +4,9 @@ import {
   browserLocalPersistence,
   GoogleAuthProvider,
   getAuth,
-  getRedirectResult,
   onAuthStateChanged,
   setPersistence,
-  signInWithRedirect,
+  signInWithPopup,
   signOut,
   type User,
 } from "firebase/auth";
@@ -198,12 +197,7 @@ export default function HomePage() {
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     const auth = getAuth(app);
     let unsubscribeData: (() => void) | undefined;
-    setPersistence(auth, browserLocalPersistence)
-      .then(() => getRedirectResult(auth))
-      .catch((error) => {
-        console.error("Google redirect failed", error);
-        setAuthError("Não foi possível concluir a entrada com Google.");
-      });
+    setPersistence(auth, browserLocalPersistence).catch(() => undefined);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribeData?.();
@@ -287,7 +281,7 @@ export default function HomePage() {
       await setPersistence(auth, browserLocalPersistence);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      await signInWithRedirect(auth, provider);
+      await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Google sign-in failed", error);
       setAuthError("Não foi possível entrar. Verifique se o Google está habilitado no Firebase.");

@@ -4,6 +4,7 @@ import {
   browserLocalPersistence,
   GoogleAuthProvider,
   getAuth,
+  getRedirectResult,
   onAuthStateChanged,
   setPersistence,
   signInWithRedirect,
@@ -197,7 +198,12 @@ export default function HomePage() {
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     const auth = getAuth(app);
     let unsubscribeData: (() => void) | undefined;
-    setPersistence(auth, browserLocalPersistence).catch(() => undefined);
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => getRedirectResult(auth))
+      .catch((error) => {
+        console.error("Google redirect failed", error);
+        setAuthError("Não foi possível concluir a entrada com Google.");
+      });
 
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribeData?.();

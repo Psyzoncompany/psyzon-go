@@ -11,13 +11,13 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = headerList.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
   const image = `${protocol}://${host}/og.png`;
   return {
-    title: "PSYZON HUB · Sua empresa sob controle",
+    title: "PSYZON GO · Sua empresa sob controle",
     description: "Controle financeiro e produtivo simples para a PSYZON Company.",
     manifest: "/manifest.webmanifest",
     icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
-    applicationName: "PSYZON HUB",
-    openGraph: { title: "PSYZON HUB", description: "Produção + Financeiro em tempo real", images: [{ url: image, width: 1536, height: 1024 }] },
-    twitter: { card: "summary_large_image", title: "PSYZON HUB", description: "Sua empresa sob controle.", images: [image] },
+    applicationName: "PSYZON GO",
+    openGraph: { title: "PSYZON GO", description: "Produção + Financeiro em tempo real", images: [{ url: image, width: 1536, height: 1024 }] },
+    twitter: { card: "summary_large_image", title: "PSYZON GO", description: "Sua empresa sob controle.", images: [image] },
   };
 }
 

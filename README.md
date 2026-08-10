@@ -1,4 +1,4 @@
-# PSYZON HUB
+# PSYZON GO
 
 Controle financeiro e produtivo em tempo real para a PSYZON Company. O projeto
 usa React/Vinext, Cloud Firestore e Firebase Authentication anônima.

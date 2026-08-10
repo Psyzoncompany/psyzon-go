@@ -272,6 +272,29 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .connection-box > div { display: flex; flex-direction: column; }
 .connection-box b { font-size: 9.5px; }
 .connection-box small { margin-top: 4px; color: var(--muted); font-size: 8px; }
+.account-row { min-height: 58px; padding: 10px 0; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.account-row > span { min-width: 0; display: flex; flex-direction: column; }
+.account-row b, .danger-zone b { font-size: 9.5px; }
+.account-row small, .danger-zone small { margin-top: 3px; color: var(--muted); font-size: 8px; overflow: hidden; text-overflow: ellipsis; }
+.account-row .secondary { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.danger-zone { margin-top: 12px; padding: 14px; border: 1px solid color-mix(in srgb, #dc2626 26%, var(--border)); border-radius: 10px; background: color-mix(in srgb, #dc2626 5%, var(--card)); display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.danger-zone > div { display: flex; flex-direction: column; }
+.danger-button { min-height: 35px; padding: 0 12px; border: 1px solid color-mix(in srgb, #dc2626 40%, var(--border)); border-radius: 8px; background: var(--card); color: #dc2626; display: flex; align-items: center; gap: 6px; font-size: 8.5px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.danger-button:disabled { opacity: .55; cursor: wait; }
+
+.auth-screen { min-height: 100vh; padding: 24px; background: radial-gradient(circle at 70% 15%, rgba(37, 99, 235, .14), transparent 30%), var(--bg); display: grid; place-items: center; }
+.auth-card { width: min(430px, 100%); padding: 42px; border: 1px solid var(--border); border-radius: 22px; background: var(--card); box-shadow: 0 24px 70px rgba(15, 23, 42, .12); text-align: center; }
+.auth-brand { margin-bottom: 35px; display: inline-flex; align-items: center; gap: 10px; }
+.auth-brand > span:last-child { display: flex; flex-direction: column; align-items: flex-start; line-height: .95; }
+.auth-brand b { font-size: 16px; letter-spacing: -.04em; }
+.auth-brand small { margin-top: 4px; color: var(--blue); font-size: 8px; font-weight: 800; letter-spacing: .22em; }
+.auth-kicker { color: var(--blue); font-size: 8px; font-weight: 800; letter-spacing: .16em; }
+.auth-card h1 { margin: 12px 0 10px; font-size: 28px; letter-spacing: -.045em; }
+.auth-card > p { margin: 0 auto 25px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.google-button { width: 100%; height: 46px; border: 1px solid var(--border); border-radius: 10px; background: var(--text); color: var(--card); display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.google-button span { width: 23px; height: 23px; border-radius: 50%; background: white; color: #4285f4; display: grid; place-items: center; font-family: Arial, sans-serif; font-weight: 800; }
+.auth-card .auth-error { margin: 12px 0 0; color: #dc2626; font-size: 9px; }
+.auth-note { margin-top: 18px; color: var(--faint); display: block; font-size: 8px; }
 
 .modal-backdrop { position: fixed; inset: 0; background: rgba(10, 15, 25, .42); z-index: 100; display: flex; justify-content: flex-end; backdrop-filter: blur(2px); animation: fade .18s ease; }
 .modal { width: min(460px, 100%); height: 100%; padding: 0 24px; background: var(--card); overflow-y: auto; box-shadow: -20px 0 60px rgba(15, 23, 42, .18); animation: slide .24s ease; }
@@ -346,6 +369,11 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 }
 
 @media (max-width: 430px) {
+  .auth-screen { padding: 14px; }
+  .auth-card { padding: 32px 22px; }
+  .auth-card h1 { font-size: 24px; }
+  .danger-zone { align-items: stretch; flex-direction: column; }
+  .danger-button { justify-content: center; }
   .page-heading h1 { font-size: 23px; }
   .metric-card { min-height: 123px; }
   .metric-top small { font-size: 8.5px; }

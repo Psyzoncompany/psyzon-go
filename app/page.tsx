@@ -1,24 +1,27 @@
 "use client";
 
 import {
-  addDoc,
-  collection,
-  doc,
-  getFirestore,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-} from "firebase/firestore";
-import {
   browserLocalPersistence,
+  GoogleAuthProvider,
   getAuth,
+  onAuthStateChanged,
   setPersistence,
-  signInAnonymously,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  type User,
 } from "firebase/auth";
 import { getApps, initializeApp } from "firebase/app";
+import {
+  getDatabase,
+  onValue,
+  push,
+  ref,
+  remove,
+  serverTimestamp,
+  set,
+  update,
+} from "firebase/database";
 import {
   Bell,
   Boxes,
@@ -32,12 +35,12 @@ import {
   Home,
   LayoutGrid,
   List,
-  Menu,
   MessageCircle,
   Moon,
   MoreHorizontal,
-  PackageCheck,
   Plus,
+  LogOut,
+  RotateCcw,
   Search,
   Settings,
   Sun,
@@ -88,12 +91,14 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
+const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.databaseURL, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function isoOffset(days: number) {
@@ -101,21 +106,6 @@ function isoOffset(days: number) {
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
 }
-
-const demoOrders: Order[] = [
-  { id: "103", customer: "Igreja Batista", phone: "5571999991103", product: "Camisetas do evento", quantity: 45, total: 2250, paid: 1500, dueDate: isoOffset(-2), status: "Finalização" },
-  { id: "105", customer: "João Silva", phone: "5571999991105", product: "Camisetas personalizadas", quantity: 30, total: 1500, paid: 750, dueDate: isoOffset(1), status: "Produção" },
-  { id: "108", customer: "Maria Santos", phone: "5571999991108", product: "Uniformes escolares", quantity: 18, total: 1260, paid: 910, dueDate: isoOffset(3), status: "Finalização" },
-  { id: "112", customer: "Escola ABC", phone: "5571999991112", product: "Kits esportivos", quantity: 32, total: 2880, paid: 2880, dueDate: isoOffset(5), status: "Produção" },
-  { id: "114", customer: "Studio Norte", phone: "5571999991114", product: "Canecas sublimadas", quantity: 24, total: 840, paid: 420, dueDate: isoOffset(8), status: "Aguardando material" },
-];
-
-const demoTransactions: Transaction[] = [
-  { id: "t1", description: "Entrada · João Silva · #105", amount: 750, type: "income", account: "business" },
-  { id: "t2", description: "Compra de camisas", amount: 320, type: "expense", account: "business" },
-  { id: "t3", description: "Impressão DTF · #103", amount: 180, type: "expense", account: "business" },
-  { id: "t4", description: "Pró-labore", amount: 1000, type: "transfer", account: "personal" },
-];
 
 const statusProgress: Record<OrderStatus, number> = {
   Orçamento: 8,
@@ -156,11 +146,15 @@ function dueTone(dateString: string, status: OrderStatus) {
 
 export default function HomePage() {
   const [view, setView] = useState<View>("inicio");
-  const [orders, setOrders] = useState<Order[]>(demoOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>(demoTransactions);
-  const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "demo">("connecting");
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "error" | "unconfigured">("connecting");
   const [uid, setUid] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [resetting, setResetting] = useState(false);
   const [dark, setDark] = useState(false);
   const [privateValues, setPrivateValues] = useState(false);
   const [search, setSearch] = useState("");
@@ -175,41 +169,51 @@ export default function HomePage() {
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined);
 
     if (!isFirebaseConfigured) {
-      setFirebaseState("demo");
+      setFirebaseState("unconfigured");
+      setAuthReady(true);
       return;
     }
 
-    let cleanups: (() => void)[] = [];
-    const connect = async () => {
-      try {
-        const app = getApps()[0] ?? initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        await setPersistence(auth, browserLocalPersistence);
-        const credential = auth.currentUser ? { user: auth.currentUser } : await signInAnonymously(auth);
-        const userId = credential.user.uid;
-        setUid(userId);
-        const db = getFirestore(app);
-        const base = collection(db, "users", userId, "orders");
-        const unsubOrders = onSnapshot(query(base, orderBy("createdAt", "desc")), (snapshot) => {
-          const next = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Order));
-          setOrders(next.length ? next : demoOrders);
-          setFirebaseState("live");
-        });
-        const unsubTransactions = onSnapshot(collection(db, "users", userId, "transactions"), (snapshot) => {
-          const next = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Transaction));
-          if (next.length) setTransactions(next);
-        });
-        const unsubCustomers = onSnapshot(collection(db, "users", userId, "customers"), (snapshot) => {
-          setCustomers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Customer)));
-        });
-        cleanups = [unsubOrders, unsubTransactions, unsubCustomers];
-      } catch (error) {
-        console.error("Firebase connection failed", error);
-        setFirebaseState("demo");
+    const app = getApps()[0] ?? initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    let unsubscribeData: (() => void) | undefined;
+    setPersistence(auth, browserLocalPersistence).catch(() => undefined);
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
+      unsubscribeData?.();
+      setUser(nextUser);
+      setUid(nextUser?.uid ?? "");
+      setAuthReady(true);
+      setAuthError("");
+
+      if (!nextUser) {
+        setOrders([]);
+        setCustomers([]);
+        setTransactions([]);
+        setFirebaseState("connecting");
+        return;
       }
+
+      const db = getDatabase(app);
+      setFirebaseState("connecting");
+      unsubscribeData = onValue(ref(db, `users/${nextUser.uid}`), (snapshot) => {
+        const value = snapshot.val() ?? {};
+        const toList = <T extends { id: string }>(record?: Record<string, Omit<T, "id">>) =>
+          Object.entries(record ?? {}).map(([id, item]) => ({ id, ...item } as T));
+        setOrders(toList<Order>(value.orders).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
+        setCustomers(toList<Customer>(value.customers));
+        setTransactions(toList<Transaction>(value.transactions).sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0)));
+        setFirebaseState("live");
+      }, (error) => {
+        console.error("Firebase connection failed", error);
+        setFirebaseState("error");
+      });
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeData?.();
     };
-    connect();
-    return () => cleanups.forEach((cleanup) => cleanup());
   }, []);
 
   useEffect(() => {
@@ -241,6 +245,46 @@ export default function HomePage() {
     window.setTimeout(() => setToast(""), 2600);
   };
 
+  const signInGoogle = async () => {
+    if (!isFirebaseConfigured) return;
+    setAuthError("");
+    try {
+      const app = getApps()[0] ?? initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      await setPersistence(auth, browserLocalPersistence);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) await signInWithRedirect(auth, provider);
+      else await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Google sign-in failed", error);
+      setAuthError("Não foi possível entrar. Verifique se o Google está habilitado no Firebase.");
+    }
+  };
+
+  const signOutGoogle = async () => {
+    if (!isFirebaseConfigured) return;
+    await signOut(getAuth(getApps()[0]));
+    setView("inicio");
+  };
+
+  const resetAllData = async () => {
+    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes e movimentações desta conta?")) return;
+    setResetting(true);
+    try {
+      await remove(ref(getDatabase(getApps()[0]), `users/${uid}`));
+      setOrders([]);
+      setCustomers([]);
+      setTransactions([]);
+      showToast("Todos os dados foram removidos");
+    } catch (error) {
+      console.error("Reset failed", error);
+      showToast("Não foi possível resetar os dados");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const derivedCustomers = useMemo(() => {
     const map = new Map<string, Customer>();
     customers.forEach((item) => map.set(item.name, item));
@@ -252,9 +296,11 @@ export default function HomePage() {
 
   const businessIncome = transactions.filter((t) => t.account === "business" && t.type === "income").reduce((sum, t) => sum + t.amount, 0);
   const businessExpense = transactions.filter((t) => t.account === "business" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+  const personalIncome = transactions.filter((t) => t.account === "personal" && t.type !== "expense").reduce((sum, t) => sum + t.amount, 0);
+  const personalExpense = transactions.filter((t) => t.account === "personal" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
   const pending = orders.reduce((sum, order) => sum + Math.max(0, order.total - order.paid), 0);
-  const businessBalance = 7680 + businessIncome - businessExpense;
-  const personalBalance = 2300;
+  const businessBalance = businessIncome - businessExpense;
+  const personalBalance = personalIncome - personalExpense;
   const activeOrders = orders.filter((order) => order.status !== "Entregue");
   const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
@@ -286,31 +332,25 @@ export default function HomePage() {
           status: "Aprovado",
           createdAt: serverTimestamp(),
         };
-        if (firebaseState === "live" && uid) {
-          const app = getApps()[0];
-          const db = getFirestore(app);
-          const batch = writeBatch(db);
-          const orderRef = doc(collection(db, "users", uid, "orders"));
-          batch.set(orderRef, nextOrder);
-          const customerRef = doc(db, "users", uid, "customers", nextOrder.customer.toLocaleLowerCase("pt-BR").replace(/[^a-z0-9]+/g, "-") || orderRef.id);
-          batch.set(customerRef, { name: nextOrder.customer, phone: nextOrder.phone }, { merge: true });
-          if (nextOrder.paid > 0) {
-            const transactionRef = doc(collection(db, "users", uid, "transactions"));
-            batch.set(transactionRef, { description: `Entrada · ${nextOrder.customer} · #${orderRef.id.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", orderId: orderRef.id, createdAt: serverTimestamp() });
-          }
-          await batch.commit();
-        } else {
-          const id = String(Math.floor(115 + Math.random() * 80));
-          setOrders((current) => [{ id, ...nextOrder }, ...current]);
-          if (nextOrder.paid > 0) setTransactions((current) => [{ id: `t-${Date.now()}`, description: `Entrada · ${nextOrder.customer} · #${id}`, amount: nextOrder.paid, type: "income", account: "business" }, ...current]);
+        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
+        const db = getDatabase(getApps()[0]);
+        const orderKey = push(ref(db, `users/${uid}/orders`)).key;
+        if (!orderKey) throw new Error("Não foi possível gerar o pedido");
+        const customerKey = nextOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || orderKey;
+        const updates: Record<string, unknown> = {
+          [`users/${uid}/orders/${orderKey}`]: nextOrder,
+          [`users/${uid}/customers/${customerKey}`]: { name: nextOrder.customer, phone: nextOrder.phone ?? "" },
+        };
+        if (nextOrder.paid > 0) {
+          const transactionKey = push(ref(db, `users/${uid}/transactions`)).key;
+          if (transactionKey) updates[`users/${uid}/transactions/${transactionKey}`] = { description: `Entrada · ${nextOrder.customer} · #${orderKey.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", orderId: orderKey, createdAt: serverTimestamp() };
         }
+        await update(ref(db), updates);
         showToast("Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
         const customer = { name: String(form.get("name")), phone: String(form.get("phone")), company: String(form.get("company") || "") };
-        if (firebaseState === "live" && uid) {
-          const db = getFirestore(getApps()[0]);
-          await addDoc(collection(db, "users", uid, "customers"), customer);
-        } else setCustomers((current) => [{ id: `c-${Date.now()}`, ...customer }, ...current]);
+        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
+        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/customers`)), customer);
         showToast("Cliente adicionado");
       } else {
         const amount = Number(form.get("amount"));
@@ -322,10 +362,8 @@ export default function HomePage() {
           account: kind === "transferencia" ? "personal" : "business",
           createdAt: serverTimestamp(),
         };
-        if (firebaseState === "live" && uid) {
-          const db = getFirestore(getApps()[0]);
-          await addDoc(collection(db, "users", uid, "transactions"), transaction);
-        } else setTransactions((current) => [{ id: `t-${Date.now()}`, ...transaction }, ...current]);
+        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
+        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/transactions`)), transaction);
         showToast(kind === "despesa" ? "Despesa registrada" : kind === "transferencia" ? "Transferência concluída" : "Entrada registrada");
       }
       setModal(null);
@@ -338,11 +376,17 @@ export default function HomePage() {
   const updateStatus = async (order: Order, status: OrderStatus) => {
     setOrders((current) => current.map((item) => (item.id === order.id ? { ...item, status } : item)));
     if (firebaseState === "live" && uid) {
-      const db = getFirestore(getApps()[0]);
-      await setDoc(doc(db, "users", uid, "orders", order.id), { status }, { merge: true });
+      await update(ref(getDatabase(getApps()[0]), `users/${uid}/orders/${order.id}`), { status });
     }
     showToast("Pedido atualizado");
   };
+
+  if (!authReady) return <AuthScreen state="loading" error="" onSignIn={signInGoogle} />;
+  if (!isFirebaseConfigured) return <AuthScreen state="unconfigured" error="A configuração do Firebase não foi encontrada neste ambiente." onSignIn={signInGoogle} />;
+  if (!user) return <AuthScreen state="signed-out" error={authError} onSignIn={signInGoogle} />;
+
+  const userName = user.displayName || "Usuário PSYZON";
+  const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
   return (
     <div className="app-shell">
@@ -354,8 +398,8 @@ export default function HomePage() {
         <nav>
           {navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         </nav>
-        <div className={`sync-status ${firebaseState}`}><span />{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Modo demonstração"}</div>
-        <button className="profile"><span>RS</span><span><b>Rodrigo</b><small>PSYZON Company</small></span><ChevronRight size={15} /></button>
+        <div className={`sync-status ${firebaseState}`}><span />{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</div>
+        <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
       </aside>
 
       <main className="main">
@@ -379,7 +423,7 @@ export default function HomePage() {
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={setModal} />}
           {view === "financeiro" && <Finance transactions={transactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} displayMoney={displayMoney} setModal={setModal} />}
-          {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} />}
+          {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
@@ -394,6 +438,10 @@ export default function HomePage() {
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
+}
+
+function AuthScreen({ state, error, onSignIn }: { state: "loading" | "unconfigured" | "signed-out"; error: string; onSignIn: () => void }) {
+  return <main className="auth-screen"><section className="auth-card"><div className="auth-brand"><span className="brand-mark">P</span><span><b>PSYZON</b><small>GO</small></span></div><span className="auth-kicker">GESTÃO EM TEMPO REAL</span><h1>{state === "loading" ? "Preparando seu espaço…" : state === "unconfigured" ? "Firebase não configurado" : "Sua operação em um só lugar."}</h1><p>{state === "signed-out" ? "Entre com sua conta Google para acessar pedidos, clientes e financeiro com sincronização segura entre dispositivos." : state === "loading" ? "Conectando com segurança ao Firebase." : error}</p>{state === "signed-out" && <button className="google-button" onClick={onSignIn}><span>G</span> Continuar com Google</button>}{error && state === "signed-out" && <p className="auth-error" role="alert">{error}</p>}<small className="auth-note">Cada conta acessa somente os próprios dados.</small></section></main>;
 }
 
 function NavButton({ item, active, onClick }: { item: (typeof navItems)[number]; active: boolean; onClick: () => void }) {
@@ -447,11 +495,11 @@ function Customers({ customers, orders, displayMoney, setModal }: any) {
 }
 
 function Finance({ transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, displayMoney, setModal }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO</span><h1>Seu dinheiro, sem mistura.</h1><p>Empresa e pessoal claramente separados.</p></div><button className="primary" onClick={() => setModal("entrada")}><Plus size={18} /> Movimentação</button></div><div className="account-grid"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article><article className="account-card personal"><div><span><UserRound size={19} /> PESSOAL</span><small>Saldo pessoal</small><strong>{displayMoney(personalBalance)}</strong></div><div className="account-stats"><span><small>Pró-labore</small><b>{displayMoney(1000)}</b></span><button onClick={() => setModal("transferencia")}>Transferir <ChevronRight size={15} /></button></div></article></div><div className="finance-grid"><section className="panel finance-summary"><div className="section-title"><h2>Resumo do mês</h2><button>Ver relatório</button></div><div><span><small>Faturamento</small><b>{displayMoney(18300)}</b></span><span><small>Despesas</small><b>{displayMoney(9100)}</b></span><span><small>Resultado</small><b className="positive">{displayMoney(9200)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></section><section className="panel movement-panel full"><div className="section-title"><h2>Movimentações</h2><div><button onClick={() => setModal("entrada")}>+ Entrada</button><button onClick={() => setModal("despesa")}>+ Despesa</button></div></div>{transactions.map((transaction: Transaction) => <div className="movement" key={transaction.id}><span className={transaction.type}><span>{transaction.type === "income" ? "+" : transaction.type === "expense" ? "−" : "↗"}</span></span><div><b>{transaction.description}</b><small>Conta {transaction.account === "business" ? "empresa" : "pessoal"}</small></div><strong className={transaction.type === "income" ? "positive" : transaction.type === "expense" ? "negative" : ""}>{displayMoney(transaction.amount)}</strong></div>)}</section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO</span><h1>Seu dinheiro, sem mistura.</h1><p>Empresa e pessoal claramente separados.</p></div><button className="primary" onClick={() => setModal("entrada")}><Plus size={18} /> Movimentação</button></div><div className="account-grid"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article><article className="account-card personal"><div><span><UserRound size={19} /> PESSOAL</span><small>Saldo pessoal</small><strong>{displayMoney(personalBalance)}</strong></div><div className="account-stats"><span><small>Pró-labore</small><b>{displayMoney(personalBalance)}</b></span><button onClick={() => setModal("transferencia")}>Transferir <ChevronRight size={15} /></button></div></article></div><div className="finance-grid"><section className="panel finance-summary"><div className="section-title"><h2>Resumo do mês</h2></div><div><span><small>Faturamento</small><b>{displayMoney(businessIncome)}</b></span><span><small>Despesas</small><b>{displayMoney(businessExpense)}</b></span><span><small>Resultado</small><b className={businessIncome - businessExpense >= 0 ? "positive" : "negative"}>{displayMoney(businessIncome - businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></section><section className="panel movement-panel full"><div className="section-title"><h2>Movimentações</h2><div><button onClick={() => setModal("entrada")}>+ Entrada</button><button onClick={() => setModal("despesa")}>+ Despesa</button></div></div>{transactions.map((transaction: Transaction) => <div className="movement" key={transaction.id}><span className={transaction.type}><span>{transaction.type === "income" ? "+" : transaction.type === "expense" ? "−" : "↗"}</span></span><div><b>{transaction.description}</b><small>Conta {transaction.account === "business" ? "empresa" : "pessoal"}</small></div><strong className={transaction.type === "income" ? "positive" : transaction.type === "expense" ? "negative" : ""}>{displayMoney(transaction.amount)}</strong></div>)}</section></div></>;
 }
 
-function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValues }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Mais</h1><p>Só o que não precisa ocupar sua rotina.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Personalize como o PSYZON GO aparece.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(e) => setPrivateValues(e.target.checked)} /></label></section><section className="panel settings-card"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros disponíveis em qualquer dispositivo.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firebase conectado" : "Firebase aguardando configuração"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "A interface funciona com dados de demonstração"}</small></div></div><button className="secondary">Backup e exportação <ChevronRight size={16} /></button></section></div></>;
+function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValues, user, onSignOut, onReset, resetting }: any) {
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, privacidade e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Personalize como o PSYZON GO aparece.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(e) => setPrivateValues(e.target.checked)} /></label></section><section className="panel settings-card"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros disponíveis em qualquer dispositivo.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firebase conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firebase"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Aguardando uma conexão segura"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 function CreateModal({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

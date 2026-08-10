@@ -237,6 +237,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .customer-card footer a { color: var(--green); display: flex; align-items: center; gap: 5px; font-weight: 650; text-decoration: none; }
 
 .account-grid { display: grid; grid-template-columns: 1.65fr 1fr; gap: 12px; margin-bottom: 15px; }
+.account-grid.single { grid-template-columns: minmax(0, 1fr); }
+.account-grid.single .account-card { grid-template-columns: 1.35fr 1fr; }
 .account-card { min-height: 175px; border: 1px solid var(--border); border-radius: 13px; background: var(--card); display: grid; grid-template-columns: 1.25fr 1fr; box-shadow: var(--shadow); overflow: hidden; }
 .account-card > div:first-child { padding: 22px; display: flex; flex-direction: column; }
 .account-card > div:first-child > span { display: flex; align-items: center; gap: 7px; color: var(--blue); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
@@ -256,6 +258,38 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .finance-summary small { color: var(--muted); font-size: 8.5px; }
 .finance-summary b { font-size: 10px; }
 .movement-panel.full .movement { padding-inline: 17px; }
+.empty-movements { min-height: 120px; color: var(--muted); display: grid; place-items: center; font-size: 9px; }
+.personal-actions { margin: -3px 0 14px; display: flex; justify-content: flex-end; gap: 8px; }
+.personal-actions button, .personal-action { display: flex; align-items: center; gap: 7px; }
+
+.bills-panel { margin-bottom: 14px; }
+.bills-panel .section-title > div { display: flex; align-items: center; gap: 10px; }
+.bills-panel .section-title > div > div { display: flex; flex-direction: column; gap: 2px; }
+.bills-panel .section-title > div > div span { color: var(--muted); font-size: 8px; }
+.bills-panel .section-title > button { display: flex; align-items: center; gap: 5px; }
+.bill-list { padding: 2px 17px 13px; }
+.bill-row { min-height: 65px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 48px minmax(150px, 1fr) 105px 64px 32px; align-items: center; gap: 12px; }
+.bill-row:last-child { border-bottom: 0; }
+.bill-row.paid { opacity: .68; }
+.bill-date { width: 42px; height: 42px; border-radius: 9px; background: var(--card-subtle); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bill-date small { color: var(--muted); font-size: 6px; font-weight: 750; }
+.bill-date b { margin-top: 2px; font-size: 13px; }
+.bill-info { min-width: 0; }
+.bill-info > span { display: flex; flex-direction: column; }
+.bill-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9.5px; }
+.bill-info small { margin-top: 3px; color: var(--muted); font-size: 7.5px; }
+.bill-progress { width: min(180px, 100%); height: 3px; margin-top: 8px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.bill-progress span { height: 100%; border-radius: inherit; background: var(--blue); display: block; }
+.bill-row > strong { display: flex; flex-direction: column; align-items: flex-end; font-size: 10px; }
+.bill-row > strong small { margin-top: 3px; color: var(--muted); font-size: 6.5px; }
+.bill-pay { height: 30px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--blue); font-size: 8px; font-weight: 700; cursor: pointer; }
+.bill-pay:disabled { color: var(--green); cursor: default; }
+.bill-delete { width: 30px; height: 30px; border: 0; background: transparent; color: var(--faint); display: grid; place-items: center; cursor: pointer; }
+.bill-delete:hover { color: #dc2626; }
+.empty-finance { min-height: 155px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center; }
+.empty-finance b { color: var(--text); font-size: 10px; }
+.empty-finance small { font-size: 8px; }
+.empty-finance button { margin-top: 4px; border: 0; background: transparent; color: var(--blue); font-size: 8.5px; cursor: pointer; }
 
 .settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
 .settings-card { padding: 20px; }
@@ -302,10 +336,17 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .modal header .eyebrow { margin-bottom: 4px; }
 .modal h2 { margin: 0; font-size: 18px; letter-spacing: -.035em; }
 .modal header button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 9px; background: transparent; display: grid; place-items: center; color: var(--muted); cursor: pointer; }
-.create-tabs { margin: 18px 0 21px; padding: 3px; border-radius: 9px; background: var(--card-subtle); display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.create-tabs { margin: 18px 0 21px; padding: 3px; border-radius: 9px; background: var(--card-subtle); display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
 .create-tabs button { height: 31px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 8.5px; cursor: pointer; }
 .create-tabs button.active { background: var(--card); color: var(--blue); font-weight: 680; box-shadow: var(--shadow); }
 .modal form { display: flex; flex-direction: column; gap: 15px; }
+.account-context { padding: 10px 12px; border-radius: 9px; background: var(--blue-soft); color: var(--blue); display: flex; align-items: center; gap: 9px; }
+.account-context.personal { background: color-mix(in srgb, #7c3aed 10%, var(--card)); color: #7c3aed; }
+.account-context > span { width: 28px; height: 28px; border-radius: 7px; background: var(--card); display: grid; place-items: center; }
+.account-context > div { display: flex; flex-direction: column; gap: 2px; }
+.account-context small { font-size: 6.5px; font-weight: 750; letter-spacing: .08em; }
+.account-context b { font-size: 9px; }
+.form-help { margin: -5px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .modal label { color: var(--muted); font-size: 8.5px; font-weight: 620; }
 .modal label > span { color: var(--faint); font-weight: 450; }
 .modal input, .modal textarea, .modal select { width: 100%; margin-top: 6px; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; font-size: 10px; }
@@ -364,6 +405,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .kanban { grid-template-columns: repeat(4, 240px); }
   .customer-grid, .settings-grid { grid-template-columns: 1fr; }
   .account-grid { grid-template-columns: 1fr; }
+  .account-grid.single .account-card { grid-template-columns: 1fr 1fr; }
   .account-card { min-height: 150px; }
   .view-toggle button { padding-inline: 8px; }
 }
@@ -385,6 +427,12 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .account-card > div:first-child { padding: 17px; }
   .account-card > div:first-child strong { font-size: 20px; }
   .account-stats { padding: 14px; }
+  .bill-list { padding-inline: 12px; }
+  .bill-row { padding: 10px 0; grid-template-columns: 42px minmax(0, 1fr) 72px 30px; gap: 8px; }
+  .bill-row > strong { font-size: 9px; }
+  .bill-pay { grid-column: 2 / 4; }
+  .bill-delete { grid-column: 4; grid-row: 1; }
+  .create-tabs button { font-size: 7.5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

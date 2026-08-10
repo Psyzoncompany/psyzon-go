@@ -6,7 +6,6 @@ import {
   getAuth,
   onAuthStateChanged,
   setPersistence,
-  signInWithPopup,
   signInWithRedirect,
   signOut,
   type User,
@@ -29,6 +28,7 @@ import {
   Check,
   ChevronRight,
   CircleDollarSign,
+  CalendarClock,
   Clock3,
   Eye,
   EyeOff,
@@ -46,6 +46,7 @@ import {
   Sun,
   TrendingDown,
   TrendingUp,
+  Trash2,
   UserRound,
   UsersRound,
   WalletCards,
@@ -53,8 +54,9 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type View = "inicio" | "producao" | "clientes" | "financeiro" | "mais";
-type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia";
+type View = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "mais";
+type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia" | "conta";
+type AccountType = "business" | "personal";
 type OrderStatus =
   | "Orçamento"
   | "Aprovado"
@@ -84,6 +86,19 @@ type Transaction = {
   amount: number;
   type: "income" | "expense" | "transfer";
   account: "business" | "personal";
+  createdAt?: unknown;
+};
+type Bill = {
+  id: string;
+  description: string;
+  amount: number;
+  account: AccountType;
+  billingType: "fixed" | "installment";
+  dueDay: number;
+  category: string;
+  totalInstallments?: number;
+  paidInstallments?: number;
+  lastPaidMonth?: string;
   createdAt?: unknown;
 };
 
@@ -122,8 +137,11 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "producao", label: "Produção", icon: Boxes },
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
+  { id: "pessoal", label: "Pessoal", icon: UserRound },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
+
+const mobileNavItems = navItems.filter((item) => ["inicio", "producao", "pessoal", "mais"].includes(item.id));
 
 function dueLabel(dateString: string, status: OrderStatus) {
   if (status === "Entregue") return "Entregue";
@@ -149,6 +167,7 @@ export default function HomePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
   const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "error" | "unconfigured">("connecting");
   const [uid, setUid] = useState("");
   const [user, setUser] = useState<User | null>(null);
@@ -159,6 +178,7 @@ export default function HomePage() {
   const [privateValues, setPrivateValues] = useState(false);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
+  const [modalAccount, setModalAccount] = useState<AccountType>("business");
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -190,6 +210,7 @@ export default function HomePage() {
         setOrders([]);
         setCustomers([]);
         setTransactions([]);
+        setBills([]);
         setFirebaseState("connecting");
         return;
       }
@@ -203,6 +224,7 @@ export default function HomePage() {
         setOrders(toList<Order>(value.orders).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
         setCustomers(toList<Customer>(value.customers));
         setTransactions(toList<Transaction>(value.transactions).sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0)));
+        setBills(toList<Bill>(value.bills).sort((a, b) => a.dueDay - b.dueDay));
         setFirebaseState("live");
       }, (error) => {
         console.error("Firebase connection failed", error);
@@ -245,6 +267,11 @@ export default function HomePage() {
     window.setTimeout(() => setToast(""), 2600);
   };
 
+  const openCreate = (kind: CreateKind, account: AccountType = "business") => {
+    setModalAccount(account);
+    setModal(kind);
+  };
+
   const signInGoogle = async () => {
     if (!isFirebaseConfigured) return;
     setAuthError("");
@@ -254,8 +281,7 @@ export default function HomePage() {
       await setPersistence(auth, browserLocalPersistence);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
-      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) await signInWithRedirect(auth, provider);
-      else await signInWithPopup(auth, provider);
+      await signInWithRedirect(auth, provider);
     } catch (error) {
       console.error("Google sign-in failed", error);
       setAuthError("Não foi possível entrar. Verifique se o Google está habilitado no Firebase.");
@@ -269,13 +295,14 @@ export default function HomePage() {
   };
 
   const resetAllData = async () => {
-    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes e movimentações desta conta?")) return;
+    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes, contas e movimentações desta conta?")) return;
     setResetting(true);
     try {
       await remove(ref(getDatabase(getApps()[0]), `users/${uid}`));
       setOrders([]);
       setCustomers([]);
       setTransactions([]);
+      setBills([]);
       showToast("Todos os dados foram removidos");
     } catch (error) {
       console.error("Reset failed", error);
@@ -296,11 +323,14 @@ export default function HomePage() {
 
   const businessIncome = transactions.filter((t) => t.account === "business" && t.type === "income").reduce((sum, t) => sum + t.amount, 0);
   const businessExpense = transactions.filter((t) => t.account === "business" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+  const businessTransfers = transactions.filter((t) => t.type === "transfer").reduce((sum, t) => sum + t.amount, 0);
   const personalIncome = transactions.filter((t) => t.account === "personal" && t.type !== "expense").reduce((sum, t) => sum + t.amount, 0);
   const personalExpense = transactions.filter((t) => t.account === "personal" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
   const pending = orders.reduce((sum, order) => sum + Math.max(0, order.total - order.paid), 0);
-  const businessBalance = businessIncome - businessExpense;
+  const businessBalance = businessIncome - businessExpense - businessTransfers;
   const personalBalance = personalIncome - personalExpense;
+  const businessTransactions = transactions.filter((transaction) => transaction.account === "business" || transaction.type === "transfer");
+  const personalTransactions = transactions.filter((transaction) => transaction.account === "personal");
   const activeOrders = orders.filter((order) => order.status !== "Entregue");
   const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
@@ -352,6 +382,22 @@ export default function HomePage() {
         if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
         await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/customers`)), customer);
         showToast("Cliente adicionado");
+      } else if (kind === "conta") {
+        const billingType = String(form.get("billingType")) as Bill["billingType"];
+        const bill: Omit<Bill, "id"> = {
+          description: String(form.get("description")),
+          amount: Number(form.get("amount")),
+          account: String(form.get("account")) as AccountType,
+          billingType,
+          dueDay: Number(form.get("dueDay")),
+          category: String(form.get("category") || "Outros"),
+          paidInstallments: 0,
+          createdAt: serverTimestamp(),
+          ...(billingType === "installment" ? { totalInstallments: Number(form.get("totalInstallments")) } : {}),
+        };
+        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
+        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/bills`)), bill);
+        showToast(billingType === "fixed" ? "Conta mensal adicionada" : "Compra parcelada adicionada");
       } else {
         const amount = Number(form.get("amount"));
         const description = String(form.get("description"));
@@ -359,7 +405,7 @@ export default function HomePage() {
           description,
           amount,
           type: kind === "entrada" ? "income" : kind === "despesa" ? "expense" : "transfer",
-          account: kind === "transferencia" ? "personal" : "business",
+          account: kind === "transferencia" ? "personal" : String(form.get("account")) as AccountType,
           createdAt: serverTimestamp(),
         };
         if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
@@ -379,6 +425,28 @@ export default function HomePage() {
       await update(ref(getDatabase(getApps()[0]), `users/${uid}/orders/${order.id}`), { status });
     }
     showToast("Pedido atualizado");
+  };
+
+  const payBill = async (bill: Bill) => {
+    if (firebaseState !== "live" || !uid) return showToast("Firebase ainda não está conectado");
+    const db = getDatabase(getApps()[0]);
+    const month = new Date().toISOString().slice(0, 7);
+    if (bill.billingType === "fixed" && bill.lastPaidMonth === month) return showToast("Esta conta já foi paga neste mês");
+    if (bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1)) return showToast("Todas as parcelas já foram pagas");
+    const transactionKey = push(ref(db, `users/${uid}/transactions`)).key;
+    if (!transactionKey) return showToast("Não foi possível registrar o pagamento");
+    const updates: Record<string, unknown> = {
+      [`users/${uid}/transactions/${transactionKey}`]: { description: `${bill.billingType === "fixed" ? "Conta mensal" : `Parcela ${(bill.paidInstallments ?? 0) + 1}/${bill.totalInstallments}`} · ${bill.description}`, amount: bill.amount, type: "expense", account: bill.account, createdAt: serverTimestamp() },
+      [`users/${uid}/bills/${bill.id}/${bill.billingType === "fixed" ? "lastPaidMonth" : "paidInstallments"}`]: bill.billingType === "fixed" ? month : (bill.paidInstallments ?? 0) + 1,
+    };
+    await update(ref(db), updates);
+    showToast("Pagamento registrado");
+  };
+
+  const deleteBill = async (bill: Bill) => {
+    if (!uid || !window.confirm(`Excluir a conta “${bill.description}”?`)) return;
+    await remove(ref(getDatabase(getApps()[0]), `users/${uid}/bills/${bill.id}`));
+    showToast("Conta removida");
   };
 
   if (!authReady) return <AuthScreen state="loading" error="" onSignIn={signInGoogle} />;
@@ -419,22 +487,23 @@ export default function HomePage() {
         </header>
 
         <section className="content">
-          {view === "inicio" && <Dashboard orders={activeOrders} transactions={transactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
+          {view === "inicio" && <Dashboard orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} />}
-          {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={setModal} />}
-          {view === "financeiro" && <Finance transactions={transactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} displayMoney={displayMoney} setModal={setModal} />}
+          {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
+          {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} payBill={payBill} deleteBill={deleteBill} />}
+          {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} />}
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
       <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>
       <nav className="mobile-nav">
-        {navItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
+        {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         <button className="mobile-new" onClick={() => setModal("pedido")} aria-label="Novo pedido"><Plus /></button>
-        {navItems.slice(3).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
+        {mobileNavItems.slice(2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
       </nav>
 
-      {modal && <CreateModal kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
+      {modal && <CreateModal kind={modal} account={modalAccount} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -494,15 +563,33 @@ function Customers({ customers, orders, displayMoney, setModal }: any) {
   return <><div className="page-heading compact"><div><span className="eyebrow">RELACIONAMENTO</span><h1>Clientes</h1><p>Cadastro simples e histórico em um só lugar.</p></div><button className="primary" onClick={() => setModal("cliente")}><Plus size={18} /> Novo cliente</button></div><div className="customer-grid">{customers.map((customer: Customer) => { const clientOrders = orders.filter((order: Order) => order.customer === customer.name); const total = clientOrders.reduce((sum: number, order: Order) => sum + order.total, 0); const pending = clientOrders.reduce((sum: number, order: Order) => sum + order.total - order.paid, 0); return <article className="customer-card" key={customer.id}><div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Cliente PSYZON"}</p></div><button><MoreHorizontal size={18} /></button></div><div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(total)}</b></span><span><small>Saldo pendente</small><b className={pending ? "negative" : "positive"}>{displayMoney(pending)}</b></span></div><footer><span>{clientOrders.length} {clientOrders.length === 1 ? "pedido" : "pedidos"}</span><a href={`https://wa.me/${customer.phone}`} target="_blank"><MessageCircle size={16} /> WhatsApp</a></footer></article>; })}</div></>;
 }
 
-function Finance({ transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, displayMoney, setModal }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO</span><h1>Seu dinheiro, sem mistura.</h1><p>Empresa e pessoal claramente separados.</p></div><button className="primary" onClick={() => setModal("entrada")}><Plus size={18} /> Movimentação</button></div><div className="account-grid"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article><article className="account-card personal"><div><span><UserRound size={19} /> PESSOAL</span><small>Saldo pessoal</small><strong>{displayMoney(personalBalance)}</strong></div><div className="account-stats"><span><small>Pró-labore</small><b>{displayMoney(personalBalance)}</b></span><button onClick={() => setModal("transferencia")}>Transferir <ChevronRight size={15} /></button></div></article></div><div className="finance-grid"><section className="panel finance-summary"><div className="section-title"><h2>Resumo do mês</h2></div><div><span><small>Faturamento</small><b>{displayMoney(businessIncome)}</b></span><span><small>Despesas</small><b>{displayMoney(businessExpense)}</b></span><span><small>Resultado</small><b className={businessIncome - businessExpense >= 0 ? "positive" : "negative"}>{displayMoney(businessIncome - businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></section><section className="panel movement-panel full"><div className="section-title"><h2>Movimentações</h2><div><button onClick={() => setModal("entrada")}>+ Entrada</button><button onClick={() => setModal("despesa")}>+ Despesa</button></div></div>{transactions.map((transaction: Transaction) => <div className="movement" key={transaction.id}><span className={transaction.type}><span>{transaction.type === "income" ? "+" : transaction.type === "expense" ? "−" : "↗"}</span></span><div><b>{transaction.description}</b><small>Conta {transaction.account === "business" ? "empresa" : "pessoal"}</small></div><strong className={transaction.type === "income" ? "positive" : transaction.type === "expense" ? "negative" : ""}>{displayMoney(transaction.amount)}</strong></div>)}</section></div></>;
+function Finance({ transactions, bills, businessBalance, businessIncome, businessExpense, pending, displayMoney, openCreate, payBill, deleteBill }: any) {
+  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO EMPRESARIAL</span><h1>Dinheiro da empresa.</h1><p>Caixa, contas e compromissos da operação.</p></div><button className="primary" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação</button></div><div className="account-grid single"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article></div><BillsPanel bills={bills} account="business" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} /><div className="finance-grid"><section className="panel finance-summary"><div className="section-title"><h2>Resumo do mês</h2></div><div><span><small>Faturamento</small><b>{displayMoney(businessIncome)}</b></span><span><small>Despesas</small><b>{displayMoney(businessExpense)}</b></span><span><small>Resultado</small><b className={businessIncome - businessExpense >= 0 ? "positive" : "negative"}>{displayMoney(businessIncome - businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></section><Movements transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} /></div></>;
+}
+
+function PersonalFinance({ transactions, bills, balance, income, expense, displayMoney, openCreate, payBill, deleteBill }: any) {
+  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO PESSOAL</span><h1>Sua vida financeira.</h1><p>Separada da empresa, como deve ser.</p></div><button className="primary personal-action" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação pessoal</button></div><div className="account-grid single"><article className="account-card personal"><div><span><UserRound size={19} /> PESSOAL</span><small>Saldo pessoal</small><strong>{displayMoney(balance)}</strong></div><div className="account-stats"><span><small>Entradas + transferências</small><b className="positive">{displayMoney(income)}</b></span><span><small>Despesas pessoais</small><b>{displayMoney(expense)}</b></span></div></article></div><BillsPanel bills={bills} account="personal" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} /><div className="personal-actions"><button className="secondary" onClick={() => openCreate("entrada")}><TrendingUp size={16} /> Nova entrada</button><button className="secondary" onClick={() => openCreate("despesa")}><TrendingDown size={16} /> Nova despesa</button></div><Movements transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} personal /></>;
+}
+
+function BillsPanel({ bills, account, displayMoney, openCreate, payBill, deleteBill }: { bills: Bill[]; account: AccountType; displayMoney: (value: number) => string; openCreate: (kind: CreateKind) => void; payBill: (bill: Bill) => void; deleteBill: (bill: Bill) => void }) {
+  const month = new Date().toISOString().slice(0, 7);
+  const pendingTotal = bills.reduce((sum, bill) => {
+    const paid = bill.billingType === "fixed" ? bill.lastPaidMonth === month : (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1);
+    return sum + (paid ? 0 : bill.amount);
+  }, 0);
+  return <section className="panel bills-panel"><div className="section-title"><div><CalendarClock size={18} /><div><h2>Contas fixas e parceladas</h2><span>{bills.length} cadastradas · {displayMoney(pendingTotal)} neste mês</span></div></div><button onClick={() => openCreate("conta")}><Plus size={15} /> Nova conta</button></div><div className="bill-list">{bills.length === 0 ? <div className="empty-finance"><CalendarClock size={24} /><b>Nenhuma conta cadastrada</b><small>Adicione aluguel, internet, cartão ou compras parceladas.</small><button onClick={() => openCreate("conta")}>Cadastrar primeira conta</button></div> : bills.map((bill) => { const installment = bill.billingType === "installment"; const paid = installment ? (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1) : bill.lastPaidMonth === month; const progress = installment ? Math.min(100, ((bill.paidInstallments ?? 0) / (bill.totalInstallments ?? 1)) * 100) : paid ? 100 : 0; return <article className={`bill-row ${paid ? "paid" : ""}`} key={bill.id}><div className="bill-date"><small>VENCE</small><b>{String(bill.dueDay).padStart(2, "0")}</b></div><div className="bill-info"><span><b>{bill.description}</b><small>{bill.category} · {installment ? `${bill.paidInstallments ?? 0}/${bill.totalInstallments} parcelas pagas` : "Mensal fixa"}</small></span>{installment && <div className="bill-progress"><span style={{ width: `${progress}%` }} /></div>}</div><strong>{displayMoney(bill.amount)}<small>{paid ? "PAGO" : account === "business" ? "EMPRESA" : "PESSOAL"}</small></strong><button className="bill-pay" onClick={() => payBill(bill)} disabled={paid}>{paid ? "Pago" : "Pagar"}</button><button className="bill-delete" onClick={() => deleteBill(bill)} aria-label={`Excluir ${bill.description}`}><Trash2 size={15} /></button></article>; })}</div></section>;
+}
+
+function Movements({ transactions, displayMoney, openCreate, personal = false }: { transactions: Transaction[]; displayMoney: (value: number) => string; openCreate: (kind: CreateKind) => void; personal?: boolean }) {
+  return <section className="panel movement-panel full"><div className="section-title"><h2>Movimentações</h2><div><button onClick={() => openCreate("entrada")}>+ Entrada</button><button onClick={() => openCreate("despesa")}>+ Despesa</button>{!personal && <button onClick={() => openCreate("transferencia")}>Transferir</button>}</div></div>{transactions.length === 0 ? <div className="empty-movements">Nenhuma movimentação nesta conta.</div> : transactions.map((transaction) => <div className="movement" key={transaction.id}><span className={transaction.type}><span>{transaction.type === "income" ? "+" : transaction.type === "expense" ? "−" : "↗"}</span></span><div><b>{transaction.description}</b><small>{transaction.type === "transfer" ? "Transferência para pessoal" : personal ? "Conta pessoal" : "Conta empresa"}</small></div><strong className={transaction.type === "income" ? "positive" : transaction.type === "expense" ? "negative" : ""}>{transaction.type === "expense" ? "− " : transaction.type === "income" ? "+ " : ""}{displayMoney(transaction.amount)}</strong></div>)}</section>;
 }
 
 function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValues, user, onSignOut, onReset, resetting }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, privacidade e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Personalize como o PSYZON GO aparece.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(e) => setPrivateValues(e.target.checked)} /></label></section><section className="panel settings-card"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros disponíveis em qualquer dispositivo.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firebase conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firebase"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Aguardando uma conexão segura"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, privacidade e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Personalize como o PSYZON GO aparece.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(e) => setDark(e.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(e) => setPrivateValues(e.target.checked)} /></label></section><section className="panel settings-card"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros disponíveis em qualquer dispositivo.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firebase conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firebase"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Aguardando uma conexão segura"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
-function CreateModal({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const titles: Record<CreateKind, string> = { pedido: "Novo pedido", cliente: "Novo cliente", entrada: "Nova entrada", despesa: "Nova despesa", transferencia: "Transferir para pessoal" };
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal"><header><div><span className="eyebrow">CADASTRO RÁPIDO</span><h2>{titles[kind]}</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button><button className={kind === "entrada" ? "active" : ""} onClick={() => setKind("entrada")}>Entrada</button><button className={kind === "despesa" ? "active" : ""} onClick={() => setKind("despesa")}>Despesa</button></div><form onSubmit={onSubmit}>{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Produto<input name="product" required placeholder="Ex.: Camisetas personalizadas" /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" placeholder="0,00" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" placeholder="0,00" defaultValue="0" /></label></div><label className="full">Observação<textarea name="notes" rows={3} placeholder="Só se for importante…" /></label><button type="button" className="details-link">+ Adicionar detalhes</button></> : kind === "cliente" ? <><label className="full">Nome<input name="name" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" required inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Empresa <span>(opcional)</span><input name="company" placeholder="Empresa ou organização" /></label></> : <><label className="full">Descrição<input name="description" required autoFocus placeholder={kind === "despesa" ? "Ex.: Compra de camisas" : kind === "transferencia" ? "Ex.: Pró-labore de agosto" : "Ex.: Pagamento recebido"} /></label><label className="full">Valor<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0,00" /></label><label className="full">Categoria<select name="category"><option>{kind === "despesa" ? "Material" : kind === "transferencia" ? "Pró-labore" : "Venda"}</option><option>Outros</option></select></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> {kind === "pedido" ? "Criar pedido" : "Confirmar"}</button></footer></form></aside></div>;
+function CreateModal({ kind, account, setKind, close, onSubmit }: { kind: CreateKind; account: AccountType; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const titles: Record<CreateKind, string> = { pedido: "Novo pedido", cliente: "Novo cliente", entrada: "Nova entrada", despesa: "Nova despesa", transferencia: "Transferir para pessoal", conta: "Nova conta recorrente" };
+  const financeKind = ["entrada", "despesa", "transferencia", "conta"].includes(kind);
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal"><header><div><span className="eyebrow">CADASTRO RÁPIDO</span><h2>{titles[kind]}</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button><button className={kind === "entrada" ? "active" : ""} onClick={() => setKind("entrada")}>Entrada</button><button className={kind === "despesa" ? "active" : ""} onClick={() => setKind("despesa")}>Despesa</button><button className={kind === "conta" ? "active" : ""} onClick={() => setKind("conta")}>Conta</button></div><form onSubmit={onSubmit}>{financeKind && <><input type="hidden" name="account" value={account} /><div className={`account-context ${account}`}><span>{account === "business" ? <BriefcaseBusiness size={15} /> : <UserRound size={15} />}</span><div><small>LANÇAMENTO EM</small><b>{account === "business" ? "Financeiro empresarial" : "Financeiro pessoal"}</b></div></div></>}{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Produto<input name="product" required placeholder="Ex.: Camisetas personalizadas" /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" placeholder="0,00" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" placeholder="0,00" defaultValue="0" /></label></div><label className="full">Observação<textarea name="notes" rows={3} placeholder="Só se for importante…" /></label></> : kind === "cliente" ? <><label className="full">Nome<input name="name" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" required inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Empresa <span>(opcional)</span><input name="company" placeholder="Empresa ou organização" /></label></> : kind === "conta" ? <><label className="full">Nome da conta<input name="description" required autoFocus placeholder="Ex.: Aluguel, internet ou notebook" /></label><div className="form-row"><label>Tipo<select name="billingType"><option value="fixed">Mensal fixa</option><option value="installment">Parcelada</option></select></label><label>Valor mensal/parcela<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0,00" /></label></div><div className="form-row"><label>Dia do vencimento<input name="dueDay" type="number" min="1" max="31" defaultValue="10" required /></label><label>Total de parcelas<input name="totalInstallments" type="number" min="2" defaultValue="12" required /></label></div><label className="full">Categoria<select name="category"><option>Moradia</option><option>Serviços</option><option>Equipamentos</option><option>Impostos</option><option>Outros</option></select></label><p className="form-help">Em conta fixa, o total de parcelas é ignorado. Em parcelada, informe o total contratado.</p></> : <><label className="full">Descrição<input name="description" required autoFocus placeholder={kind === "despesa" ? "Ex.: Compra de material" : kind === "transferencia" ? "Ex.: Pró-labore de agosto" : "Ex.: Pagamento recebido"} /></label><label className="full">Valor<input name="amount" type="number" min="0.01" step="0.01" required placeholder="0,00" /></label><label className="full">Categoria<select name="category"><option>{kind === "despesa" ? "Despesa" : kind === "transferencia" ? "Pró-labore" : "Receita"}</option><option>Outros</option></select></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> {kind === "pedido" ? "Criar pedido" : kind === "conta" ? "Salvar conta" : "Confirmar"}</button></footer></form></aside></div>;
 }

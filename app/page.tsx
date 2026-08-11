@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   browserLocalPersistence,
   GoogleAuthProvider,
@@ -636,7 +637,7 @@ export default function HomePage() {
     <div className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
-          <span className="brand-mark">P</span>
+          <Image className="brand-mark" src="/icon-192-v3.png" alt="" width={34} height={34} priority />
           <span><b>PSYZON</b><small>GO</small></span>
         </button>
         <nav>
@@ -648,7 +649,7 @@ export default function HomePage() {
 
       <main className="main">
         <header className="topbar">
-          <button className="mobile-logo" onClick={() => setView("inicio")}><span className="brand-mark">P</span><b>PSYZON</b></button>
+          <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
           <div className="search-wrap">
             <Search size={18} />
             <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, pedido ou produto…" aria-label="Busca global" />

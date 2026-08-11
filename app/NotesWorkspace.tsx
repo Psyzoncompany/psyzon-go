@@ -74,8 +74,36 @@ function formatUpdatedAt(value: unknown) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(millis));
 }
 
+function formatKg(value: number) {
+  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function materialNoteText(material: NoteMaterial, index: number) {
+  const collarLines = material.collarType === "common"
+    ? `🟩 Ribana – ${material.color}\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
+    : `👕 Gola polo – ${material.color}\n🔢 Quantidade: ${material.poloUnits.toLocaleString("pt-BR")} unidades`;
+  return `🧵 MATERIAL ${index + 1}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}`;
+}
+
+function nextMaterialNumber(content: string) {
+  const numbers = [...content.matchAll(/🧵\s*\*?MATERIAL\s+(\d+)/gi)].map((match) => Number(match[1]));
+  return (numbers.length ? Math.max(...numbers) : 0) + 1;
+}
+
+function normalizeKgInText(content: string) {
+  return content.replace(/(Quantidade:\s*)([\d.,]+)(\s*kg)/gi, (_match, prefix: string, raw: string, suffix: string) => {
+    const value = Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
+    return Number.isFinite(value) ? `${prefix}${formatKg(value)}${suffix}` : `${prefix}${raw}${suffix}`;
+  });
+}
+
 function toDraft(note: BusinessNote): Draft {
-  return { title: note.title, content: note.content, category: note.category, pinned: note.pinned, materials: Array.isArray(note.materials) ? note.materials : [] };
+  const materials = Array.isArray(note.materials) ? note.materials : [];
+  const hasMaterialText = /🧵\s*\*?MATERIAL\s+\d+/i.test(note.content);
+  const content = materials.length && !hasMaterialText
+    ? [note.content.trim(), materials.map(materialNoteText).join("\n\n────────────────────\n\n")].filter(Boolean).join("\n\n")
+    : note.content;
+  return { title: note.title, content: normalizeKgInText(content), category: note.category, pinned: note.pinned, materials };
 }
 
 function titleCaseColor(value: string) {
@@ -228,16 +256,13 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     });
   };
 
-  const materialText = (material: NoteMaterial, index: number) => {
-    const collarLines = material.collarType === "common"
-      ? `🟩 *Ribana – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
-      : `👕 *Gola polo – ${material.color}*\n🔢 Quantidade: ${material.poloUnits} unidades`;
-    return `🧵 *MATERIAL ${index + 1}*\n\n🟢 *Malha ${material.fabricType} – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}`;
-  };
-
   const exportedMaterials = () => {
-    if (!draft.materials.length) return `${draft.title}\n\n${draft.content}`.trim();
-    return draft.materials.map(materialText).join("\n\n━━━━━━━━━━━━━━━━━━\n\n");
+    return draft.content
+      .split("\n")
+      .filter((line) => !/\b(?:valor|custo total|preço)\b/i.test(line))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   };
 
   const copyMaterials = async () => {
@@ -265,27 +290,37 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       setCalculatorOpen(true);
       return;
     }
-    setDraft((current) => ({ ...current, materials: [...current.materials, { ...material, id: crypto.randomUUID() }] }));
-    showEditorNotice(`MATERIAL ${draft.materials.length + 1} duplicado`);
+    const duplicatedNumber = nextMaterialNumber(draft.content);
+    setDraft((current) => {
+      const duplicate = { ...material, id: crypto.randomUUID() };
+      const separator = current.content.trim() ? "\n\n────────────────────\n\n" : "";
+      return { ...current, content: `${current.content.trimEnd()}${separator}${materialNoteText(duplicate, duplicatedNumber - 1)}`, materials: [...current.materials, duplicate] };
+    });
+    showEditorNotice(`MATERIAL ${duplicatedNumber} duplicado`);
   };
 
-  const removeMaterial = (id: string) => {
-    setDraft((current) => ({ ...current, materials: current.materials.filter((material) => material.id !== id) }));
-    showEditorNotice("Material removido e totais recalculados");
-  };
-
-  const updateMaterial = (id: string, updates: Partial<Pick<NoteMaterial, "fabricType" | "color" | "fabricKg" | "ribanaKg" | "poloUnits">>) => {
-    setDraft((current) => ({
-      ...current,
-      materials: current.materials.map((material) => {
-        if (material.id !== id) return material;
-        const fabricPrice = material.fabricKg > 0 ? material.fabricCost / material.fabricKg : 0;
-        const next = { ...material, ...updates };
-        const fabricCost = next.fabricKg * fabricPrice;
-        const ribanaCost = next.collarType === "common" ? next.ribanaKg * next.ribanaPricePerKg : 0;
-        return { ...next, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
-      }),
-    }));
+  const updateNoteContent = (content: string) => {
+    setDraft((current) => {
+      const blocks = [...content.matchAll(/🧵\s*\*?MATERIAL\s+(\d+)\*?([\s\S]*?)(?=🧵\s*\*?MATERIAL\s+\d+\*?|$)/gi)];
+      const materials = blocks.map((match, index) => {
+        const block = match[2];
+        const fallback: NoteMaterial = { id: crypto.randomUUID(), fabricType: "PV", color: "Sem cor", fabricKg: 0, fabricCost: 0, collarType: /Gola polo/i.test(block) ? "polo" : "common", ribanaKg: 0, ribanaCost: 0, ribanaPricePerKg: 90.91, poloUnits: 0, totalCost: 0, supplier: "Costa Rica" };
+        const material = current.materials[index] ?? fallback;
+        const fabric = block.match(/🟢\s*(?:\*)?Malha\s+(PV|PP|PIQUET)\s*[–-]\s*([^\n*]+)/i);
+        const quantities = [...block.matchAll(/(?:⚖️|🔢)\s*Quantidade:\s*([\d.,]+)/gi)].map((match) => {
+          const raw = match[1];
+          return Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
+        });
+        const fabricKg = Number.isFinite(quantities[0]) ? Math.max(0, quantities[0]) : material.fabricKg;
+        const fabricPrice = material.fabricKg > 0 ? material.fabricCost / material.fabricKg : 43.9;
+        const ribanaKg = material.collarType === "common" && Number.isFinite(quantities[1]) ? Math.max(0, quantities[1]) : material.ribanaKg;
+        const poloUnits = material.collarType === "polo" && Number.isFinite(quantities[1]) ? Math.max(0, Math.round(quantities[1])) : material.poloUnits;
+        const fabricCost = fabricKg * fabricPrice;
+        const ribanaCost = material.collarType === "common" ? ribanaKg * material.ribanaPricePerKg : 0;
+        return { ...material, fabricType: (fabric?.[1] as FabricType | undefined) ?? material.fabricType, color: fabric?.[2]?.trim() || material.color, fabricKg, ribanaKg, poloUnits, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
+      });
+      return { ...current, content, materials };
+    });
   };
 
   const calculate = () => {
@@ -313,13 +348,12 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const ribanaCost = collarType === "common" ? ribanaKg * numericRibanaPrice : 0;
   const totalOrderCost = totalFabricCost + ribanaCost;
   const costPerPiece = plannedPieces > 0 ? totalOrderCost / plannedPieces : 0;
-  const formatKg = (value: number) => value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const addMaterialToNote = () => {
     const color = titleCaseColor(fabricColor);
     if (!numericFabricValue || !selectedId || !fabricColor.trim()) return;
-    const nextNumber = draft.materials.length + 1;
+    const nextNumber = nextMaterialNumber(draft.content);
     const material: NoteMaterial = {
       id: crypto.randomUUID(),
       fabricType,
@@ -334,7 +368,10 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       totalCost: totalOrderCost,
       supplier,
     };
-    setDraft((current) => ({ ...current, materials: [...current.materials, material] }));
+    setDraft((current) => {
+      const separator = current.content.trim() ? "\n\n────────────────────\n\n" : "";
+      return { ...current, content: `${current.content.trimEnd()}${separator}${materialNoteText(material, nextNumber - 1)}`, materials: [...current.materials, material] };
+    });
     setCalculatorOpen(false);
     showEditorNotice(`MATERIAL ${nextNumber} adicionado e calculado`);
   };
@@ -359,46 +396,39 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       </section>
 
       <div className="notes-layout">
-        <section className="note-editor panel">
+        <section className="note-editor notion-editor panel">
           {selectedId ? <>
-            <header className="note-editor-header">
-              <div className={`note-save-state ${saveState}`}><span />{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : "Salvo em tempo real"}</div>
-              <div><button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar anotação" : "Fixar anotação"}><Pin size={16} /></button><button onClick={copyMaterials} aria-label="Copiar anotação"><Copy size={16} /></button><button className="danger" onClick={deleteNote} aria-label="Excluir anotação"><Trash2 size={16} /></button></div>
+            <header className="notion-editor-topbar">
+              <div className="notion-breadcrumb"><NotebookPen size={14} /><span>Bloco de notas</span><b>/</b><strong>{draft.title || "Sem título"}</strong></div>
+              <div className="notion-page-actions"><button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar página" : "Fixar página"} title="Fixar"><Pin size={15} /></button><button onClick={copyMaterials} aria-label="Copiar página" title="Copiar"><Copy size={15} /></button><button className="danger" onClick={deleteNote} aria-label="Excluir página" title="Excluir"><Trash2 size={15} /></button></div>
             </header>
-            <div className="note-document-heading">
-              <div><input className="note-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título da anotação" aria-label="Título da anotação" /><select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da anotação">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select></div>
-              <div className="materials-grand-total"><small>CUSTO TOTAL</small><b>{formatCurrency(materialsTotal)}</b><span><Calculator size={13} /> Cálculo automático ativado</span></div>
-            </div>
-            <div className="note-actionbar">
-              <button onClick={() => wrapSelection("**")}><Bold size={15} /> Negrito</button>
-              <button onClick={() => insertAtCursor("🧵 ")}><SmilePlus size={15} /> Emoji</button>
-              <button onClick={() => insertAtCursor("• ")}><List size={15} /> Lista</button>
-              <button onClick={() => insertAtCursor(`${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date())} — `)}><Clock3 size={15} /> Data</button>
-              <button onClick={() => { textareaRef.current?.focus(); document.execCommand("undo"); }} aria-label="Desfazer"><Undo2 size={15} /> Desfazer</button>
-              <button onClick={() => { textareaRef.current?.focus(); document.execCommand("redo"); }} aria-label="Refazer"><Redo2 size={15} /> Refazer</button>
-              <span />
-              <button className="add-material" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Plus size={15} /> Adicionar material</button>
-              <button onClick={duplicateLastMaterial}><Files size={15} /> Duplicar</button>
-              <div className="note-export-wrap"><button className={exportMenuOpen ? "active" : ""} onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen}><Download size={15} /> Exportar</button>{exportMenuOpen && <div className="note-export-menu"><button onClick={downloadText}><FileText size={15} /> TXT</button><button onClick={() => { setExportMenuOpen(false); window.print(); }}><Printer size={15} /> PDF / Imprimir</button></div>}</div>
-              <button onClick={copyMaterials}><Copy size={15} /> Copiar</button>
-            </div>
             {editorNotice && <div className="editor-notice">{editorNotice}</div>}
-            <div className="note-writing-area">
-              <textarea ref={textareaRef} value={draft.content} onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))} placeholder="Escreva uma observação para acompanhar os materiais…" aria-label="Conteúdo da anotação" />
-              <div className="materials-document">
-                {draft.materials.map((material, index) => <article className="material-document-card" key={material.id}>
-                  <header><b>🧵 MATERIAL {index + 1}</b><div><button onClick={() => navigator.clipboard.writeText(materialText(material, index)).then(() => showEditorNotice(`MATERIAL ${index + 1} copiado`))} aria-label={`Copiar material ${index + 1}`}><Copy size={14} /></button><button onClick={() => removeMaterial(material.id)} aria-label={`Remover material ${index + 1}`}><Trash2 size={14} /></button></div></header>
-                  <div className="material-line material-editable-line">
-                    <div className="material-edit-title"><span>🟢</span><b>Malha</b><select value={material.fabricType} onChange={(event) => updateMaterial(material.id, { fabricType: event.target.value as FabricType })} aria-label={`Tipo da malha do material ${index + 1}`}>{(["PV", "PP", "PIQUET"] as FabricType[]).map((type) => <option key={type}>{type}</option>)}</select><span>–</span><input value={material.color} onChange={(event) => updateMaterial(material.id, { color: event.target.value })} aria-label={`Cor do material ${index + 1}`} /></div>
-                    <label className="material-edit-quantity"><span>⚖️ Quantidade:</span><input type="number" min="0" step="0.01" value={material.fabricKg} onChange={(event) => updateMaterial(material.id, { fabricKg: Math.max(0, Number(event.target.value)) })} aria-label={`Quilos de malha do material ${index + 1}`} /><span>kg</span></label>
-                  </div>
-                  {material.collarType === "common" ? <div className="material-line material-editable-line"><div className="material-edit-title"><span>🟩</span><b>Ribana – {material.color || "Sem cor"}</b></div><label className="material-edit-quantity"><span>⚖️ Quantidade:</span><input type="number" min="0" step="0.01" value={material.ribanaKg} onChange={(event) => updateMaterial(material.id, { ribanaKg: Math.max(0, Number(event.target.value)) })} aria-label={`Quilos de ribana do material ${index + 1}`} /><span>kg</span></label><strong>💵 Valor interno: {formatCurrency(material.ribanaCost)}</strong></div> : <div className="material-line material-editable-line"><div className="material-edit-title"><span>👕</span><b>Gola polo – {material.color || "Sem cor"}</b></div><label className="material-edit-quantity"><span>🔢 Quantidade:</span><input type="number" min="0" step="1" value={material.poloUnits} onChange={(event) => updateMaterial(material.id, { poloUnits: Math.max(0, Number(event.target.value)) })} aria-label={`Quantidade de golas do material ${index + 1}`} /><span>unidades</span></label></div>}
-                  <div className="material-total-row">💰 CUSTO TOTAL MATERIAL {index + 1}: {formatCurrency(material.totalCost)}</div>
-                </article>)}
-                {!draft.materials.length && <div className="materials-empty-minimal"><Shirt size={15} /><span>Os materiais adicionados na calculadora aparecerão diretamente nesta página.</span></div>}
+            <div className="notion-document">
+              <button className="notion-page-icon" onClick={() => insertAtCursor("🧵 ")} aria-label="Inserir emoji de material" title="Adicionar emoji">🧵</button>
+              <input className="notion-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Sem título" aria-label="Título da página" />
+              <div className="notion-properties">
+                <label><span>Categoria</span><select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da página">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label>
+                <div className={`notion-save-property ${saveState}`}><span>Status</span><b><i />{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : "Salvo em tempo real"}</b></div>
+                <div><span>Materiais</span><b>{draft.materials.length}</b></div>
+                <div className="notion-cost-property"><span>Custo interno</span><b>{formatCurrency(materialsTotal)}</b></div>
               </div>
+              <div className="notion-toolbar" role="toolbar" aria-label="Ferramentas do editor">
+                <button onClick={() => wrapSelection("**")} aria-label="Negrito" title="Negrito"><Bold size={15} /></button>
+                <button onClick={() => insertAtCursor("🧵 ")} aria-label="Emoji" title="Emoji"><SmilePlus size={15} /></button>
+                <button onClick={() => insertAtCursor("• ")} aria-label="Lista" title="Lista"><List size={15} /></button>
+                <button onClick={() => insertAtCursor("☐ ")} aria-label="Caixa de seleção" title="Caixa de seleção"><FileText size={15} /></button>
+                <button onClick={() => insertAtCursor(`${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date())} — `)} aria-label="Data e hora" title="Data e hora"><Clock3 size={15} /></button>
+                <button onClick={() => { textareaRef.current?.focus(); document.execCommand("undo"); }} aria-label="Desfazer" title="Desfazer"><Undo2 size={15} /></button>
+                <button onClick={() => { textareaRef.current?.focus(); document.execCommand("redo"); }} aria-label="Refazer" title="Refazer"><Redo2 size={15} /></button>
+                <span />
+                <button className="notion-material-action" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Calculator size={15} /> Calcular material</button>
+                <button onClick={duplicateLastMaterial} aria-label="Duplicar último material" title="Duplicar último material"><Files size={15} /></button>
+                <div className="note-export-wrap"><button className={exportMenuOpen ? "active" : ""} onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen} aria-label="Exportar" title="Exportar"><Download size={15} /></button>{exportMenuOpen && <div className="note-export-menu"><button onClick={downloadText}><FileText size={15} /> TXT</button><button onClick={() => { setExportMenuOpen(false); window.print(); }}><Printer size={15} /> PDF / Imprimir</button></div>}</div>
+              </div>
+              <textarea className="notion-text-editor" ref={textareaRef} value={draft.content} onChange={(event) => updateNoteContent(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase("pt-BR") === "b") { event.preventDefault(); wrapSelection("**"); } }} placeholder={'Comece a escrever…\n\nUse a calculadora para inserir materiais diretamente nesta página.'} aria-label="Conteúdo da página" spellCheck />
+              <div className="notion-writing-help"><span><b>Texto livre</b> · o cálculo entra aqui e pode ser editado como TXT</span><span>{draft.content.length.toLocaleString("pt-BR")} caracteres</span></div>
             </div>
-            <footer className="note-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"}</span><span>Custo total: {formatCurrency(materialsTotal)}</span><span>Atualizado agora</span></footer>
+            <footer className="notion-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material vinculado" : "materiais vinculados"}</span><span>Os valores financeiros são internos e não entram na exportação.</span></footer>
           </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Comece uma página</h2><p>Crie uma anotação livre para organizar sua confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
         </section>
       </div>
@@ -423,10 +453,10 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             <div className="option-selector collar-selector"><small>TIPO DE GOLA</small><div><button className={collarType === "common" ? "active" : ""} onClick={() => setCollarType("common")} aria-pressed={collarType === "common"}>Gola comum</button><button className={collarType === "polo" ? "active" : ""} onClick={() => setCollarType("polo")} aria-pressed={collarType === "polo"}>Gola polo</button></div></div>
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row single"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label></div>
-            <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
+            <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${formatKg(requiredKg)} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
             <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? `5% da malha · ${formatCurrency(numericRibanaPrice)}/kg · custo ${formatCurrency(ribanaCost)}` : "1 gola por camisa"}</small></div>
             {(collarType === "common" || totalFabricCost > 0) && <div className="cost-summary">{collarType === "common" && <div className="cost-result ribana"><span>Valor total da ribana</span><b>{formatCurrency(ribanaCost)}</b></div>}{totalFabricCost > 0 && <><div className="cost-result"><span>Valor total da malha</span><b>{formatCurrency(totalFabricCost)}</b></div><div className="cost-result"><span>Custo estimado por camisa</span><b>{formatCurrency(costPerPiece)}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{formatCurrency(totalOrderCost)}</b></div></>}</div>}
-            <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Adicionar como MATERIAL {draft.materials.length + 1}</button>
+            <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Adicionar como MATERIAL {nextMaterialNumber(draft.content)}</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

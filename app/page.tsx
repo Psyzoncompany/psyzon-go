@@ -350,7 +350,17 @@ export default function HomePage() {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Google sign-in failed", error);
-      setAuthError("Não foi possível entrar. Verifique se o Google está habilitado no Firebase.");
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+      const messages: Record<string, string> = {
+        "auth/unauthorized-domain": "Este endereço ainda não foi autorizado no Firebase. Adicione o domínio em Authentication > Settings > Authorized domains.",
+        "auth/operation-not-allowed": "O login com Google ainda não está habilitado no Firebase Authentication.",
+        "auth/popup-blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
+        "auth/popup-closed-by-user": "A janela de login foi fechada antes da conclusão. Tente novamente.",
+        "auth/network-request-failed": "Não foi possível acessar o Google agora. Verifique sua conexão e tente novamente.",
+      };
+      setAuthError(messages[code] ?? "Não foi possível entrar. Verifique a configuração do Google no Firebase e tente novamente.");
     }
   };
 

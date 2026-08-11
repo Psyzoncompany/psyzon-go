@@ -3,7 +3,6 @@
 import {
   Bold,
   Calculator,
-  ChevronRight,
   Clock3,
   Copy,
   Download,
@@ -20,7 +19,6 @@ import {
   Settings2,
   Shirt,
   SmilePlus,
-  Sparkles,
   Trash2,
   Undo2,
   X,
@@ -59,35 +57,11 @@ export type NoteMaterial = {
 
 type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & { materials: NoteMaterial[] };
 type SaveState = "saved" | "saving" | "error";
-type NoteTemplate = { title: string; category: NoteCategory; content: string };
 type FabricType = "PV" | "PP" | "PIQUET";
 type CollarType = "common" | "polo";
 
 const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
 const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false, materials: [] };
-
-const templates: NoteTemplate[] = [
-  {
-    title: "Ordem de produção",
-    category: "Produção",
-    content: "PEDIDO / CLIENTE:\nMODELO:\nQUANTIDADE:\nTECIDO / COR:\nTAMANHOS:\nESTAMPAS:\nPRAZO:\n\nETAPAS\n☐ Separar tecido\n☐ Cortar\n☐ Estampar\n☐ Costurar\n☐ Revisar\n☐ Embalar\n\nOBSERVAÇÕES:\n",
-  },
-  {
-    title: "Compra de tecido",
-    category: "Compras",
-    content: "FORNECEDOR:\nTECIDO:\nCOR:\nQUANTIDADE (KG):\nPREÇO POR KG:\nPREVISÃO DE PEÇAS:\nDATA DA COMPRA:\n\n☐ Conferir tonalidade\n☐ Conferir largura e gramatura\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n",
-  },
-  {
-    title: "Ficha de medidas",
-    category: "Modelagem",
-    content: "CLIENTE / MODELO:\nTAMANHO BASE:\n\nMEDIDAS\n• Tórax:\n• Comprimento:\n• Ombro:\n• Manga:\n• Cintura:\n• Quadril:\n\nAJUSTES DE MODELAGEM:\n",
-  },
-  {
-    title: "Conferência do pedido",
-    category: "Clientes",
-    content: "CLIENTE:\nPEDIDO:\nDATA DE ENTREGA:\n\n☐ Quantidade correta\n☐ Tamanhos conferidos\n☐ Estampa e posição conferidas\n☐ Acabamento revisado\n☐ Pagamento conferido\n☐ Cliente avisado\n\nPENDÊNCIAS:\n",
-  },
-];
 
 function timestampValue(value: unknown) {
   if (value && typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
@@ -196,11 +170,11 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     setSaveState("saved");
   };
 
-  const createNote = async (template?: NoteTemplate) => {
+  const createNote = async () => {
     const nextDraft: Draft = {
-      title: template?.title ?? "Nova anotação",
-      content: template?.content ?? "",
-      category: template?.category ?? "Geral",
+      title: "Nova anotação",
+      content: "",
+      category: "Geral",
       pinned: false,
       materials: [],
     };
@@ -256,15 +230,14 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
 
   const materialText = (material: NoteMaterial, index: number) => {
     const collarLines = material.collarType === "common"
-      ? `🟩 *Ribana – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg\n💵 *Valor: ${formatCurrency(material.ribanaCost)}*`
+      ? `🟩 *Ribana – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
       : `👕 *Gola polo – ${material.color}*\n🔢 Quantidade: ${material.poloUnits} unidades`;
-    return `🧵 *MATERIAL ${index + 1}*\n\n🟢 *Malha ${material.fabricType} – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 *CUSTO TOTAL MATERIAL ${index + 1}: ${formatCurrency(material.totalCost)}*`;
+    return `🧵 *MATERIAL ${index + 1}*\n\n🟢 *Malha ${material.fabricType} – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}`;
   };
 
   const exportedMaterials = () => {
     if (!draft.materials.length) return `${draft.title}\n\n${draft.content}`.trim();
-    const blocks = draft.materials.map(materialText).join("\n\n━━━━━━━━━━━━━━━━━━\n\n");
-    return `${blocks}\n\n💰 *CUSTO TOTAL GERAL: ${formatCurrency(materialsTotal)}*`;
+    return draft.materials.map(materialText).join("\n\n━━━━━━━━━━━━━━━━━━\n\n");
   };
 
   const copyMaterials = async () => {
@@ -299,6 +272,20 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const removeMaterial = (id: string) => {
     setDraft((current) => ({ ...current, materials: current.materials.filter((material) => material.id !== id) }));
     showEditorNotice("Material removido e totais recalculados");
+  };
+
+  const updateMaterial = (id: string, updates: Partial<Pick<NoteMaterial, "fabricType" | "color" | "fabricKg" | "ribanaKg" | "poloUnits">>) => {
+    setDraft((current) => ({
+      ...current,
+      materials: current.materials.map((material) => {
+        if (material.id !== id) return material;
+        const fabricPrice = material.fabricKg > 0 ? material.fabricCost / material.fabricKg : 0;
+        const next = { ...material, ...updates };
+        const fabricCost = next.fabricKg * fabricPrice;
+        const ribanaCost = next.collarType === "common" ? next.ribanaKg * next.ribanaPricePerKg : 0;
+        return { ...next, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
+      }),
+    }));
   };
 
   const calculate = () => {
@@ -359,21 +346,19 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
         <button className="primary" onClick={() => createNote()}><FilePlus2 size={18} /> Nova anotação</button>
       </div>
 
-      <section className="note-template-strip" aria-label="Modelos rápidos">
-        <div><Sparkles size={17} /><span><b>Modelos da confecção</b><small>Comece com uma estrutura pronta</small></span></div>
-        <div>{templates.map((template) => <button key={template.title} onClick={() => createNote(template)}>{template.title}<ChevronRight size={14} /></button>)}</div>
+      <section className="notes-page-navigation panel" aria-label="Páginas do bloco de notas">
+        <div className="notes-page-controls">
+          <div className="notes-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar páginas…" aria-label="Buscar páginas" /></div>
+          <div className="notes-filters">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
+          <button className="new-note-compact" onClick={() => createNote()}><Plus size={15} /> Nova página</button>
+        </div>
+        <div className="notes-page-tabs">
+          {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)} title={note.title || "Sem título"}><NotebookPen size={15} /><span><b>{note.title || "Sem título"}</b><small>{note.category} · {formatUpdatedAt(note.updatedAt)}</small></span>{note.pinned ? <Pin size={11} /> : null}</button>)}
+          {!filteredNotes.length && <span className="notes-page-empty">Nenhuma página encontrada.</span>}
+        </div>
       </section>
 
       <div className="notes-layout">
-        <aside className="notes-sidebar panel">
-          <div className="notes-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar anotações…" aria-label="Buscar anotações" /></div>
-          <div className="notes-filters">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
-          <div className="notes-list">
-            {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)}><span><b>{note.title || "Sem título"}</b>{note.pinned ? <Pin size={12} /> : null}</span><p>{note.materials?.length ? `${note.materials.length} ${note.materials.length === 1 ? "material" : "materiais"} · Custo total: ${formatCurrency(note.materials.reduce((total, material) => total + material.totalCost, 0))}` : note.content || "Anotação vazia"}</p><small><span>{note.category}</span>{formatUpdatedAt(note.updatedAt)}</small></button>)}
-            {!filteredNotes.length && <div className="notes-empty"><NotebookPen size={24} /><b>Nenhuma anotação</b><small>Crie uma nota ou escolha um modelo.</small></div>}
-          </div>
-        </aside>
-
         <section className="note-editor panel">
           {selectedId ? <>
             <header className="note-editor-header">
@@ -403,15 +388,18 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
               <div className="materials-document">
                 {draft.materials.map((material, index) => <article className="material-document-card" key={material.id}>
                   <header><b>🧵 MATERIAL {index + 1}</b><div><button onClick={() => navigator.clipboard.writeText(materialText(material, index)).then(() => showEditorNotice(`MATERIAL ${index + 1} copiado`))} aria-label={`Copiar material ${index + 1}`}><Copy size={14} /></button><button onClick={() => removeMaterial(material.id)} aria-label={`Remover material ${index + 1}`}><Trash2 size={14} /></button></div></header>
-                  <div className="material-line"><b>🟢 Malha {material.fabricType} – {material.color}</b><span>⚖️ Quantidade: {formatKg(material.fabricKg)} kg</span></div>
-                  {material.collarType === "common" ? <div className="material-line"><b>🟩 Ribana – {material.color}</b><span>⚖️ Quantidade: {formatKg(material.ribanaKg)} kg</span><strong>💵 Valor: {formatCurrency(material.ribanaCost)}</strong></div> : <div className="material-line"><b>👕 Gola polo – {material.color}</b><span>🔢 Quantidade: {material.poloUnits} unidades</span></div>}
+                  <div className="material-line material-editable-line">
+                    <div className="material-edit-title"><span>🟢</span><b>Malha</b><select value={material.fabricType} onChange={(event) => updateMaterial(material.id, { fabricType: event.target.value as FabricType })} aria-label={`Tipo da malha do material ${index + 1}`}>{(["PV", "PP", "PIQUET"] as FabricType[]).map((type) => <option key={type}>{type}</option>)}</select><span>–</span><input value={material.color} onChange={(event) => updateMaterial(material.id, { color: event.target.value })} aria-label={`Cor do material ${index + 1}`} /></div>
+                    <label className="material-edit-quantity"><span>⚖️ Quantidade:</span><input type="number" min="0" step="0.01" value={material.fabricKg} onChange={(event) => updateMaterial(material.id, { fabricKg: Math.max(0, Number(event.target.value)) })} aria-label={`Quilos de malha do material ${index + 1}`} /><span>kg</span></label>
+                  </div>
+                  {material.collarType === "common" ? <div className="material-line material-editable-line"><div className="material-edit-title"><span>🟩</span><b>Ribana – {material.color || "Sem cor"}</b></div><label className="material-edit-quantity"><span>⚖️ Quantidade:</span><input type="number" min="0" step="0.01" value={material.ribanaKg} onChange={(event) => updateMaterial(material.id, { ribanaKg: Math.max(0, Number(event.target.value)) })} aria-label={`Quilos de ribana do material ${index + 1}`} /><span>kg</span></label><strong>💵 Valor interno: {formatCurrency(material.ribanaCost)}</strong></div> : <div className="material-line material-editable-line"><div className="material-edit-title"><span>👕</span><b>Gola polo – {material.color || "Sem cor"}</b></div><label className="material-edit-quantity"><span>🔢 Quantidade:</span><input type="number" min="0" step="1" value={material.poloUnits} onChange={(event) => updateMaterial(material.id, { poloUnits: Math.max(0, Number(event.target.value)) })} aria-label={`Quantidade de golas do material ${index + 1}`} /><span>unidades</span></label></div>}
                   <div className="material-total-row">💰 CUSTO TOTAL MATERIAL {index + 1}: {formatCurrency(material.totalCost)}</div>
                 </article>)}
-                {!draft.materials.length && <button className="materials-empty" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Shirt size={25} /><b>Adicione o primeiro material</b><span>A calculadora cria o bloco, numera e soma os custos automaticamente.</span></button>}
+                {!draft.materials.length && <div className="materials-empty-minimal"><Shirt size={15} /><span>Os materiais adicionados na calculadora aparecerão diretamente nesta página.</span></div>}
               </div>
             </div>
             <footer className="note-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"}</span><span>Custo total: {formatCurrency(materialsTotal)}</span><span>Atualizado agora</span></footer>
-          </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Organize a operação</h2><p>Crie uma anotação livre ou use um modelo preparado para a confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
+          </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Comece uma página</h2><p>Crie uma anotação livre para organizar sua confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
         </section>
       </div>
 

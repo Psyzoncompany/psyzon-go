@@ -47,6 +47,8 @@ import {
   Moon,
   MoreHorizontal,
   NotebookPen,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   PictureInPicture2,
   Plus,
@@ -225,6 +227,7 @@ export default function HomePage() {
   const [board, setBoard] = useState(false);
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
   const [mobileFloatingOpen, setMobileFloatingOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
 
@@ -718,16 +721,19 @@ export default function HomePage() {
   const floatingActive = floatingModeOpen || mobileFloatingOpen;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
-        <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
-          <Image className="brand-mark" src="/icon-192-v3.png" alt="" width={34} height={34} priority />
-          <span><b>PSYZON</b><small>GO</small></span>
-        </button>
+        <div className="sidebar-brand-row">
+          <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
+            <Image className="brand-mark" src="/icon-192-v3.png" alt="" width={34} height={34} priority />
+            <span><b>PSYZON</b><small>GO</small></span>
+          </button>
+          <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
+        </div>
         <nav>
           {navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         </nav>
-        <div className={`sync-status ${firebaseState}`}><span />{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</div>
+        <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
       </aside>
 
@@ -806,7 +812,7 @@ function AuthScreenV2({ error, onSignIn }: { error: string; onSignIn: () => void
 
 function NavButton({ item, active, onClick }: { item: (typeof navItems)[number]; active: boolean; onClick: () => void }) {
   const Icon = item.icon;
-  return <button className={active ? "active" : ""} onClick={onClick}><Icon size={20} /><span>{item.label}</span></button>;
+  return <button className={active ? "active" : ""} onClick={onClick} title={item.label} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>;
 }
 
 function Dashboard({ userName, orders, transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {

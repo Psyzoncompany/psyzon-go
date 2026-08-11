@@ -57,7 +57,11 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /Valor da ribana por kg/);
   assert.match(notes, /Valor total da ribana/);
   assert.match(notes, /🧵 \*MATERIAL \$\{index \+ 1\}\*/);
-  assert.match(notes, /💰 \*CUSTO TOTAL GERAL/);
+  const exportStart = notes.indexOf("const materialText");
+  const exportEnd = notes.indexOf("const copyMaterials");
+  const supplierExporter = notes.slice(exportStart, exportEnd);
+  assert.doesNotMatch(supplierExporter, /Valor:|CUSTO TOTAL|formatCurrency/);
+  assert.match(supplierExporter, /Quantidade:/);
   assert.match(notes, /materials\.reduce\(\(total, material\) => total \+ material\.totalCost/);
   assert.match(notes, /materials-grand-total/);
   assert.match(notes, /Cálculo automático ativado/);
@@ -66,6 +70,12 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /disabled=\{!numericFabricValue \|\| !selectedId \|\| !fabricColor\.trim\(\)\}/);
   assert.doesNotMatch(notes, /Tarefas interativas/);
   assert.match(notes, /Adicionar material/);
+  assert.match(notes, /notes-page-navigation/);
+  assert.match(notes, /notes-page-tabs/);
+  assert.match(notes, /updateMaterial/);
+  assert.match(notes, /materials-empty-minimal/);
+  assert.doesNotMatch(notes, /Modelos da confecção|Comece com uma estrutura pronta/);
+  assert.doesNotMatch(notes, /<button className="materials-empty"/);
   assert.match(notes, /PDF \/ Imprimir/);
   assert.match(notes, /updatedAt: serverTimestamp\(\)/);
   assert.match(notes, /Salvo em tempo real/);
@@ -102,6 +112,10 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /mobileFloatingOpen/);
   assert.match(page, /Atalho flutuante ativado no celular/);
   assert.match(page, /mobile-floating-launcher/);
+  assert.match(page, /sidebarCollapsed/);
+  assert.match(page, /sidebar-collapse-button/);
+  assert.match(page, /PanelLeftClose/);
+  assert.match(page, /sidebar-collapsed/);
 });
 
 test("service worker clones a network response before its body is consumed", async () => {

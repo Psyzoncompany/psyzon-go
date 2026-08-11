@@ -112,6 +112,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
   const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
+  const [supplier, setSupplier] = useState<"Costa Rica" | "Atual Têxtil">("Costa Rica");
   const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
   const [pricePerKg, setPricePerKg] = useState("");
@@ -246,9 +247,9 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     const formattedPrice = numericPrice > 0 ? numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
     const formattedTotal = estimatedTotal > 0 ? estimatedTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
     await createNote({
-      title: `Pedido de tecido • ${plannedPieces} camisas`,
+      title: `Pedido ${supplier} • ${plannedPieces} camisas`,
       category: "Compras",
-      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR:\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\nPREÇO POR KG: ${formattedPrice}\nTOTAL ESTIMADO: ${formattedTotal}\n\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
+      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\nPREÇO POR KG: ${formattedPrice}\nTOTAL ESTIMADO: ${formattedTotal}\n\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
     });
     setCalculatorOpen(false);
   };
@@ -315,6 +316,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
           {calculatorTab === "tecido" ? <div className="fabric-calculator">
             <div className="fabric-rate"><Shirt size={20} /><span><small>RENDIMENTO PADRÃO</small><b>1 kg = 4,2 camisas</b></span></div>
             <div className="fabric-mode"><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button></div>
+            <div className="supplier-selector"><small>SELECIONE O FORNECEDOR</small><div><button className={supplier === "Costa Rica" ? "active" : ""} onClick={() => setSupplier("Costa Rica")} aria-pressed={supplier === "Costa Rica"}>Costa Rica</button><button className={supplier === "Atual Têxtil" ? "active" : ""} onClick={() => setSupplier("Atual Têxtil")} aria-pressed={supplier === "Atual Têxtil"}>Atual Têxtil</button></div></div>
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>

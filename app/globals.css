@@ -688,6 +688,12 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .fabric-mode { margin: 13px 0; padding: 3px; border: 1px solid var(--border); border-radius: 9px; display: grid; grid-template-columns: 1fr 1fr; }
 .fabric-mode button { height: 31px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; cursor: pointer; }
 .fabric-mode button.active { background: var(--blue); color: white; }
+.supplier-selector { margin-bottom: 12px; }
+.supplier-selector > small { color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .11em; }
+.supplier-selector > div { margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.supplier-selector button { height: 38px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text); font-size: 10px; font-weight: 750; cursor: pointer; }
+.supplier-selector button:hover { border-color: color-mix(in srgb, var(--blue) 55%, var(--border)); }
+.supplier-selector button.active { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 20%, transparent); }
 .fabric-calculator label { color: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 9px; font-weight: 650; }
 .fabric-calculator input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 13px; }
 .fabric-calculator input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }

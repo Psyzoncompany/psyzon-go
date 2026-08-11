@@ -37,6 +37,8 @@ export type BusinessNote = {
 type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned">;
 type SaveState = "saved" | "saving" | "error";
 type NoteTemplate = { title: string; category: NoteCategory; content: string };
+type FabricType = "PV" | "PP" | "PIQUET";
+type CollarType = "common" | "polo";
 
 const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
 const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false };
@@ -113,6 +115,9 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [calculatorError, setCalculatorError] = useState("");
   const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
   const [supplier, setSupplier] = useState<"Costa Rica" | "Atual Têxtil">("Costa Rica");
+  const [fabricType, setFabricType] = useState<FabricType>("PV");
+  const [fabricColor, setFabricColor] = useState("");
+  const [collarType, setCollarType] = useState<CollarType>("common");
   const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
   const [pricePerKg, setPricePerKg] = useState("");
@@ -239,16 +244,21 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const costPerPiece = efficiency > 0 ? numericPrice / 4.2 / efficiency : 0;
   const calculatedOrderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
   const totalFabricCost = calculatedOrderKg > 0 && numericPrice > 0 ? calculatedOrderKg * numericPrice : 0;
+  const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
+  const ribanaKg = calculatedOrderKg * 0.05;
+  const formatKg = (value: number) => value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
   const exportSupplierOrder = () => {
-    if (!numericFabricValue || !selectedId) return;
-    const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
-    const orderKg = calculatedOrderKg;
-    const formattedKg = orderKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const color = fabricColor.trim().toLocaleUpperCase("pt-BR");
+    if (!numericFabricValue || !selectedId || !color) return;
+    const collarDetails = collarType === "common"
+      ? `RIBANA ${formatKg(ribanaKg)}KG COR ${color}`
+      : `GOLA POLO ${plannedPieces} UNIDADES COR ${color}`;
     const costDetails = totalFabricCost > 0
-      ? `PREÇO POR KG: ${numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\nCUSTO TOTAL: ${totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n`
+      ? ` | CUSTO TOTAL ${totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
       : "";
-    insertAtCursor(`\n\nPEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\n${costDetails}\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`);
+    const orderLine = `MALHA (${fabricType}) ${formatKg(calculatedOrderKg)}KG COR ${color} | ${collarDetails}${costDetails}`;
+    insertAtCursor(`${draft.content && !draft.content.endsWith("\n") ? "\n" : ""}${orderLine}\n`);
     setCalculatorOpen(false);
   };
 
@@ -316,11 +326,17 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             <div className="fabric-rate"><Shirt size={20} /><span><small>RENDIMENTO PADRÃO</small><b>1 kg = 4,2 camisas</b></span></div>
             <div className="fabric-mode"><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button></div>
             <div className="supplier-selector"><small>SELECIONE O FORNECEDOR</small><div><button className={supplier === "Costa Rica" ? "active" : ""} onClick={() => setSupplier("Costa Rica")} aria-pressed={supplier === "Costa Rica"}>Costa Rica</button><button className={supplier === "Atual Têxtil" ? "active" : ""} onClick={() => setSupplier("Atual Têxtil")} aria-pressed={supplier === "Atual Têxtil"}>Atual Têxtil</button></div></div>
+            <div className="material-options">
+              <div className="option-selector"><small>TIPO DE MALHA</small><div>{(["PV", "PP", "PIQUET"] as FabricType[]).map((type) => <button key={type} className={fabricType === type ? "active" : ""} onClick={() => setFabricType(type)} aria-pressed={fabricType === type}>{type}</button>)}</div></div>
+              <label>Cor da malha<input value={fabricColor} onChange={(event) => setFabricColor(event.target.value)} placeholder="Ex.: Azul royal" /></label>
+            </div>
+            <div className="option-selector collar-selector"><small>TIPO DE GOLA</small><div><button className={collarType === "common" ? "active" : ""} onClick={() => setCollarType("common")} aria-pressed={collarType === "common"}>Gola comum</button><button className={collarType === "polo" ? "active" : ""} onClick={() => setCollarType("polo")} aria-pressed={collarType === "polo"}>Gola polo</button></div></div>
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
+            <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? "5% do peso total da malha" : "1 gola por camisa"}</small></div>
             {totalFabricCost > 0 && <div className="cost-summary"><div className="cost-result"><span>Custo estimado por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div></div>}
-            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue || !selectedId}><FilePlus2 size={16} /> Exportar para a anotação aberta</button>
+            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Exportar linha para a anotação aberta</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

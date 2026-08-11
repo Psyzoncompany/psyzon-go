@@ -89,6 +89,10 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(worker, /Promise\.allSettled/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"/);
   assert.match(page, /updateViaCache: "none"/);
+  assert.match(page, /documentPictureInPicture/);
+  assert.match(page, /requestWindow\(\{ width: 230, height: 128 \}\)/);
+  assert.match(page, /Modo flutuante/);
+  assert.match(page, /Clique para abrir o sistema/);
 });
 
 test("service worker clones a network response before its body is consumed", async () => {

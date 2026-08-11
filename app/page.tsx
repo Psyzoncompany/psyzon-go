@@ -48,6 +48,7 @@ import {
   MoreHorizontal,
   NotebookPen,
   Pencil,
+  PictureInPicture2,
   Plus,
   RotateCcw,
   Search,
@@ -67,6 +68,10 @@ type View = "inicio" | "producao" | "notas" | "clientes" | "financeiro" | "pesso
 type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia" | "conta";
 type AccountType = "business" | "personal";
 type UISize = "compact" | "comfortable" | "large";
+type DocumentPictureInPictureController = {
+  window: Window | null;
+  requestWindow: (options?: { width?: number; height?: number }) => Promise<Window>;
+};
 type OrderStatus =
   | "Orçamento"
   | "Aprovado"
@@ -218,7 +223,9 @@ export default function HomePage() {
   const [modalAccount, setModalAccount] = useState<AccountType>("business");
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
+  const [floatingModeOpen, setFloatingModeOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const floatingWindowRef = useRef<Window | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIntroComplete(true), 1900);
@@ -344,6 +351,60 @@ export default function HomePage() {
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
+  };
+
+  const toggleFloatingMode = async () => {
+    const controller = (window as Window & { documentPictureInPicture?: DocumentPictureInPictureController }).documentPictureInPicture;
+    if (!controller) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
+    if (floatingWindowRef.current && !floatingWindowRef.current.closed) {
+      floatingWindowRef.current.close();
+      floatingWindowRef.current = null;
+      setFloatingModeOpen(false);
+      return;
+    }
+
+    try {
+      const floatingWindow = await controller.requestWindow({ width: 230, height: 128 });
+      floatingWindowRef.current = floatingWindow;
+      floatingWindow.document.title = "PSYZON GO · Acesso rápido";
+
+      const style = floatingWindow.document.createElement("style");
+      style.textContent = `
+        * { box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        body { padding: 10px; background: #071226; font-family: Inter, system-ui, sans-serif; }
+        button { width: 100%; height: 100%; padding: 10px 12px; border: 1px solid rgba(96,165,250,.35); border-radius: 16px; background: linear-gradient(145deg,#102753,#0d1d3e); color: white; display: flex; align-items: center; gap: 11px; text-align: left; cursor: pointer; box-shadow: 0 12px 32px rgba(0,0,0,.32); }
+        button:hover { border-color: #60a5fa; background: linear-gradient(145deg,#16336a,#102753); }
+        img { width: 46px; height: 46px; border-radius: 13px; box-shadow: 0 8px 22px rgba(37,99,235,.35); }
+        span { min-width: 0; display: flex; flex-direction: column; }
+        b { font-size: 13px; letter-spacing: .035em; }
+        small { margin-top: 4px; color: #93c5fd; font-size: 9px; }
+      `;
+      const launcher = floatingWindow.document.createElement("button");
+      launcher.type = "button";
+      launcher.setAttribute("aria-label", "Abrir PSYZON GO");
+      const logo = floatingWindow.document.createElement("img");
+      logo.src = new URL("/icon-192-v3.png", window.location.href).href;
+      logo.alt = "";
+      const label = floatingWindow.document.createElement("span");
+      const title = floatingWindow.document.createElement("b");
+      title.textContent = "PSYZON GO";
+      const hint = floatingWindow.document.createElement("small");
+      hint.textContent = "Clique para abrir o sistema";
+      label.append(title, hint);
+      launcher.append(logo, label);
+      launcher.addEventListener("click", () => window.focus());
+      floatingWindow.document.head.append(style);
+      floatingWindow.document.body.append(launcher);
+      floatingWindow.addEventListener("pagehide", () => {
+        floatingWindowRef.current = null;
+        setFloatingModeOpen(false);
+      });
+      setFloatingModeOpen(true);
+      showToast("Atalho flutuante ativado");
+    } catch {
+      showToast("Não foi possível abrir o modo flutuante");
+    }
   };
 
   const openCreate = (kind: CreateKind, account: AccountType = "business") => {
@@ -672,6 +733,7 @@ export default function HomePage() {
             {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(order.total - order.paid)}<small>pendente</small></strong></button>)}</div>}
           </div>
           <div className="top-actions">
+            <button className={`floating-mode-action ${floatingModeOpen ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingModeOpen ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingModeOpen}><PictureInPicture2 size={18} /><span>{floatingModeOpen ? "Flutuante ativo" : "Modo flutuante"}</span></button>
             <button className="desktop-action" onClick={() => setPrivateValues((value) => !value)} aria-label="Ocultar valores">{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>

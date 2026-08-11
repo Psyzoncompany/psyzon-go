@@ -26,7 +26,22 @@ test("server-renders the branded PSYZON GO splash", async () => {
   assert.match(html, /src="\/icon-512-v3\.png"/);
   assert.match(html, /Produção e financeiro em tempo real/);
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(html, /icon-192-v3\.png\?v=4/);
+  assert.doesNotMatch(html, /rel="icon" href="\/favicon\.svg"/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);
+});
+
+test("includes the realtime apparel notes workspace", async () => {
+  const [page, notes] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/NotesWorkspace.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /"notes"/);
+  assert.match(page, /<NotesWorkspace uid=\{uid\} notes=\{notes\}/);
+  assert.match(notes, /1 kg = 4,2 camisas/);
+  assert.match(notes, /updatedAt: serverTimestamp\(\)/);
+  assert.match(notes, /Salvo em tempo real/);
 });
 
 test("ships a stable and installable PWA manifest", async () => {

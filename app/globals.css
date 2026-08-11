@@ -575,6 +575,135 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .create-tabs button { font-size: 7.5px; }
 }
 
+.greeting-row { display: flex; align-items: center; gap: 13px; flex-wrap: wrap; }
+.notes-entry-button { height: 31px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--blue) 28%, var(--border)); border-radius: 9px; background: var(--blue-soft); color: var(--blue); display: inline-flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 750; cursor: pointer; }
+.notes-entry-button:hover { border-color: var(--blue); transform: translateY(-1px); }
+.notes-workspace { position: relative; min-height: calc(100vh - 116px); }
+.notes-heading { margin-bottom: 17px; }
+.note-template-strip { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 13px; background: linear-gradient(110deg, var(--blue-soft), var(--card) 45%); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.note-template-strip > div:first-child { display: flex; align-items: center; gap: 9px; color: var(--blue); }
+.note-template-strip > div:first-child > span { display: flex; flex-direction: column; }
+.note-template-strip b { color: var(--text); font-size: 11px; }
+.note-template-strip small { margin-top: 2px; color: var(--muted); font-size: 9px; }
+.note-template-strip > div:last-child { display: flex; gap: 7px; overflow-x: auto; scrollbar-width: none; }
+.note-template-strip > div:last-child button { min-width: max-content; height: 32px; padding: 0 9px 0 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); color: var(--text); display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: 650; cursor: pointer; }
+.note-template-strip > div:last-child button:hover { border-color: var(--blue); color: var(--blue); }
+.notes-layout { min-height: 610px; display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 15px; }
+.notes-sidebar { padding: 12px; overflow: hidden; display: flex; flex-direction: column; }
+.notes-search { position: relative; display: flex; align-items: center; }
+.notes-search svg { position: absolute; left: 11px; color: var(--faint); }
+.notes-search input { width: 100%; height: 38px; padding: 0 12px 0 35px; border: 1px solid var(--border); border-radius: 10px; outline: none; background: var(--bg); color: var(--text); font-size: 11px; }
+.notes-search input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.notes-filters { margin: 10px 0; padding-bottom: 9px; border-bottom: 1px solid var(--border); display: flex; gap: 5px; overflow-x: auto; scrollbar-width: none; }
+.notes-filters button { height: 25px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 8px; font-weight: 700; cursor: pointer; }
+.notes-filters button.active { background: var(--blue-soft); color: var(--blue); }
+.notes-list { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.notes-list > button { width: 100%; padding: 11px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.notes-list > button:hover { background: var(--card-subtle); }
+.notes-list > button.active { border-color: color-mix(in srgb, var(--blue) 30%, var(--border)); background: var(--blue-soft); }
+.notes-list > button > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notes-list > button b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.notes-list > button svg { flex: 0 0 auto; color: var(--blue); fill: color-mix(in srgb, var(--blue) 18%, transparent); }
+.notes-list > button p { margin: 5px 0 8px; color: var(--muted); font-size: 9px; line-height: 1.45; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.notes-list > button small { display: flex; align-items: center; justify-content: space-between; color: var(--faint); font-size: 7.5px; }
+.notes-list > button small span { padding: 3px 6px; border-radius: 99px; background: var(--card); color: var(--muted); font-weight: 700; }
+.notes-empty { min-height: 210px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.notes-empty b { margin-top: 10px; font-size: 11px; }
+.notes-empty small { margin-top: 4px; font-size: 9px; }
+.note-editor { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.note-editor-header { min-height: 47px; padding: 0 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.note-save-state { color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 650; }
+.note-save-state > span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.note-save-state.saving > span { background: var(--yellow); box-shadow: 0 0 0 3px var(--yellow-soft); animation: splash-pulse 1s infinite; }
+.note-save-state.error { color: var(--red); }
+.note-save-state.error > span { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+.note-editor-header > div:last-child { display: flex; gap: 4px; }
+.note-editor-header button { width: 31px; height: 31px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.note-editor-header button:hover, .note-editor-header button.active { background: var(--blue-soft); color: var(--blue); }
+.note-editor-header button.danger:hover { background: var(--red-soft); color: var(--red); }
+.note-title-input { width: calc(100% - 38px); margin: 20px 19px 6px; padding: 0 0 10px; border: 0; border-bottom: 1px solid var(--border); outline: none; background: transparent; color: var(--text); font: 750 22px/1.2 inherit; }
+.note-title-input::placeholder { color: var(--faint); }
+.note-toolbar { min-height: 43px; padding: 5px 19px; display: flex; align-items: center; gap: 5px; }
+.note-toolbar > span { flex: 1; }
+.note-toolbar select, .note-toolbar button { height: 29px; padding: 0 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--muted); font: 650 9px inherit; }
+.note-toolbar button { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.note-toolbar button:hover { border-color: var(--blue); color: var(--blue); }
+.note-editor textarea { width: 100%; min-height: 430px; flex: 1; padding: 15px 20px; border: 0; border-top: 1px solid var(--border); outline: none; resize: none; background: color-mix(in srgb, var(--card) 98%, var(--bg)); color: var(--text); font: 450 13px/1.75 inherit; }
+.note-editor textarea::placeholder { color: var(--faint); }
+.note-editor-footer { min-height: 34px; padding: 0 19px; border-top: 1px solid var(--border); color: var(--faint); display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 8px; }
+.note-editor-empty { min-height: 570px; padding: 30px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+.note-editor-empty svg { color: var(--blue); }
+.note-editor-empty h2 { margin: 13px 0 5px; color: var(--text); font-size: 20px; }
+.note-editor-empty p { max-width: 350px; margin: 0 0 18px; font-size: 11px; line-height: 1.6; }
+.notes-calculator-fab { position: fixed; right: 27px; bottom: 25px; height: 48px; padding: 0 18px; border: 0; border-radius: 15px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 780; box-shadow: 0 13px 30px rgba(37, 99, 235, .32); cursor: pointer; z-index: 42; }
+.notes-calculator-fab:hover { transform: translateY(-2px); box-shadow: 0 16px 35px rgba(37, 99, 235, .4); }
+.calculator-backdrop { position: fixed; inset: 0; padding: 20px; background: rgba(4, 10, 24, .48); backdrop-filter: blur(3px); display: flex; justify-content: flex-end; align-items: flex-end; z-index: 100; }
+.calculator-panel { width: min(410px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: 0 25px 70px rgba(0,0,0,.28); }
+.calculator-panel > header { min-height: 65px; padding: 0 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.calculator-panel > header > div { display: flex; align-items: center; gap: 10px; }
+.calculator-panel > header > div > span { width: 35px; height: 35px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
+.calculator-panel > header > div > div { display: flex; flex-direction: column; }
+.calculator-panel > header b { font-size: 12px; }
+.calculator-panel > header small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.calculator-panel > header > button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: var(--card-subtle); color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.calculator-tabs { margin: 13px; padding: 4px; border-radius: 10px; background: var(--card-subtle); display: grid; grid-template-columns: 1fr 1fr; }
+.calculator-tabs button { height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; font-weight: 700; cursor: pointer; }
+.calculator-tabs button.active { background: var(--card); color: var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.fabric-calculator, .general-calculator { padding: 0 17px 18px; }
+.fabric-rate { padding: 13px; border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--border)); border-radius: 12px; background: var(--blue-soft); color: var(--blue); display: flex; align-items: center; gap: 10px; }
+.fabric-rate span { display: flex; flex-direction: column; }
+.fabric-rate small { font-size: 7px; font-weight: 800; letter-spacing: .12em; }
+.fabric-rate b { margin-top: 3px; color: var(--text); font-size: 14px; }
+.fabric-mode { margin: 13px 0; padding: 3px; border: 1px solid var(--border); border-radius: 9px; display: grid; grid-template-columns: 1fr 1fr; }
+.fabric-mode button { height: 31px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; cursor: pointer; }
+.fabric-mode button.active { background: var(--blue); color: white; }
+.fabric-calculator label { color: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 9px; font-weight: 650; }
+.fabric-calculator input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 13px; }
+.fabric-calculator input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.fabric-row { margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fabric-result { margin-top: 14px; padding: 16px; border-radius: 13px; background: linear-gradient(135deg, #0f2453, #163b86); color: white; }
+.fabric-result small { color: #93c5fd; font-size: 7px; font-weight: 800; letter-spacing: .13em; }
+.fabric-result strong { margin-top: 5px; display: block; font-size: 26px; }
+.fabric-result p { margin: 4px 0 0; color: #bfdbfe; font-size: 8px; }
+.cost-result { margin-top: 9px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; }
+.cost-result span { color: var(--muted); font-size: 9px; }
+.cost-result b { color: var(--green); font-size: 12px; }
+.calculator-copy { width: 100%; height: 38px; margin-top: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--blue); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; font-weight: 750; cursor: pointer; }
+.calculator-copy:disabled { opacity: .45; cursor: not-allowed; }
+.calculator-display { min-height: 92px; padding: 13px 15px; border-radius: 13px; background: #081225; color: white; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; }
+.calculator-display small { color: #7d91b5; font-size: 7px; font-weight: 750; letter-spacing: .12em; }
+.calculator-display strong { max-width: 100%; margin-top: 4px; overflow-x: auto; font-size: 27px; }
+.calculator-display span { margin-top: 3px; color: #fca5a5; font-size: 8px; }
+.calculator-keys { margin-top: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.calculator-keys button { height: 47px; border: 1px solid var(--border); border-radius: 11px; background: var(--card-subtle); color: var(--text); font-size: 15px; font-weight: 700; cursor: pointer; }
+.calculator-keys button:hover { border-color: var(--blue); }
+.calculator-keys button.operator { background: var(--blue-soft); color: var(--blue); }
+.calculator-keys button:nth-last-child(-n+2) { grid-column: span 2; }
+
+@media (max-width: 900px) {
+  .note-template-strip { align-items: flex-start; flex-direction: column; }
+  .note-template-strip > div:last-child { width: 100%; }
+  .notes-layout { grid-template-columns: 260px minmax(0, 1fr); }
+}
+
+@media (max-width: 700px) {
+  .greeting-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .notes-entry-button { height: 29px; }
+  .notes-workspace { min-height: auto; }
+  .notes-heading .primary { display: flex; }
+  .notes-layout { min-height: 0; display: block; }
+  .notes-sidebar { max-height: 310px; margin-bottom: 11px; }
+  .notes-list { min-height: 150px; }
+  .note-editor textarea { min-height: 380px; font-size: 16px; }
+  .note-toolbar { flex-wrap: wrap; padding-block: 8px; }
+  .note-toolbar > span { display: none; }
+  .note-title-input { font-size: 20px; }
+  .notes-calculator-fab { right: 15px; bottom: 82px; width: 49px; padding: 0; border-radius: 50%; justify-content: center; }
+  .notes-calculator-fab span { display: none; }
+  .calculator-backdrop { padding: 10px; align-items: flex-end; }
+  .calculator-panel { max-height: calc(100vh - 20px); border-radius: 18px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

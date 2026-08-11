@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import dynamic from "next/dynamic";
+import type { BusinessNote } from "./NotesWorkspace";
 import {
   browserLocalPersistence,
   GoogleAuthProvider,
@@ -44,6 +46,7 @@ import {
   MessageCircle,
   Moon,
   MoreHorizontal,
+  NotebookPen,
   Pencil,
   Plus,
   RotateCcw,
@@ -60,7 +63,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type View = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "mais";
+type View = "inicio" | "producao" | "notas" | "clientes" | "financeiro" | "pessoal" | "mais";
 type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia" | "conta";
 type AccountType = "business" | "personal";
 type UISize = "compact" | "comfortable" | "large";
@@ -120,6 +123,8 @@ type AppNotification = {
   view: View;
 };
 
+const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -127,7 +132,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills"] as const;
+const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -158,6 +163,7 @@ const statusProgress: Record<OrderStatus, number> = {
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "inicio", label: "Início", icon: Home },
   { id: "producao", label: "Produção", icon: Boxes },
+  { id: "notas", label: "Bloco de notas", icon: NotebookPen },
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
   { id: "pessoal", label: "Pessoal", icon: UserRound },
@@ -191,6 +197,7 @@ export default function HomePage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const [notes, setNotes] = useState<BusinessNote[]>([]);
   const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "error" | "unconfigured">("connecting");
   const [uid, setUid] = useState("");
   const [user, setUser] = useState<User | null>(null);
@@ -255,6 +262,7 @@ export default function HomePage() {
         setCustomers([]);
         setTransactions([]);
         setBills([]);
+        setNotes([]);
         setFirebaseState("connecting");
         return;
       }
@@ -290,6 +298,10 @@ export default function HomePage() {
         onSnapshot(collection(db, "users", nextUser.uid, "bills"), (snapshot) => {
           setBills(toList<Bill>(snapshot).sort((a, b) => a.dueDay - b.dueDay));
           markReady("bills");
+        }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "notes"), (snapshot) => {
+          setNotes(toList<BusinessNote>(snapshot));
+          markReady("notes");
         }, handleError),
       ];
     });
@@ -372,7 +384,7 @@ export default function HomePage() {
   };
 
   const resetAllData = async () => {
-    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes, contas e movimentações desta conta?")) return;
+    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes, contas, movimentações e anotações desta conta?")) return;
     setResetting(true);
     try {
       const records = [
@@ -380,6 +392,7 @@ export default function HomePage() {
         ...customers.map((item) => ["customers", item.id] as const),
         ...transactions.map((item) => ["transactions", item.id] as const),
         ...bills.map((item) => ["bills", item.id] as const),
+        ...notes.map((item) => ["notes", item.id] as const),
       ];
       for (let start = 0; start < records.length; start += 450) {
         const batch = writeBatch(getFirestore(getApps()[0]));
@@ -390,6 +403,7 @@ export default function HomePage() {
       setCustomers([]);
       setTransactions([]);
       setBills([]);
+      setNotes([]);
       showToast("Todos os dados foram removidos");
     } catch (error) {
       console.error("Reset failed", error);
@@ -631,6 +645,7 @@ export default function HomePage() {
   if (!dataReady) return <SplashScreen />;
 
   const userName = user.displayName || "Usuário PSYZON";
+  const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
   return (
@@ -665,8 +680,9 @@ export default function HomePage() {
         </header>
 
         <section className="content">
-          {view === "inicio" && <Dashboard orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
+          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} />}
+          {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
           {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
           {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
@@ -674,7 +690,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>
+      {view !== "notas" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
       <nav className="mobile-nav">
         {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         <button className="mobile-new" onClick={() => setModal("pedido")} aria-label="Novo pedido"><Plus /></button>
@@ -722,11 +738,11 @@ function NavButton({ item, active, onClick }: { item: (typeof navItems)[number];
   return <button className={active ? "active" : ""} onClick={onClick}><Icon size={20} /><span>{item.label}</span></button>;
 }
 
-function Dashboard({ orders, transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
-      <div><span className="eyebrow">VISÃO DE HOJE</span><h1>Bom dia, Rodrigo.</h1><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
+      <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><h1>Bom dia, {userName}.</h1><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     <div className="metric-grid">

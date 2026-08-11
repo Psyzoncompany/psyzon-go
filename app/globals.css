@@ -46,6 +46,35 @@ button, input, select, textarea { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 
+.splash-screen { position: fixed; inset: 0; z-index: 9999; min-height: 100dvh; overflow: hidden; display: grid; place-items: center; background: radial-gradient(circle at 50% 38%, #193f9a 0, #0c2764 32%, #061736 68%, #030b19 100%); color: white; isolation: isolate; }
+.splash-screen::before { content: ""; position: absolute; inset: 0; z-index: -2; opacity: .22; background-image: linear-gradient(rgba(255,255,255,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.08) 1px, transparent 1px); background-size: 54px 54px; mask-image: radial-gradient(circle at center, black, transparent 74%); animation: splash-grid 7s linear infinite; }
+.splash-screen::after { content: ""; position: absolute; inset: auto -15% -36% 15%; z-index: -1; height: 70%; border-radius: 50%; background: #2563eb; filter: blur(150px); opacity: .23; animation: splash-aurora 3.2s ease-in-out infinite alternate; }
+.splash-content { width: min(420px, calc(100% - 40px)); display: flex; flex-direction: column; align-items: center; text-align: center; animation: splash-content-in .85s cubic-bezier(.2,.8,.2,1) both; }
+.splash-logo-wrap { position: relative; width: 174px; height: 174px; display: grid; place-items: center; }
+.splash-logo-glow { position: absolute; inset: 17px; border-radius: 42px; background: #3b82f6; filter: blur(31px); opacity: .72; animation: splash-pulse 1.8s ease-in-out infinite; }
+.splash-logo { position: relative; width: 164px; height: 164px; border-radius: 38px; object-fit: cover; box-shadow: 0 24px 70px rgba(0,0,0,.34), 0 0 0 1px rgba(255,255,255,.14); animation: splash-logo-in .9s cubic-bezier(.16,1,.3,1) both, splash-float 2.4s .9s ease-in-out infinite; }
+.splash-wordmark { margin-top: 26px; display: flex; align-items: baseline; gap: 9px; letter-spacing: .09em; animation: splash-rise .55s .38s ease-out both; }
+.splash-wordmark strong { font-size: 31px; line-height: 1; font-weight: 780; }
+.splash-wordmark span { color: #60a5fa; font-size: 17px; font-weight: 850; letter-spacing: .18em; }
+.splash-content p { margin: 12px 0 29px; color: rgba(226,232,240,.76); font-size: 12px; letter-spacing: .025em; animation: splash-rise .55s .5s ease-out both; }
+.splash-loader { width: min(230px, 72vw); height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.12); animation: splash-rise .55s .62s ease-out both; }
+.splash-loader span { width: 44%; height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, transparent, #60a5fa 28%, white 65%, transparent); animation: splash-loading 1.15s ease-in-out infinite; }
+.splash-content small { margin-top: 13px; color: rgba(191,219,254,.62); font-size: 9px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; animation: splash-rise .55s .72s ease-out both; }
+.splash-orbit { position: absolute; border: 1px solid rgba(96,165,250,.16); border-radius: 50%; pointer-events: none; }
+.splash-orbit::before { content: ""; position: absolute; top: 50%; left: -3px; width: 6px; height: 6px; border-radius: 50%; background: #60a5fa; box-shadow: 0 0 16px #3b82f6; }
+.splash-orbit-one { width: 430px; height: 430px; animation: splash-spin 8s linear infinite; }
+.splash-orbit-two { width: 620px; height: 620px; opacity: .55; animation: splash-spin 12s linear infinite reverse; }
+
+@keyframes splash-content-in { from { opacity: 0; transform: scale(.96); } }
+@keyframes splash-logo-in { from { opacity: 0; transform: scale(.6) rotate(-7deg); filter: blur(7px); } 70% { transform: scale(1.04) rotate(1deg); } }
+@keyframes splash-rise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes splash-float { 50% { transform: translateY(-6px); } }
+@keyframes splash-pulse { 50% { opacity: .42; transform: scale(.88); } }
+@keyframes splash-loading { from { transform: translateX(-110%); } to { transform: translateX(330%); } }
+@keyframes splash-spin { to { transform: rotate(360deg); } }
+@keyframes splash-grid { to { background-position: 54px 54px; } }
+@keyframes splash-aurora { to { transform: translate(-12%, -8%) scale(1.12); opacity: .34; } }
+
 .app-shell { min-height: 100vh; }
 .sidebar { position: fixed; inset: 0 auto 0 0; width: 226px; padding: 23px 14px; background: var(--card); border-right: 1px solid var(--border); display: flex; flex-direction: column; z-index: 30; }
 .brand { height: 45px; margin: 0 7px 28px; padding: 0; display: flex; gap: 10px; align-items: center; border: 0; background: transparent; cursor: pointer; text-align: left; }
@@ -411,6 +440,12 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 }
 
 @media (max-width: 430px) {
+  .splash-logo-wrap { width: 148px; height: 148px; }
+  .splash-logo { width: 140px; height: 140px; border-radius: 32px; }
+  .splash-wordmark { margin-top: 22px; }
+  .splash-wordmark strong { font-size: 27px; }
+  .splash-orbit-one { width: 330px; height: 330px; }
+  .splash-orbit-two { width: 470px; height: 470px; }
   .auth-screen { padding: 14px; }
   .auth-card { padding: 32px 22px; }
   .auth-card h1 { font-size: 24px; }

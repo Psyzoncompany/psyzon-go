@@ -15,6 +15,9 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
     "drizzle-orm": "0.45.2",
     "firebase": "^12.17.1",
     "lucide-react": "^1.31.0",

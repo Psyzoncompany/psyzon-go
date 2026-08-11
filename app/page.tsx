@@ -172,6 +172,7 @@ export default function HomePage() {
   const [uid, setUid] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [introComplete, setIntroComplete] = useState(false);
   const [authError, setAuthError] = useState("");
   const [resetting, setResetting] = useState(false);
   const [dark, setDark] = useState(false);
@@ -182,6 +183,11 @@ export default function HomePage() {
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setIntroComplete(true), 1900);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const storedTheme = localStorage.getItem("psy-theme");
@@ -449,7 +455,7 @@ export default function HomePage() {
     showToast("Conta removida");
   };
 
-  if (!authReady) return <AuthScreen state="loading" error="" onSignIn={signInGoogle} />;
+  if (!introComplete || !authReady) return <SplashScreen />;
   if (!isFirebaseConfigured) return <AuthScreen state="unconfigured" error="A configuração do Firebase não foi encontrada neste ambiente." onSignIn={signInGoogle} />;
   if (!user) return <AuthScreen state="signed-out" error={authError} onSignIn={signInGoogle} />;
 
@@ -506,6 +512,25 @@ export default function HomePage() {
       {modal && <CreateModal kind={modal} account={modalAccount} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
+  );
+}
+
+function SplashScreen() {
+  return (
+    <main className="splash-screen" aria-label="PSYZON GO carregando" aria-busy="true">
+      <div className="splash-orbit splash-orbit-one" />
+      <div className="splash-orbit splash-orbit-two" />
+      <section className="splash-content">
+        <div className="splash-logo-wrap">
+          <span className="splash-logo-glow" />
+          <img src="/icon-512-v3.png" width="164" height="164" alt="Logo PSYZON GO" className="splash-logo" />
+        </div>
+        <div className="splash-wordmark"><strong>PSYZON</strong><span>GO</span></div>
+        <p>Produção e financeiro em tempo real</p>
+        <div className="splash-loader" aria-hidden="true"><span /></div>
+        <small>Preparando sua operação</small>
+      </section>
+    </main>
   );
 }
 

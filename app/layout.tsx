@@ -14,7 +14,14 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "PSYZON GO · Sua empresa sob controle",
     description: "Controle financeiro e produtivo simples para a PSYZON Company.",
     manifest: "/manifest.webmanifest",
-    icons: { icon: "/favicon.svg", apple: "/favicon.svg" },
+    icons: {
+      icon: [
+        { url: "/favicon.svg", type: "image/svg+xml" },
+        { url: "/icon-192-v3.png", sizes: "192x192", type: "image/png" },
+        { url: "/icon-512-v3.png", sizes: "512x512", type: "image/png" },
+      ],
+      apple: { url: "/icon-192-v3.png", sizes: "192x192", type: "image/png" },
+    },
     applicationName: "PSYZON GO",
     openGraph: { title: "PSYZON GO", description: "Produção + Financeiro em tempo real", images: [{ url: image, width: 1536, height: 1024 }] },
     twitter: { card: "summary_large_image", title: "PSYZON GO", description: "Sua empresa sob controle.", images: [image] },

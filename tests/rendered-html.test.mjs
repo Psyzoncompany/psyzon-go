@@ -93,6 +93,9 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /requestWindow\(\{ width: 230, height: 128 \}\)/);
   assert.match(page, /Modo flutuante/);
   assert.match(page, /Clique para abrir o sistema/);
+  assert.match(page, /mobileFloatingOpen/);
+  assert.match(page, /Atalho flutuante ativado no celular/);
+  assert.match(page, /mobile-floating-launcher/);
 });
 
 test("service worker clones a network response before its body is consumed", async () => {

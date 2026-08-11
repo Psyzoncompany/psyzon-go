@@ -243,6 +243,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .movement-actions button:last-child:hover { color: var(--red); }
 
 .floating-new { position: fixed; right: 25px; bottom: 25px; height: 44px; padding: 0 17px; border: 0; border-radius: 12px; background: var(--blue); color: white; display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .035em; cursor: pointer; z-index: 24; box-shadow: 0 10px 25px rgba(37, 99, 235, .3); }
+.mobile-floating-launcher { display: none; }
 .mobile-nav { display: none; }
 
 .view-toggle { padding: 3px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); display: flex; }
@@ -511,7 +512,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .search-wrap input { padding-inline: 36px 8px; }
   .search-wrap > kbd { display: none; }
   .top-actions .desktop-action { display: none; }
-  .top-actions .floating-mode-action { display: none; }
+  .top-actions .floating-mode-action { width: 36px; padding: 0; display: grid; }
+  .top-actions .floating-mode-action span { display: none; }
   .content { padding: 24px 14px 105px; }
   .page-heading { align-items: flex-start; }
   .page-heading .primary { display: none; }
@@ -530,6 +532,9 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .progress-cell, .pending-cell { display: none; }
   .attention-card strong { display: none; }
   .floating-new { display: none; }
+  .mobile-floating-launcher { position: fixed; left: 15px; bottom: 82px; width: 58px; height: 68px; padding: 5px 5px 7px; border: 1px solid color-mix(in srgb, var(--blue) 38%, var(--border)); border-radius: 18px; background: color-mix(in srgb, var(--card) 94%, transparent); color: var(--blue); backdrop-filter: blur(12px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; z-index: 48; box-shadow: 0 12px 30px rgba(15,23,42,.22); }
+  .mobile-floating-launcher img { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 6px 15px rgba(37,99,235,.28); }
+  .mobile-floating-launcher span { font-size: 7px; font-weight: 800; }
   .mobile-nav { position: fixed; inset: auto 0 0; height: 70px; padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--card) 96%, transparent); backdrop-filter: blur(13px); display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; z-index: 50; }
   .mobile-nav > button { height: 47px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; font-size: 8px; }
   .mobile-nav > button.active { color: var(--blue); font-weight: 700; }

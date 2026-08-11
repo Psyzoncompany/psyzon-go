@@ -224,6 +224,7 @@ export default function HomePage() {
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
+  const [mobileFloatingOpen, setMobileFloatingOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
 
@@ -355,7 +356,13 @@ export default function HomePage() {
 
   const toggleFloatingMode = async () => {
     const controller = (window as Window & { documentPictureInPicture?: DocumentPictureInPictureController }).documentPictureInPicture;
-    if (!controller) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
+    if (!controller) {
+      if (!window.matchMedia("(max-width: 760px)").matches) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
+      const nextState = !mobileFloatingOpen;
+      setMobileFloatingOpen(nextState);
+      showToast(nextState ? "Atalho flutuante ativado no celular" : "Atalho flutuante desativado");
+      return;
+    }
     if (floatingWindowRef.current && !floatingWindowRef.current.closed) {
       floatingWindowRef.current.close();
       floatingWindowRef.current = null;
@@ -708,6 +715,7 @@ export default function HomePage() {
   const userName = user.displayName || "Usuário PSYZON";
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
+  const floatingActive = floatingModeOpen || mobileFloatingOpen;
 
   return (
     <div className="app-shell">
@@ -733,7 +741,7 @@ export default function HomePage() {
             {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(order.total - order.paid)}<small>pendente</small></strong></button>)}</div>}
           </div>
           <div className="top-actions">
-            <button className={`floating-mode-action ${floatingModeOpen ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingModeOpen ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingModeOpen}><PictureInPicture2 size={18} /><span>{floatingModeOpen ? "Flutuante ativo" : "Modo flutuante"}</span></button>
+            <button className={`floating-mode-action ${floatingActive ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingActive ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingActive}><PictureInPicture2 size={18} /><span>{floatingActive ? "Flutuante ativo" : "Modo flutuante"}</span></button>
             <button className="desktop-action" onClick={() => setPrivateValues((value) => !value)} aria-label="Ocultar valores">{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>
@@ -753,6 +761,7 @@ export default function HomePage() {
       </main>
 
       {view !== "notas" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {mobileFloatingOpen && <button className="mobile-floating-launcher" onClick={() => { setView("inicio"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Abrir início do PSYZON GO"><Image src="/icon-192-v3.png" alt="" width={40} height={40} /><span>Início</span></button>}
       <nav className="mobile-nav">
         {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         <button className="mobile-new" onClick={() => setModal("pedido")} aria-label="Novo pedido"><Plus /></button>

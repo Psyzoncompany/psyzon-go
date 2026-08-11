@@ -12,15 +12,17 @@ import {
 } from "firebase/auth";
 import { getApps, initializeApp } from "firebase/app";
 import {
-  getDatabase,
-  onValue,
-  push,
-  ref,
-  remove,
+  addDoc,
+  collection,
+  deleteDoc,
+  deleteField,
+  doc,
+  getFirestore,
+  onSnapshot,
   serverTimestamp,
-  set,
-  update,
-} from "firebase/database";
+  updateDoc,
+  writeBatch,
+} from "firebase/firestore";
 import {
   AlertTriangle,
   Bell,
@@ -37,12 +39,12 @@ import {
   Home,
   LayoutGrid,
   List,
+  LogOut,
   MessageCircle,
   Moon,
   MoreHorizontal,
   Pencil,
   Plus,
-  LogOut,
   RotateCcw,
   Search,
   Settings,
@@ -121,15 +123,20 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.databaseURL, firebaseConfig.appId].every(Boolean);
+const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills"] as const;
+const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function userCollection(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number]) {
+  return collection(getFirestore(getApps()[0]), "users", uid, name);
+}
+
+function userDocument(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number], id: string) {
+  return doc(getFirestore(getApps()[0]), "users", uid, name, id);
+}
 
 function isoOffset(days: number) {
   const date = new Date();
@@ -187,6 +194,7 @@ export default function HomePage() {
   const [uid, setUid] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [introComplete, setIntroComplete] = useState(false);
   const [authError, setAuthError] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -220,20 +228,26 @@ export default function HomePage() {
     if (!isFirebaseConfigured) {
       setFirebaseState("unconfigured");
       setAuthReady(true);
+      setDataReady(true);
       return;
     }
 
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    let unsubscribeData: (() => void) | undefined;
+    const db = getFirestore(app);
+    const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: () => unknown }> }) =>
+      snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<T, "id">) } as T));
+    let unsubscribers: Array<() => void> = [];
     setPersistence(auth, browserLocalPersistence).catch(() => undefined);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
-      unsubscribeData?.();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      unsubscribers = [];
       setUser(nextUser);
       setUid(nextUser?.uid ?? "");
       setAuthReady(true);
       setAuthError("");
+      setDataReady(false);
 
       if (!nextUser) {
         setOrders([]);
@@ -244,26 +258,44 @@ export default function HomePage() {
         return;
       }
 
-      const db = getDatabase(app);
-      setFirebaseState("connecting");
-      unsubscribeData = onValue(ref(db, `users/${nextUser.uid}`), (snapshot) => {
-        const value = snapshot.val() ?? {};
-        const toList = <T extends { id: string }>(record?: Record<string, Omit<T, "id">>) =>
-          Object.entries(record ?? {}).map(([id, item]) => ({ id, ...item } as T));
-        setOrders(toList<Order>(value.orders).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
-        setCustomers(toList<Customer>(value.customers));
-        setTransactions(toList<Transaction>(value.transactions).sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0)));
-        setBills(toList<Bill>(value.bills).sort((a, b) => a.dueDay - b.dueDay));
-        setFirebaseState("live");
-      }, (error) => {
-        console.error("Firebase connection failed", error);
+      const initialized = new Set<string>();
+      const markReady = (name: string) => {
+        initialized.add(name);
+        if (initialized.size === FIRESTORE_COLLECTIONS.length) {
+          setFirebaseState("live");
+          setDataReady(true);
+        }
+      };
+      const handleError = (error: Error) => {
+        console.error("Firestore connection failed", error);
         setFirebaseState("error");
-      });
+        setDataReady(true);
+      };
+
+      setFirebaseState("connecting");
+      unsubscribers = [
+        onSnapshot(collection(db, "users", nextUser.uid, "orders"), (snapshot) => {
+          setOrders(toList<Order>(snapshot).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
+          markReady("orders");
+        }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "customers"), (snapshot) => {
+          setCustomers(toList<Customer>(snapshot));
+          markReady("customers");
+        }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "transactions"), (snapshot) => {
+          setTransactions(toList<Transaction>(snapshot).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
+          markReady("transactions");
+        }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "bills"), (snapshot) => {
+          setBills(toList<Bill>(snapshot).sort((a, b) => a.dueDay - b.dueDay));
+          markReady("bills");
+        }, handleError),
+      ];
     });
 
     return () => {
       unsubscribeAuth();
-      unsubscribeData?.();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
 
@@ -332,7 +364,17 @@ export default function HomePage() {
     if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes, contas e movimentações desta conta?")) return;
     setResetting(true);
     try {
-      await remove(ref(getDatabase(getApps()[0]), `users/${uid}`));
+      const records = [
+        ...orders.map((item) => ["orders", item.id] as const),
+        ...customers.map((item) => ["customers", item.id] as const),
+        ...transactions.map((item) => ["transactions", item.id] as const),
+        ...bills.map((item) => ["bills", item.id] as const),
+      ];
+      for (let start = 0; start < records.length; start += 450) {
+        const batch = writeBatch(getFirestore(getApps()[0]));
+        records.slice(start, start + 450).forEach(([name, id]) => batch.delete(userDocument(uid, name, id)));
+        await batch.commit();
+      }
       setOrders([]);
       setCustomers([]);
       setTransactions([]);
@@ -396,12 +438,12 @@ export default function HomePage() {
   }, [activeOrders, bills]);
 
   useEffect(() => {
-    if (!notificationsEnabled || !authReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (!notificationsEnabled || !dataReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const todayKey = new Date().toISOString().slice(0, 10);
     if (localStorage.getItem("psy-last-system-notification") === todayKey) return;
     new Notification("PSYZON GO", { body: `${notifications.length} item(ns) precisam da sua atenção.`, icon: "/icon-192-v3.png" });
     localStorage.setItem("psy-last-system-notification", todayKey);
-  }, [authReady, notifications, notificationsEnabled]);
+  }, [dataReady, notifications, notificationsEnabled]);
 
   const changeNotifications = async (enabled: boolean) => {
     setNotificationsEnabled(enabled);
@@ -436,25 +478,23 @@ export default function HomePage() {
           status: "Aprovado",
           createdAt: serverTimestamp(),
         };
-        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
-        const db = getDatabase(getApps()[0]);
-        const orderKey = push(ref(db, `users/${uid}/orders`)).key;
-        if (!orderKey) throw new Error("Não foi possível gerar o pedido");
+        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        const db = getFirestore(getApps()[0]);
+        const orderReference = doc(userCollection(uid, "orders"));
+        const orderKey = orderReference.id;
         const customerKey = nextOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || orderKey;
-        const updates: Record<string, unknown> = {
-          [`users/${uid}/orders/${orderKey}`]: nextOrder,
-          [`users/${uid}/customers/${customerKey}`]: { name: nextOrder.customer, phone: nextOrder.phone ?? "" },
-        };
+        const batch = writeBatch(db);
+        batch.set(orderReference, nextOrder);
+        batch.set(userDocument(uid, "customers", customerKey), { name: nextOrder.customer, phone: nextOrder.phone ?? "" }, { merge: true });
         if (nextOrder.paid > 0) {
-          const transactionKey = push(ref(db, `users/${uid}/transactions`)).key;
-          if (transactionKey) updates[`users/${uid}/transactions/${transactionKey}`] = { description: `Entrada · ${nextOrder.customer} · #${orderKey.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", category: "Vendas", orderId: orderKey, createdAt: serverTimestamp() };
+          batch.set(doc(userCollection(uid, "transactions")), { description: `Entrada · ${nextOrder.customer} · #${orderKey.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", category: "Vendas", orderId: orderKey, createdAt: serverTimestamp() });
         }
-        await update(ref(db), updates);
+        await batch.commit();
         showToast("Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
         const customer = { name: String(form.get("name")), phone: String(form.get("phone")), company: String(form.get("company") || "") };
-        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
-        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/customers`)), customer);
+        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        await addDoc(userCollection(uid, "customers"), customer);
         showToast("Cliente adicionado");
       } else if (kind === "conta") {
         const billingType = String(form.get("billingType")) as Bill["billingType"];
@@ -469,8 +509,8 @@ export default function HomePage() {
           createdAt: serverTimestamp(),
           ...(billingType === "installment" ? { totalInstallments: Number(form.get("totalInstallments")) } : {}),
         };
-        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
-        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/bills`)), bill);
+        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        await addDoc(userCollection(uid, "bills"), bill);
         showToast(billingType === "fixed" ? "Conta mensal adicionada" : "Compra parcelada adicionada");
       } else {
         const amount = Number(form.get("amount"));
@@ -483,8 +523,8 @@ export default function HomePage() {
           category: String(form.get("customCategory") || form.get("category") || (kind === "entrada" ? "Vendas" : kind === "despesa" ? "Outros" : "Pró-labore")),
           createdAt: serverTimestamp(),
         };
-        if (firebaseState !== "live" || !uid) throw new Error("Firebase ainda não está conectado");
-        await set(push(ref(getDatabase(getApps()[0]), `users/${uid}/transactions`)), transaction);
+        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        await addDoc(userCollection(uid, "transactions"), transaction);
         showToast(kind === "despesa" ? "Despesa registrada" : kind === "transferencia" ? "Transferência concluída" : "Entrada registrada");
       }
       setModal(null);
@@ -496,47 +536,46 @@ export default function HomePage() {
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
     setOrders((current) => current.map((item) => (item.id === order.id ? { ...item, status } : item)));
-    if (firebaseState === "live" && uid) {
-      await update(ref(getDatabase(getApps()[0]), `users/${uid}/orders/${order.id}`), { status });
+    if (firebaseState === "live") {
+      await updateDoc(userDocument(uid, "orders", order.id), { status });
     }
     showToast("Pedido atualizado");
   };
 
   const payBill = async (bill: Bill) => {
-    if (firebaseState !== "live" || !uid) return showToast("Firebase ainda não está conectado");
-    const db = getDatabase(getApps()[0]);
+    if (firebaseState !== "live") return showToast("Firestore ainda não está conectado");
+    const db = getFirestore(getApps()[0]);
     const month = new Date().toISOString().slice(0, 7);
     if (bill.lastPaidMonth === month) return showToast("Esta conta já foi paga neste mês");
     if (bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1)) return showToast("Todas as parcelas já foram pagas");
-    const transactionKey = push(ref(db, `users/${uid}/transactions`)).key;
-    if (!transactionKey) return showToast("Não foi possível registrar o pagamento");
-    const updates: Record<string, unknown> = {
-      [`users/${uid}/transactions/${transactionKey}`]: { description: `${bill.billingType === "fixed" ? "Conta mensal" : `Parcela ${(bill.paidInstallments ?? 0) + 1}/${bill.totalInstallments}`} · ${bill.description}`, amount: bill.amount, type: "expense", account: bill.account, category: bill.category, source: "bill", billId: bill.id, createdAt: serverTimestamp() },
-      [`users/${uid}/bills/${bill.id}/lastPaidMonth`]: month,
-    };
-    if (bill.billingType === "installment") updates[`users/${uid}/bills/${bill.id}/paidInstallments`] = (bill.paidInstallments ?? 0) + 1;
-    await update(ref(db), updates);
+    const batch = writeBatch(db);
+    batch.set(doc(userCollection(uid, "transactions")), { description: `${bill.billingType === "fixed" ? "Conta mensal" : `Parcela ${(bill.paidInstallments ?? 0) + 1}/${bill.totalInstallments}`} · ${bill.description}`, amount: bill.amount, type: "expense", account: bill.account, category: bill.category, source: "bill", billId: bill.id, createdAt: serverTimestamp() });
+    batch.update(userDocument(uid, "bills", bill.id), {
+      lastPaidMonth: month,
+      ...(bill.billingType === "installment" ? { paidInstallments: (bill.paidInstallments ?? 0) + 1 } : {}),
+    });
+    await batch.commit();
     showToast("Pagamento registrado");
   };
 
   const deleteBill = async (bill: Bill) => {
-    if (!uid || !window.confirm(`Excluir a conta “${bill.description}”?`)) return;
-    await remove(ref(getDatabase(getApps()[0]), `users/${uid}/bills/${bill.id}`));
+    if (!window.confirm(`Excluir a conta “${bill.description}”?`)) return;
+    await deleteDoc(userDocument(uid, "bills", bill.id));
     showToast("Conta removida");
   };
 
   const saveBill = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!uid || !editingBill) return;
+    if (!editingBill) return;
     const form = new FormData(event.currentTarget);
     const billingType = String(form.get("billingType")) as Bill["billingType"];
-    await update(ref(getDatabase(getApps()[0]), `users/${uid}/bills/${editingBill.id}`), {
+    await updateDoc(userDocument(uid, "bills", editingBill.id), {
       description: String(form.get("description")),
       amount: Number(form.get("amount")),
       dueDay: Number(form.get("dueDay")),
       billingType,
       category: String(form.get("customCategory") || form.get("category") || "Outros"),
-      totalInstallments: billingType === "installment" ? Number(form.get("totalInstallments")) : null,
+      totalInstallments: billingType === "installment" ? Number(form.get("totalInstallments")) : deleteField(),
     });
     setEditingBill(null);
     showToast("Conta atualizada");
@@ -544,9 +583,9 @@ export default function HomePage() {
 
   const saveTransaction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!uid || !editingTransaction) return;
+    if (!editingTransaction) return;
     const form = new FormData(event.currentTarget);
-    await update(ref(getDatabase(getApps()[0]), `users/${uid}/transactions/${editingTransaction.id}`), {
+    await updateDoc(userDocument(uid, "transactions", editingTransaction.id), {
       description: String(form.get("description")),
       amount: Number(form.get("amount")),
       category: String(form.get("customCategory") || form.get("category") || "Outros"),
@@ -558,25 +597,27 @@ export default function HomePage() {
   };
 
   const deleteTransaction = async (transaction: Transaction) => {
-    if (!uid || !window.confirm(`Excluir a movimentação “${transaction.description}”?`)) return;
-    const db = getDatabase(getApps()[0]);
+    if (!window.confirm(`Excluir a movimentação “${transaction.description}”?`)) return;
+    const db = getFirestore(getApps()[0]);
     if (transaction.source === "bill" && transaction.billId) {
       const linkedBill = bills.find((bill) => bill.id === transaction.billId);
-      const updates: Record<string, unknown> = {
-        [`users/${uid}/transactions/${transaction.id}`]: null,
-        [`users/${uid}/bills/${transaction.billId}/lastPaidMonth`]: null,
-      };
-      if (linkedBill?.billingType === "installment") updates[`users/${uid}/bills/${transaction.billId}/paidInstallments`] = Math.max(0, (linkedBill.paidInstallments ?? 1) - 1);
-      await update(ref(db), updates);
+      const batch = writeBatch(db);
+      batch.delete(userDocument(uid, "transactions", transaction.id));
+      batch.update(userDocument(uid, "bills", transaction.billId), {
+        lastPaidMonth: deleteField(),
+        ...(linkedBill?.billingType === "installment" ? { paidInstallments: Math.max(0, (linkedBill.paidInstallments ?? 1) - 1) } : {}),
+      });
+      await batch.commit();
     } else {
-      await remove(ref(db, `users/${uid}/transactions/${transaction.id}`));
+      await deleteDoc(userDocument(uid, "transactions", transaction.id));
     }
     showToast("Movimentação removida");
   };
 
   if (!introComplete || !authReady) return <SplashScreen />;
-  if (!isFirebaseConfigured) return <AuthScreenV2 state="unconfigured" error="O serviço de dados está sendo iniciado. Atualize a página em instantes." onSignIn={signInGoogle} />;
-  if (!user) return <AuthScreenV2 state="signed-out" error={authError} onSignIn={signInGoogle} />;
+  if (!isFirebaseConfigured) return <ConnectionErrorScreen message="Confira as variáveis NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID e NEXT_PUBLIC_FIREBASE_APP_ID." />;
+  if (!user) return <AuthScreenV2 error={authError} onSignIn={signInGoogle} />;
+  if (!dataReady) return <SplashScreen />;
 
   const userName = user.displayName || "Usuário PSYZON";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
@@ -656,8 +697,12 @@ function SplashScreen() {
   );
 }
 
-function AuthScreenV2({ state, error, onSignIn }: { state: "unconfigured" | "signed-out"; error: string; onSignIn: () => void }) {
-  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados privados por conta</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">ACESSO SEGURO</span><h2>{state === "signed-out" ? "Bem-vindo ao seu centro de operação." : "Estamos preparando seu acesso."}</h2><p>{state === "signed-out" ? "Entre com a conta Google autorizada para continuar de onde parou." : error}</p></div>{state === "signed-out" ? <button className="google-button" onClick={onSignIn}><span>G</span><b>Continuar com Google</b><ChevronRight size={17} /></button> : <button className="google-button" onClick={() => window.location.reload()}><RotateCcw size={17} /><b>Tentar novamente</b></button>}{error && state === "signed-out" && <p className="auth-error" role="alert">{error}</p>}<div className="auth-security"><span><span /></span><div><b>Conexão protegida</b><small>Seus dados ficam vinculados somente à sua conta.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
+function ConnectionErrorScreen({ message }: { message: string }) {
+  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados centralizados</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">CONFIGURAÇÃO DO FIRESTORE</span><h2>Não foi possível abrir os dados.</h2><p>{message}</p></div><button className="google-button" onClick={() => window.location.reload()}><RotateCcw size={17} /><b>Tentar novamente</b></button><div className="auth-security"><span><span /></span><div><b>Cloud Firestore</b><small>O login Google foi removido nesta etapa.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
+}
+
+function AuthScreenV2({ error, onSignIn }: { error: string; onSignIn: () => void }) {
+  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados privados por conta</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">ACESSO SEGURO</span><h2>Bem-vindo ao seu centro de operação.</h2><p>Entre com sua conta Google para acessar seus dados no Firestore.</p></div><button className="google-button" onClick={onSignIn}><span>G</span><b>Continuar com Google</b><ChevronRight size={17} /></button>{error && <p className="auth-error" role="alert">{error}</p>}<div className="auth-security"><span><span /></span><div><b>Conexão protegida</b><small>Seus dados ficam vinculados somente à sua conta.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
 }
 
 
@@ -770,7 +815,7 @@ function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValue
     { value: "comfortable", label: "Normal", hint: "Equilibrado" },
     { value: "large", label: "Maior", hint: "Mais legível" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho da interface</b><small>Aumente ou diminua sem usar zoom do navegador</small></span><div>{sizes.map((size) => <button key={size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>Um resumo diário, sem excesso de avisos</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>Os alertas continuam disponíveis no sino mesmo se as notificações do dispositivo estiverem desligadas.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros disponíveis em qualquer dispositivo.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firebase conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firebase"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Aguardando uma conexão segura"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho da interface</b><small>Aumente ou diminua sem usar zoom do navegador</small></span><div>{sizes.map((size) => <button key={size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>Um resumo diário, sem excesso de avisos</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>Os alertas continuam disponíveis no sino mesmo se as notificações do dispositivo estiverem desligadas.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 const expenseCategories = ["Material", "Fornecedor", "Mão de obra", "Impostos", "Equipamentos", "Serviços", "Outros"];

@@ -44,6 +44,9 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /PEDIDO DE TECIDO PARA FORNECEDOR/);
   assert.match(notes, /Costa Rica/);
   assert.match(notes, /Atual Têxtil/);
+  assert.match(notes, /Custo total do pedido/);
+  assert.match(notes, /totalFabricCost > 0/);
+  assert.match(notes, /calculator-dismiss-layer/);
   assert.match(notes, /Exportar pedido para o bloco de notas/);
   assert.match(notes, /Tarefas interativas/);
   assert.match(notes, /type="checkbox" checked=\{task\.done\}/);

@@ -237,19 +237,21 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const requiredKg = efficiency > 0 ? numericFabricValue / 4.2 / efficiency : 0;
   const numericPrice = Math.max(0, Number(pricePerKg.replace(",", ".")) || 0);
   const costPerPiece = efficiency > 0 ? numericPrice / 4.2 / efficiency : 0;
+  const calculatedOrderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
+  const totalFabricCost = calculatedOrderKg > 0 && numericPrice > 0 ? calculatedOrderKg * numericPrice : 0;
 
   const exportSupplierOrder = async () => {
     if (!numericFabricValue) return;
     const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
-    const orderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
-    const estimatedTotal = numericPrice > 0 ? orderKg * numericPrice : 0;
+    const orderKg = calculatedOrderKg;
     const formattedKg = orderKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const formattedPrice = numericPrice > 0 ? numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
-    const formattedTotal = estimatedTotal > 0 ? estimatedTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
+    const costDetails = totalFabricCost > 0
+      ? `PREÇO POR KG: ${numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\nCUSTO TOTAL: ${totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n`
+      : "";
     await createNote({
       title: `Pedido ${supplier} • ${plannedPieces} camisas`,
       category: "Compras",
-      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\nPREÇO POR KG: ${formattedPrice}\nTOTAL ESTIMADO: ${formattedTotal}\n\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
+      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\n${costDetails}\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
     });
     setCalculatorOpen(false);
   };
@@ -310,6 +312,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       <button className="notes-calculator-fab" onClick={() => setCalculatorOpen(true)} aria-label="Abrir calculadora"><Calculator size={22} /><span>Calculadora</span></button>
 
       {calculatorOpen && <div className="calculator-backdrop">
+        <button className="calculator-dismiss-layer" onClick={() => setCalculatorOpen(false)} aria-label="Fechar calculadora clicando fora" />
         <aside className="calculator-panel" role="dialog" aria-modal="true" aria-label="Calculadora da confecção">
           <header><div><span><Calculator size={19} /></span><div><b>Calculadora da confecção</b><small>Planejamento rápido sem sair das notas</small></div></div><button onClick={() => setCalculatorOpen(false)} aria-label="Fechar calculadora"><X size={18} /></button></header>
           <div className="calculator-tabs"><button className={calculatorTab === "tecido" ? "active" : ""} onClick={() => setCalculatorTab("tecido")}><Shirt size={16} /> Tecido e peças</button><button className={calculatorTab === "geral" ? "active" : ""} onClick={() => setCalculatorTab("geral")}><Calculator size={16} /> Calculadora</button></div>
@@ -320,7 +323,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
-            {numericPrice > 0 && <div className="cost-result"><span>Custo estimado de tecido por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div>}
+            {totalFabricCost > 0 && <div className="cost-summary"><div className="cost-result"><span>Custo estimado por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div></div>}
             <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue}><FilePlus2 size={16} /> Exportar pedido para o bloco de notas</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>

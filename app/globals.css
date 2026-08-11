@@ -669,7 +669,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .notes-calculator-fab { position: fixed; right: 27px; bottom: 25px; height: 48px; padding: 0 18px; border: 0; border-radius: 15px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; display: flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 780; box-shadow: 0 13px 30px rgba(37, 99, 235, .32); cursor: pointer; z-index: 42; }
 .notes-calculator-fab:hover { transform: translateY(-2px); box-shadow: 0 16px 35px rgba(37, 99, 235, .4); }
 .calculator-backdrop { position: fixed; inset: 0; padding: 20px; background: rgba(4, 10, 24, .48); backdrop-filter: blur(3px); display: flex; justify-content: flex-end; align-items: flex-end; z-index: 100; }
-.calculator-panel { width: min(410px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: 0 25px 70px rgba(0,0,0,.28); }
+.calculator-dismiss-layer { position: absolute; inset: 0; border: 0; background: transparent; cursor: default; }
+.calculator-panel { position: relative; z-index: 1; width: min(410px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: 0 25px 70px rgba(0,0,0,.28); }
 .calculator-panel > header { min-height: 65px; padding: 0 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .calculator-panel > header > div { display: flex; align-items: center; gap: 10px; }
 .calculator-panel > header > div > span { width: 35px; height: 35px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
@@ -702,9 +703,13 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .fabric-result small { color: #93c5fd; font-size: 7px; font-weight: 800; letter-spacing: .13em; }
 .fabric-result strong { margin-top: 5px; display: block; font-size: 26px; }
 .fabric-result p { margin: 4px 0 0; color: #bfdbfe; font-size: 8px; }
-.cost-result { margin-top: 9px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; }
+.cost-summary { margin-top: 9px; display: grid; gap: 7px; }
+.cost-result { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; }
 .cost-result span { color: var(--muted); font-size: 9px; }
 .cost-result b { color: var(--green); font-size: 12px; }
+.cost-result.total { border-color: color-mix(in srgb, var(--green) 32%, var(--border)); background: var(--green-soft); }
+.cost-result.total span { color: var(--text); font-weight: 700; }
+.cost-result.total b { font-size: 14px; }
 .calculator-copy { width: 100%; height: 38px; margin-top: 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--blue); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; font-weight: 750; cursor: pointer; }
 .calculator-copy:disabled { opacity: .45; cursor: not-allowed; }
 .calculator-copy.supplier-export { border-color: var(--blue); background: var(--blue); color: white; box-shadow: 0 8px 20px rgba(37, 99, 235, .2); }

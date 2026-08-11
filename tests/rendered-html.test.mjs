@@ -47,7 +47,8 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /Custo total do pedido/);
   assert.match(notes, /totalFabricCost > 0/);
   assert.match(notes, /calculator-dismiss-layer/);
-  assert.match(notes, /Exportar pedido para o bloco de notas/);
+  assert.match(notes, /Exportar para a anotação aberta/);
+  assert.match(notes, /disabled=\{!numericFabricValue \|\| !selectedId\}/);
   assert.match(notes, /Tarefas interativas/);
   assert.match(notes, /type="checkbox" checked=\{task\.done\}/);
   assert.match(notes, /updatedAt: serverTimestamp\(\)/);

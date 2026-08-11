@@ -240,19 +240,15 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const calculatedOrderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
   const totalFabricCost = calculatedOrderKg > 0 && numericPrice > 0 ? calculatedOrderKg * numericPrice : 0;
 
-  const exportSupplierOrder = async () => {
-    if (!numericFabricValue) return;
+  const exportSupplierOrder = () => {
+    if (!numericFabricValue || !selectedId) return;
     const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
     const orderKg = calculatedOrderKg;
     const formattedKg = orderKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const costDetails = totalFabricCost > 0
       ? `PREÇO POR KG: ${numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\nCUSTO TOTAL: ${totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n`
       : "";
-    await createNote({
-      title: `Pedido ${supplier} • ${plannedPieces} camisas`,
-      category: "Compras",
-      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\n${costDetails}\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
-    });
+    insertAtCursor(`\n\nPEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR: ${supplier}\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\n${costDetails}\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`);
     setCalculatorOpen(false);
   };
 
@@ -324,7 +320,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
             {totalFabricCost > 0 && <div className="cost-summary"><div className="cost-result"><span>Custo estimado por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div></div>}
-            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue}><FilePlus2 size={16} /> Exportar pedido para o bloco de notas</button>
+            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue || !selectedId}><FilePlus2 size={16} /> Exportar para a anotação aberta</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

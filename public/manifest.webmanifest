@@ -1,6 +1,7 @@
 {
   "name": "PSYZON GO",
   "short_name": "PSYZON",
+  "id": "/",
   "description": "Produção e financeiro da PSYZON Company",
   "start_url": "/",
   "scope": "/",
@@ -8,6 +9,14 @@
   "orientation": "portrait-primary",
   "background_color": "#f5f7fa",
   "theme_color": "#2563eb",
+  "categories": ["business", "finance", "productivity"],
+  "prefer_related_applications": false,
+  "related_applications": [
+    {
+      "platform": "play",
+      "id": "com.psyzon.go"
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192-v3.png",

@@ -13,6 +13,7 @@ import {
   Pin,
   Plus,
   Search,
+  Settings2,
   Shirt,
   Sparkles,
   Trash2,
@@ -111,6 +112,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calculatorTab, setCalculatorTab] = useState<"tecido" | "geral">("tecido");
+  const [priceSettingsOpen, setPriceSettingsOpen] = useState(false);
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
   const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
@@ -121,6 +123,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
   const [pricePerKg, setPricePerKg] = useState("");
+  const [ribanaPricePerKg, setRibanaPricePerKg] = useState("90.91");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<number | undefined>(undefined);
   const lastSavedRef = useRef(JSON.stringify(initialDraft));
@@ -241,21 +244,25 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const estimatedPieces = Math.floor(numericFabricValue * 4.2 * efficiency);
   const requiredKg = efficiency > 0 ? numericFabricValue / 4.2 / efficiency : 0;
   const numericPrice = Math.max(0, Number(pricePerKg.replace(",", ".")) || 0);
-  const costPerPiece = efficiency > 0 ? numericPrice / 4.2 / efficiency : 0;
+  const numericRibanaPrice = Math.max(0, Number(ribanaPricePerKg.replace(",", ".")) || 0);
   const calculatedOrderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
   const totalFabricCost = calculatedOrderKg > 0 && numericPrice > 0 ? calculatedOrderKg * numericPrice : 0;
   const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
   const ribanaKg = calculatedOrderKg * 0.05;
+  const ribanaCost = collarType === "common" ? ribanaKg * numericRibanaPrice : 0;
+  const totalOrderCost = totalFabricCost + ribanaCost;
+  const costPerPiece = plannedPieces > 0 ? totalOrderCost / plannedPieces : 0;
   const formatKg = (value: number) => value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   const exportSupplierOrder = () => {
     const color = fabricColor.trim().toLocaleUpperCase("pt-BR");
     if (!numericFabricValue || !selectedId || !color) return;
     const collarDetails = collarType === "common"
-      ? `RIBANA ${formatKg(ribanaKg)}KG COR ${color}`
+      ? `RIBANA ${formatKg(ribanaKg)}KG COR ${color} VALOR ${formatCurrency(ribanaCost)} (${formatCurrency(numericRibanaPrice)}/KG)`
       : `GOLA POLO ${plannedPieces} UNIDADES COR ${color}`;
     const costDetails = totalFabricCost > 0
-      ? ` | CUSTO TOTAL ${totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`
+      ? ` | CUSTO TOTAL ${formatCurrency(totalOrderCost)}`
       : "";
     const orderLine = `MALHA (${fabricType}) ${formatKg(calculatedOrderKg)}KG COR ${color} | ${collarDetails}${costDetails}`;
     insertAtCursor(`${draft.content && !draft.content.endsWith("\n") ? "\n" : ""}${orderLine}\n`);
@@ -325,6 +332,8 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
           {calculatorTab === "tecido" ? <div className="fabric-calculator">
             <div className="fabric-rate"><Shirt size={20} /><span><small>RENDIMENTO PADRÃO</small><b>1 kg = 4,2 camisas</b></span></div>
             <div className="fabric-mode"><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button></div>
+            <button className={`calculator-settings-toggle ${priceSettingsOpen ? "active" : ""}`} onClick={() => setPriceSettingsOpen((current) => !current)} aria-expanded={priceSettingsOpen}><Settings2 size={16} /><span><b>Configurar valores</b><small>Malha e ribana por kg</small></span><strong>{priceSettingsOpen ? "Fechar" : "Editar"}</strong></button>
+            {priceSettingsOpen && <div className="price-settings" aria-label="Configuração de valores"><label>Valor da malha por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Informe o valor" /></label><label>Valor da ribana por kg (R$)<input type="number" min="0" step="0.01" value={ribanaPricePerKg} onChange={(event) => setRibanaPricePerKg(event.target.value)} /></label></div>}
             <div className="supplier-selector"><small>SELECIONE O FORNECEDOR</small><div><button className={supplier === "Costa Rica" ? "active" : ""} onClick={() => setSupplier("Costa Rica")} aria-pressed={supplier === "Costa Rica"}>Costa Rica</button><button className={supplier === "Atual Têxtil" ? "active" : ""} onClick={() => setSupplier("Atual Têxtil")} aria-pressed={supplier === "Atual Têxtil"}>Atual Têxtil</button></div></div>
             <div className="material-options">
               <div className="option-selector"><small>TIPO DE MALHA</small><div>{(["PV", "PP", "PIQUET"] as FabricType[]).map((type) => <button key={type} className={fabricType === type ? "active" : ""} onClick={() => setFabricType(type)} aria-pressed={fabricType === type}>{type}</button>)}</div></div>
@@ -332,10 +341,10 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             </div>
             <div className="option-selector collar-selector"><small>TIPO DE GOLA</small><div><button className={collarType === "common" ? "active" : ""} onClick={() => setCollarType("common")} aria-pressed={collarType === "common"}>Gola comum</button><button className={collarType === "polo" ? "active" : ""} onClick={() => setCollarType("polo")} aria-pressed={collarType === "polo"}>Gola polo</button></div></div>
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
-            <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
+            <div className="fabric-row single"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
-            <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? "5% do peso total da malha" : "1 gola por camisa"}</small></div>
-            {totalFabricCost > 0 && <div className="cost-summary"><div className="cost-result"><span>Custo estimado por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{totalFabricCost.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div></div>}
+            <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? `5% da malha · ${formatCurrency(numericRibanaPrice)}/kg · custo ${formatCurrency(ribanaCost)}` : "1 gola por camisa"}</small></div>
+            {(collarType === "common" || totalFabricCost > 0) && <div className="cost-summary">{collarType === "common" && <div className="cost-result ribana"><span>Valor total da ribana</span><b>{formatCurrency(ribanaCost)}</b></div>}{totalFabricCost > 0 && <><div className="cost-result"><span>Valor total da malha</span><b>{formatCurrency(totalFabricCost)}</b></div><div className="cost-result"><span>Custo estimado por camisa</span><b>{formatCurrency(costPerPiece)}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{formatCurrency(totalOrderCost)}</b></div></>}</div>}
             <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Exportar linha para a anotação aberta</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>

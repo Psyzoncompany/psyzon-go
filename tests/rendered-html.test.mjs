@@ -44,12 +44,18 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /MALHA \(\$\{fabricType\}\)/);
   assert.match(notes, /\["PV", "PP", "PIQUET"\]/);
   assert.match(notes, /calculatedOrderKg \* 0\.05/);
+  assert.match(notes, /useState\("90\.91"\)/);
+  assert.match(notes, /ribanaKg \* numericRibanaPrice/);
   assert.match(notes, /RIBANA/);
   assert.match(notes, /GOLA POLO/);
   assert.match(notes, /Costa Rica/);
   assert.match(notes, /Atual Têxtil/);
   assert.match(notes, /Custo total do pedido/);
   assert.match(notes, /totalFabricCost > 0/);
+  assert.match(notes, /Configurar valores/);
+  assert.match(notes, /Valor da ribana por kg/);
+  assert.match(notes, /Valor total da ribana/);
+  assert.match(notes, /CUSTO TOTAL \$\{formatCurrency\(totalOrderCost\)\}/);
   assert.match(notes, /calculator-dismiss-layer/);
   assert.match(notes, /Exportar linha para a anotação aberta/);
   assert.match(notes, /disabled=\{!numericFabricValue \|\| !selectedId \|\| !fabricColor\.trim\(\)\}/);

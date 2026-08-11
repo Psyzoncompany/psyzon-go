@@ -689,6 +689,13 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .fabric-mode { margin: 13px 0; padding: 3px; border: 1px solid var(--border); border-radius: 9px; display: grid; grid-template-columns: 1fr 1fr; }
 .fabric-mode button { height: 31px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 9px; font-weight: 700; cursor: pointer; }
 .fabric-mode button.active { background: var(--blue); color: white; }
+.calculator-settings-toggle { width: 100%; min-height: 43px; margin-bottom: 11px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-subtle); color: var(--blue); display: flex; align-items: center; gap: 9px; text-align: left; cursor: pointer; }
+.calculator-settings-toggle:hover, .calculator-settings-toggle.active { border-color: color-mix(in srgb, var(--blue) 48%, var(--border)); background: var(--blue-soft); }
+.calculator-settings-toggle > span { display: flex; flex-direction: column; }
+.calculator-settings-toggle b { color: var(--text); font-size: 9px; }
+.calculator-settings-toggle small { margin-top: 2px; color: var(--muted); font-size: 7px; }
+.calculator-settings-toggle strong { margin-left: auto; color: var(--blue); font-size: 8px; }
+.price-settings { margin: -3px 0 12px; padding: 11px; border: 1px solid color-mix(in srgb, var(--blue) 30%, var(--border)); border-radius: 11px; background: color-mix(in srgb, var(--blue-soft) 42%, var(--card)); display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .supplier-selector { margin-bottom: 12px; }
 .supplier-selector > small { color: var(--muted); font-size: 7px; font-weight: 800; letter-spacing: .11em; }
 .supplier-selector > div { margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
@@ -706,6 +713,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .fabric-calculator input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 13px; }
 .fabric-calculator input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
 .fabric-row { margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fabric-row.single { grid-template-columns: 1fr; }
 .fabric-result { margin-top: 14px; padding: 16px; border-radius: 13px; background: linear-gradient(135deg, #0f2453, #163b86); color: white; }
 .fabric-result small { color: #93c5fd; font-size: 7px; font-weight: 800; letter-spacing: .13em; }
 .fabric-result strong { margin-top: 5px; display: block; font-size: 26px; }
@@ -718,6 +726,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .cost-result { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; }
 .cost-result span { color: var(--muted); font-size: 9px; }
 .cost-result b { color: var(--green); font-size: 12px; }
+.cost-result.ribana { border-color: color-mix(in srgb, var(--blue) 28%, var(--border)); background: var(--blue-soft); }
+.cost-result.ribana b { color: var(--blue); }
 .cost-result.total { border-color: color-mix(in srgb, var(--green) 32%, var(--border)); background: var(--green-soft); }
 .cost-result.total span { color: var(--text); font-weight: 700; }
 .cost-result.total b { font-size: 14px; }
@@ -759,6 +769,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .calculator-backdrop { padding: 10px; align-items: flex-end; }
   .calculator-panel { max-height: calc(100vh - 20px); border-radius: 18px; }
   .material-options { grid-template-columns: 1fr; }
+  .price-settings { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

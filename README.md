@@ -1,7 +1,7 @@
 # PSYZON GO
 
 Controle financeiro e produtivo em tempo real para a PSYZON Company. O projeto
-usa React/Vinext, Cloud Firestore e Firebase Authentication anônima.
+usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
 
 ## Prerequisites
 
@@ -19,9 +19,15 @@ This starter does not use `wrangler.jsonc`.
 
 ## Firebase
 
-Copie `.env.example` para `.env.local` e preencha os valores do aplicativo Web
-criado no Firebase. Ative o Cloud Firestore e o login anônimo, depois publique
-as regras presentes em `firestore.rules`.
+Configure as variáveis públicas do aplicativo Web criado no Firebase. Para esta
+etapa são obrigatórias `NEXT_PUBLIC_FIREBASE_API_KEY`,
+`NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`, `NEXT_PUBLIC_FIREBASE_PROJECT_ID` e
+`NEXT_PUBLIC_FIREBASE_APP_ID`. Ative o provedor Google no Firebase
+Authentication, ative o Cloud Firestore e publique as regras presentes em
+`firestore.rules`.
+
+O aplicativo não usa Realtime Database nem Cloud Storage nesta etapa. As regras
+do Firestore garantem que cada conta Google acesse somente os próprios dados.
 
 ## Workspace Auth Headers
 

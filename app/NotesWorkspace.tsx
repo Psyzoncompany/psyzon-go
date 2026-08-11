@@ -1,27 +1,33 @@
 "use client";
 
 import {
+  Bold,
   Calculator,
-  Check,
-  CheckSquare,
   ChevronRight,
   Clock3,
   Copy,
+  Download,
+  FileText,
   FilePlus2,
+  Files,
   List,
   NotebookPen,
   Pin,
   Plus,
+  Printer,
+  Redo2,
   Search,
   Settings2,
   Shirt,
+  SmilePlus,
   Sparkles,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
 import { getApps } from "firebase/app";
 import { addDoc, collection, deleteDoc, doc, getFirestore, serverTimestamp, updateDoc } from "firebase/firestore";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type NoteCategory = "Geral" | "Produção" | "Clientes" | "Compras" | "Modelagem";
 
@@ -31,18 +37,34 @@ export type BusinessNote = {
   content: string;
   category: NoteCategory;
   pinned: boolean;
+  materials?: NoteMaterial[];
   createdAt?: unknown;
   updatedAt?: unknown;
 };
 
-type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned">;
+export type NoteMaterial = {
+  id: string;
+  fabricType: FabricType;
+  color: string;
+  fabricKg: number;
+  fabricCost: number;
+  collarType: CollarType;
+  ribanaKg: number;
+  ribanaCost: number;
+  ribanaPricePerKg: number;
+  poloUnits: number;
+  totalCost: number;
+  supplier: "Costa Rica" | "Atual Têxtil";
+};
+
+type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & { materials: NoteMaterial[] };
 type SaveState = "saved" | "saving" | "error";
 type NoteTemplate = { title: string; category: NoteCategory; content: string };
 type FabricType = "PV" | "PP" | "PIQUET";
 type CollarType = "common" | "polo";
 
 const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
-const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false };
+const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false, materials: [] };
 
 const templates: NoteTemplate[] = [
   {
@@ -78,6 +100,15 @@ function formatUpdatedAt(value: unknown) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(millis));
 }
 
+function toDraft(note: BusinessNote): Draft {
+  return { title: note.title, content: note.content, category: note.category, pinned: note.pinned, materials: Array.isArray(note.materials) ? note.materials : [] };
+}
+
+function titleCaseColor(value: string) {
+  const normalized = value.trim().toLocaleLowerCase("pt-BR");
+  return normalized ? normalized.charAt(0).toLocaleUpperCase("pt-BR") + normalized.slice(1) : "Sem cor";
+}
+
 function evaluateExpression(value: string) {
   const expression = value.replace(/,/g, ".").replace(/×/g, "*").replace(/÷/g, "/").replace(/\s/g, "");
   const normalized = expression.startsWith("-") ? `0${expression}` : expression;
@@ -103,13 +134,14 @@ function evaluateExpression(value: string) {
 
 export default function NotesWorkspace({ uid, notes }: { uid: string; notes: BusinessNote[] }) {
   const initialNote = [...notes].sort((left, right) => Number(right.pinned) - Number(left.pinned) || timestampValue(right.updatedAt) - timestampValue(left.updatedAt))[0];
-  const initialDraft: Draft = initialNote ? { title: initialNote.title, content: initialNote.content, category: initialNote.category, pinned: initialNote.pinned } : emptyDraft;
+  const initialDraft: Draft = initialNote ? toDraft(initialNote) : emptyDraft;
   const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
   const [draft, setDraft] = useState<Draft>(initialDraft);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<(typeof categories)[number]>("Todos");
-  const [newTask, setNewTask] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
+  const [editorNotice, setEditorNotice] = useState("");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calculatorTab, setCalculatorTab] = useState<"tecido" | "geral">("tecido");
   const [priceSettingsOpen, setPriceSettingsOpen] = useState(false);
@@ -131,13 +163,12 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const sortedNotes = useMemo(() => [...notes].sort((left, right) => Number(right.pinned) - Number(left.pinned) || timestampValue(right.updatedAt) - timestampValue(left.updatedAt)), [notes]);
   const filteredNotes = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("pt-BR");
-    return sortedNotes.filter((note) => (category === "Todos" || note.category === category) && (!term || `${note.title} ${note.content}`.toLocaleLowerCase("pt-BR").includes(term)));
+    return sortedNotes.filter((note) => {
+      const materialTerms = note.materials?.map((material) => `${material.fabricType} ${material.color}`).join(" ") ?? "";
+      return (category === "Todos" || note.category === category) && (!term || `${note.title} ${note.content} ${materialTerms}`.toLocaleLowerCase("pt-BR").includes(term));
+    });
   }, [category, search, sortedNotes]);
-  const noteTasks = useMemo(() => draft.content.split("\n").map((line, index) => {
-    const match = line.match(/^([☐☑])\s+(.+)$/);
-    return match ? { index, done: match[1] === "☑", text: match[2] } : null;
-  }).filter((task): task is { index: number; done: boolean; text: string } => task !== null), [draft.content]);
-  const noteListItems = useMemo(() => draft.content.split("\n").map((line) => line.match(/^(?:•|-)\s+(.+)$/)?.[1]).filter((item): item is string => Boolean(item)), [draft.content]);
+  const materialsTotal = useMemo(() => draft.materials.reduce((total, material) => total + material.totalCost, 0), [draft.materials]);
   useEffect(() => {
     if (!selectedId) return;
     const serialized = JSON.stringify(draft);
@@ -158,7 +189,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   }, [draft, selectedId, uid]);
 
   const selectNote = (note: BusinessNote) => {
-    const nextDraft = { title: note.title, content: note.content, category: note.category, pinned: note.pinned };
+    const nextDraft = toDraft(note);
     setSelectedId(note.id);
     setDraft(nextDraft);
     lastSavedRef.current = JSON.stringify(nextDraft);
@@ -171,6 +202,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       content: template?.content ?? "",
       category: template?.category ?? "Geral",
       pinned: false,
+      materials: [],
     };
     const reference = await addDoc(collection(getFirestore(getApps()[0]), "users", uid, "notes"), { ...nextDraft, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     setSelectedId(reference.id);
@@ -203,28 +235,70 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     });
   };
 
-  const addInteractiveTask = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const task = newTask.trim();
-    if (!task) return;
-    setDraft((current) => ({ ...current, content: `${current.content}${current.content && !current.content.endsWith("\n") ? "\n" : ""}☐ ${task}` }));
-    setNewTask("");
+  const showEditorNotice = (message: string) => {
+    setEditorNotice(message);
+    window.setTimeout(() => setEditorNotice(""), 2200);
   };
 
-  const toggleTask = (lineIndex: number, done: boolean) => {
-    setDraft((current) => {
-      const lines = current.content.split("\n");
-      lines[lineIndex] = lines[lineIndex].replace(/^[☐☑]/, done ? "☐" : "☑");
-      return { ...current, content: lines.join("\n") };
+  const wrapSelection = (prefix: string, suffix = prefix) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = draft.content.slice(start, end) || "texto";
+    const replacement = `${prefix}${selected}${suffix}`;
+    setDraft((current) => ({ ...current, content: `${current.content.slice(0, start)}${replacement}${current.content.slice(end)}` }));
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
     });
   };
 
-  const removeTask = (lineIndex: number) => {
-    setDraft((current) => {
-      const lines = current.content.split("\n");
-      lines.splice(lineIndex, 1);
-      return { ...current, content: lines.join("\n") };
-    });
+  const materialText = (material: NoteMaterial, index: number) => {
+    const collarLines = material.collarType === "common"
+      ? `🟩 *Ribana – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg\n💵 *Valor: ${formatCurrency(material.ribanaCost)}*`
+      : `👕 *Gola polo – ${material.color}*\n🔢 Quantidade: ${material.poloUnits} unidades`;
+    return `🧵 *MATERIAL ${index + 1}*\n\n🟢 *Malha ${material.fabricType} – ${material.color}*\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 *CUSTO TOTAL MATERIAL ${index + 1}: ${formatCurrency(material.totalCost)}*`;
+  };
+
+  const exportedMaterials = () => {
+    if (!draft.materials.length) return `${draft.title}\n\n${draft.content}`.trim();
+    const blocks = draft.materials.map(materialText).join("\n\n━━━━━━━━━━━━━━━━━━\n\n");
+    return `${blocks}\n\n💰 *CUSTO TOTAL GERAL: ${formatCurrency(materialsTotal)}*`;
+  };
+
+  const copyMaterials = async () => {
+    await navigator.clipboard.writeText(exportedMaterials());
+    setExportMenuOpen(false);
+    showEditorNotice("Texto copiado para o WhatsApp");
+  };
+
+  const downloadText = () => {
+    const file = new Blob([exportedMaterials()], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${draft.title || "anotacao"}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setExportMenuOpen(false);
+    showEditorNotice("Arquivo TXT exportado");
+  };
+
+  const duplicateLastMaterial = () => {
+    const material = draft.materials.at(-1);
+    if (!material) {
+      setCalculatorTab("tecido");
+      setCalculatorOpen(true);
+      return;
+    }
+    setDraft((current) => ({ ...current, materials: [...current.materials, { ...material, id: crypto.randomUUID() }] }));
+    showEditorNotice(`MATERIAL ${draft.materials.length + 1} duplicado`);
+  };
+
+  const removeMaterial = (id: string) => {
+    setDraft((current) => ({ ...current, materials: current.materials.filter((material) => material.id !== id) }));
+    showEditorNotice("Material removido e totais recalculados");
   };
 
   const calculate = () => {
@@ -255,18 +329,27 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const formatKg = (value: number) => value.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-  const exportSupplierOrder = () => {
-    const color = fabricColor.trim().toLocaleUpperCase("pt-BR");
-    if (!numericFabricValue || !selectedId || !color) return;
-    const collarDetails = collarType === "common"
-      ? `RIBANA ${formatKg(ribanaKg)}KG COR ${color} VALOR ${formatCurrency(ribanaCost)} (${formatCurrency(numericRibanaPrice)}/KG)`
-      : `GOLA POLO ${plannedPieces} UNIDADES COR ${color}`;
-    const costDetails = totalFabricCost > 0
-      ? ` | CUSTO TOTAL ${formatCurrency(totalOrderCost)}`
-      : "";
-    const orderLine = `MALHA (${fabricType}) ${formatKg(calculatedOrderKg)}KG COR ${color} | ${collarDetails}${costDetails}`;
-    insertAtCursor(`${draft.content && !draft.content.endsWith("\n") ? "\n" : ""}${orderLine}\n`);
+  const addMaterialToNote = () => {
+    const color = titleCaseColor(fabricColor);
+    if (!numericFabricValue || !selectedId || !fabricColor.trim()) return;
+    const nextNumber = draft.materials.length + 1;
+    const material: NoteMaterial = {
+      id: crypto.randomUUID(),
+      fabricType,
+      color,
+      fabricKg: calculatedOrderKg,
+      fabricCost: totalFabricCost,
+      collarType,
+      ribanaKg: collarType === "common" ? ribanaKg : 0,
+      ribanaCost,
+      ribanaPricePerKg: numericRibanaPrice,
+      poloUnits: collarType === "polo" ? plannedPieces : 0,
+      totalCost: totalOrderCost,
+      supplier,
+    };
+    setDraft((current) => ({ ...current, materials: [...current.materials, material] }));
     setCalculatorOpen(false);
+    showEditorNotice(`MATERIAL ${nextNumber} adicionado e calculado`);
   };
 
   return (
@@ -286,7 +369,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
           <div className="notes-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar anotações…" aria-label="Buscar anotações" /></div>
           <div className="notes-filters">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
           <div className="notes-list">
-            {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)}><span><b>{note.title || "Sem título"}</b>{note.pinned ? <Pin size={12} /> : null}</span><p>{note.content || "Anotação vazia"}</p><small><span>{note.category}</span>{formatUpdatedAt(note.updatedAt)}</small></button>)}
+            {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)}><span><b>{note.title || "Sem título"}</b>{note.pinned ? <Pin size={12} /> : null}</span><p>{note.materials?.length ? `${note.materials.length} ${note.materials.length === 1 ? "material" : "materiais"} · Custo total: ${formatCurrency(note.materials.reduce((total, material) => total + material.totalCost, 0))}` : note.content || "Anotação vazia"}</p><small><span>{note.category}</span>{formatUpdatedAt(note.updatedAt)}</small></button>)}
             {!filteredNotes.length && <div className="notes-empty"><NotebookPen size={24} /><b>Nenhuma anotação</b><small>Crie uma nota ou escolha um modelo.</small></div>}
           </div>
         </aside>
@@ -295,29 +378,39 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
           {selectedId ? <>
             <header className="note-editor-header">
               <div className={`note-save-state ${saveState}`}><span />{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : "Salvo em tempo real"}</div>
-              <div><button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar anotação" : "Fixar anotação"}><Pin size={16} /></button><button onClick={() => navigator.clipboard.writeText(`${draft.title}\n\n${draft.content}`)} aria-label="Copiar anotação"><Copy size={16} /></button><button className="danger" onClick={deleteNote} aria-label="Excluir anotação"><Trash2 size={16} /></button></div>
+              <div><button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar anotação" : "Fixar anotação"}><Pin size={16} /></button><button onClick={copyMaterials} aria-label="Copiar anotação"><Copy size={16} /></button><button className="danger" onClick={deleteNote} aria-label="Excluir anotação"><Trash2 size={16} /></button></div>
             </header>
-            <input className="note-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título da anotação" aria-label="Título da anotação" />
-            <div className="note-toolbar">
-              <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da anotação">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select>
-              <span />
-              <button onClick={() => insertAtCursor("☐ ")}><CheckSquare size={15} /> Tarefa</button>
+            <div className="note-document-heading">
+              <div><input className="note-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Título da anotação" aria-label="Título da anotação" /><select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da anotação">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select></div>
+              <div className="materials-grand-total"><small>CUSTO TOTAL</small><b>{formatCurrency(materialsTotal)}</b><span><Calculator size={13} /> Cálculo automático ativado</span></div>
+            </div>
+            <div className="note-actionbar">
+              <button onClick={() => wrapSelection("**")}><Bold size={15} /> Negrito</button>
+              <button onClick={() => insertAtCursor("🧵 ")}><SmilePlus size={15} /> Emoji</button>
               <button onClick={() => insertAtCursor("• ")}><List size={15} /> Lista</button>
               <button onClick={() => insertAtCursor(`${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date())} — `)}><Clock3 size={15} /> Data</button>
+              <button onClick={() => { textareaRef.current?.focus(); document.execCommand("undo"); }} aria-label="Desfazer"><Undo2 size={15} /> Desfazer</button>
+              <button onClick={() => { textareaRef.current?.focus(); document.execCommand("redo"); }} aria-label="Refazer"><Redo2 size={15} /> Refazer</button>
+              <span />
+              <button className="add-material" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Plus size={15} /> Adicionar material</button>
+              <button onClick={duplicateLastMaterial}><Files size={15} /> Duplicar</button>
+              <div className="note-export-wrap"><button className={exportMenuOpen ? "active" : ""} onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen}><Download size={15} /> Exportar</button>{exportMenuOpen && <div className="note-export-menu"><button onClick={downloadText}><FileText size={15} /> TXT</button><button onClick={() => { setExportMenuOpen(false); window.print(); }}><Printer size={15} /> PDF / Imprimir</button></div>}</div>
+              <button onClick={copyMaterials}><Copy size={15} /> Copiar</button>
             </div>
-            <textarea ref={textareaRef} value={draft.content} onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))} placeholder="Escreva detalhes do pedido, medidas, materiais, tarefas e observações…" aria-label="Conteúdo da anotação" />
-            <div className="note-organizer">
-              <section className="interactive-task-card">
-                <header><span><CheckSquare size={16} /></span><div><b>Tarefas interativas</b><small>{noteTasks.filter((task) => task.done).length} de {noteTasks.length} concluídas</small></div></header>
-                <form onSubmit={addInteractiveTask}><input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Adicionar tarefa…" aria-label="Nova tarefa" /><button type="submit" aria-label="Adicionar tarefa"><Plus size={16} /></button></form>
-                <div className="interactive-task-list">
-                  {noteTasks.map((task) => <div key={`${task.index}-${task.text}`} className={task.done ? "done" : ""}><label><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.index, task.done)} /><span><Check size={12} /></span><b>{task.text}</b></label><button onClick={() => removeTask(task.index)} aria-label={`Remover tarefa ${task.text}`}><X size={14} /></button></div>)}
-                  {!noteTasks.length && <p>Adicione tarefas para acompanhar a produção e marque cada etapa quando terminar.</p>}
-                </div>
-              </section>
-              {noteListItems.length > 0 && <section className="visual-list-card"><header><List size={16} /><b>Lista da anotação</b><span>{noteListItems.length}</span></header><div>{noteListItems.map((item, index) => <p key={`${item}-${index}`}><span>{index + 1}</span>{item}</p>)}</div></section>}
+            {editorNotice && <div className="editor-notice">{editorNotice}</div>}
+            <div className="note-writing-area">
+              <textarea ref={textareaRef} value={draft.content} onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))} placeholder="Escreva uma observação para acompanhar os materiais…" aria-label="Conteúdo da anotação" />
+              <div className="materials-document">
+                {draft.materials.map((material, index) => <article className="material-document-card" key={material.id}>
+                  <header><b>🧵 MATERIAL {index + 1}</b><div><button onClick={() => navigator.clipboard.writeText(materialText(material, index)).then(() => showEditorNotice(`MATERIAL ${index + 1} copiado`))} aria-label={`Copiar material ${index + 1}`}><Copy size={14} /></button><button onClick={() => removeMaterial(material.id)} aria-label={`Remover material ${index + 1}`}><Trash2 size={14} /></button></div></header>
+                  <div className="material-line"><b>🟢 Malha {material.fabricType} – {material.color}</b><span>⚖️ Quantidade: {formatKg(material.fabricKg)} kg</span></div>
+                  {material.collarType === "common" ? <div className="material-line"><b>🟩 Ribana – {material.color}</b><span>⚖️ Quantidade: {formatKg(material.ribanaKg)} kg</span><strong>💵 Valor: {formatCurrency(material.ribanaCost)}</strong></div> : <div className="material-line"><b>👕 Gola polo – {material.color}</b><span>🔢 Quantidade: {material.poloUnits} unidades</span></div>}
+                  <div className="material-total-row">💰 CUSTO TOTAL MATERIAL {index + 1}: {formatCurrency(material.totalCost)}</div>
+                </article>)}
+                {!draft.materials.length && <button className="materials-empty" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Shirt size={25} /><b>Adicione o primeiro material</b><span>A calculadora cria o bloco, numera e soma os custos automaticamente.</span></button>}
+              </div>
             </div>
-            <footer className="note-editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} palavras</span><span>{draft.content.length} caracteres</span></footer>
+            <footer className="note-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"}</span><span>Custo total: {formatCurrency(materialsTotal)}</span><span>Atualizado agora</span></footer>
           </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Organize a operação</h2><p>Crie uma anotação livre ou use um modelo preparado para a confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
         </section>
       </div>
@@ -345,7 +438,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
             <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? `5% da malha · ${formatCurrency(numericRibanaPrice)}/kg · custo ${formatCurrency(ribanaCost)}` : "1 gola por camisa"}</small></div>
             {(collarType === "common" || totalFabricCost > 0) && <div className="cost-summary">{collarType === "common" && <div className="cost-result ribana"><span>Valor total da ribana</span><b>{formatCurrency(ribanaCost)}</b></div>}{totalFabricCost > 0 && <><div className="cost-result"><span>Valor total da malha</span><b>{formatCurrency(totalFabricCost)}</b></div><div className="cost-result"><span>Custo estimado por camisa</span><b>{formatCurrency(costPerPiece)}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{formatCurrency(totalOrderCost)}</b></div></>}</div>}
-            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Exportar linha para a anotação aberta</button>
+            <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Adicionar como MATERIAL {draft.materials.length + 1}</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

@@ -619,7 +619,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .notes-empty { min-height: 210px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
 .notes-empty b { margin-top: 10px; font-size: 11px; }
 .notes-empty small { margin-top: 4px; font-size: 9px; }
-.note-editor { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.note-editor { position: relative; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .note-editor-header { min-height: 47px; padding: 0 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
 .note-save-state { color: var(--muted); display: flex; align-items: center; gap: 7px; font-size: 9px; font-weight: 650; }
 .note-save-state > span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
@@ -671,6 +671,47 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .visual-list-card p { margin: 0; padding: 7px 8px; border-radius: 8px; background: var(--card-subtle); color: var(--text); display: flex; align-items: center; gap: 8px; font-size: 9px; line-height: 1.35; }
 .visual-list-card p span { width: 20px; height: 20px; flex: 0 0 20px; border-radius: 6px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; font-size: 7px; font-weight: 850; }
 .note-editor-footer { min-height: 34px; padding: 0 19px; border-top: 1px solid var(--border); color: var(--faint); display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 8px; }
+.note-document-heading { min-height: 132px; padding: 20px 22px; display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.note-document-heading > div:first-child { min-width: 0; flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+.note-document-heading .note-title-input { width: 100%; margin: 0 0 15px; padding: 0; border: 0; font-size: 21px; }
+.note-document-heading select { min-width: 145px; height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--card); color: var(--text); font-size: 10px; }
+.materials-grand-total { min-width: 185px; padding: 14px 17px; border: 1px solid color-mix(in srgb, var(--green) 40%, var(--border)); border-radius: 11px; background: linear-gradient(135deg, var(--green-soft), color-mix(in srgb, var(--green-soft) 62%, var(--card))); display: flex; flex-direction: column; }
+.materials-grand-total > small { color: var(--green); font-size: 8px; font-weight: 800; letter-spacing: .06em; }
+.materials-grand-total > b { margin-top: 6px; color: var(--green); font-size: 20px; letter-spacing: -.025em; }
+.materials-grand-total > span { margin: 13px -1px -2px; padding: 6px 8px; border-radius: 7px; background: color-mix(in srgb, var(--green-soft) 72%, var(--card)); color: var(--green); display: flex; align-items: center; gap: 6px; font-size: 7px; font-weight: 700; }
+.note-actionbar { min-height: 52px; padding: 7px 12px; border-block: 1px solid var(--border); background: var(--card-subtle); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.note-actionbar > span { flex: 1; }
+.note-actionbar button { height: 32px; padding: 0 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--card); color: var(--muted); display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 8px; font-weight: 680; cursor: pointer; }
+.note-actionbar button:hover, .note-actionbar button.active { border-color: var(--blue); color: var(--blue); }
+.note-actionbar button.add-material { border-color: var(--blue); background: var(--blue); color: white; }
+.note-export-wrap { position: relative; }
+.note-export-menu { position: absolute; top: 38px; right: 0; width: 150px; padding: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: 0 14px 35px rgba(15,23,42,.17); z-index: 12; }
+.note-export-menu button { width: 100%; border-color: transparent; justify-content: flex-start; }
+.editor-notice { position: absolute; top: 52px; right: 58px; z-index: 14; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--green) 30%, var(--border)); border-radius: 8px; background: var(--green-soft); color: var(--green); font-size: 8px; font-weight: 750; box-shadow: var(--shadow); }
+.note-writing-area { min-height: 410px; flex: 1; overflow-y: auto; background: var(--card); }
+.note-writing-area > textarea { min-height: 74px; max-height: 150px; padding: 14px 22px; border: 0; border-bottom: 1px dashed var(--border); resize: vertical; background: var(--card); font-size: 11px; line-height: 1.6; }
+.materials-document { padding: 18px 23px 25px; }
+.material-document-card { position: relative; padding: 0 0 18px; border-bottom: 1px solid var(--border); }
+.material-document-card + .material-document-card { padding-top: 18px; }
+.material-document-card:last-child { border-bottom: 0; }
+.material-document-card > header { min-height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.material-document-card > header > b { color: var(--text); font-size: 14px; font-weight: 850; letter-spacing: .015em; }
+.material-document-card > header > div { display: flex; gap: 4px; opacity: 0; transition: opacity .16s ease; }
+.material-document-card:hover > header > div, .material-document-card:focus-within > header > div { opacity: 1; }
+.material-document-card > header button { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--faint); display: grid; place-items: center; cursor: pointer; }
+.material-document-card > header button:hover { background: var(--card-subtle); color: var(--blue); }
+.material-document-card > header button:last-child:hover { background: var(--red-soft); color: var(--red); }
+.material-line { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.material-line b { color: var(--text); font-size: 13px; font-weight: 820; }
+.material-line span { color: var(--blue); font-size: 11px; font-weight: 450; }
+.material-line strong { color: var(--text); font-size: 11px; font-weight: 800; }
+.material-total-row { width: min(680px, 100%); margin-top: 10px; padding: 7px 10px; border-radius: 7px; background: linear-gradient(90deg, var(--green-soft), color-mix(in srgb, var(--green-soft) 38%, transparent)); color: var(--text); font-size: 11px; font-weight: 850; }
+.materials-empty { width: 100%; min-height: 220px; border: 1px dashed color-mix(in srgb, var(--blue) 30%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--blue-soft) 30%, var(--card)); color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; }
+.materials-empty svg { color: var(--blue); }
+.materials-empty b { margin-top: 10px; color: var(--text); font-size: 12px; }
+.materials-empty span { max-width: 340px; margin-top: 5px; font-size: 9px; line-height: 1.5; }
+.note-editor-footer { justify-content: flex-start; }
+.note-editor-footer span:last-child { margin-left: auto; }
 .note-editor-empty { min-height: 570px; padding: 30px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .note-editor-empty svg { color: var(--blue); }
 .note-editor-empty h2 { margin: 13px 0 5px; color: var(--text); font-size: 20px; }
@@ -770,6 +811,22 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .notes-sidebar { max-height: 310px; margin-bottom: 11px; }
   .notes-list { min-height: 150px; }
   .note-editor textarea { min-height: 300px; font-size: 16px; }
+  .note-document-heading { padding: 17px; flex-direction: column; gap: 13px; }
+  .note-document-heading > div:first-child { width: 100%; }
+  .note-document-heading .note-title-input { font-size: 20px; }
+  .materials-grand-total { width: 100%; min-width: 0; }
+  .note-actionbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .note-actionbar > span { display: none; }
+  .note-actionbar button { flex: 0 0 auto; }
+  .note-export-menu { position: fixed; top: auto; right: 14px; bottom: 84px; }
+  .note-writing-area > textarea { min-height: 90px; max-height: 170px; font-size: 16px; }
+  .materials-document { padding: 15px 17px 22px; }
+  .material-document-card > header > div { opacity: 1; }
+  .material-document-card > header > b { font-size: 13px; }
+  .material-line b { font-size: 12px; }
+  .material-line span, .material-line strong, .material-total-row { font-size: 10px; }
+  .note-editor-footer { flex-wrap: wrap; padding-block: 8px; }
+  .note-editor-footer span:last-child { margin-left: 0; }
   .note-toolbar { flex-wrap: wrap; padding-block: 8px; }
   .note-toolbar > span { display: none; }
   .note-title-input { font-size: 20px; }
@@ -779,6 +836,18 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .calculator-panel { max-height: calc(100vh - 20px); border-radius: 18px; }
   .material-options { grid-template-columns: 1fr; }
   .price-settings { grid-template-columns: 1fr; }
+}
+
+@media print {
+  body { background: white; zoom: 1; }
+  .sidebar, .topbar, .notes-heading, .note-template-strip, .notes-sidebar, .notes-calculator-fab, .mobile-nav, .floating-new, .mobile-floating-launcher, .note-editor-header, .note-actionbar, .editor-notice { display: none !important; }
+  .main { margin: 0 !important; }
+  .content { max-width: none; padding: 0; }
+  .notes-layout { display: block; min-height: 0; }
+  .note-editor { border: 0; box-shadow: none; }
+  .note-writing-area { overflow: visible; }
+  .note-writing-area > textarea { display: none; }
+  .material-document-card { break-inside: avoid; }
 }
 
 @media (prefers-reduced-motion: reduce) {

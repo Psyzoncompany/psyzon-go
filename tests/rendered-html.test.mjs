@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -52,4 +53,44 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(worker, /Promise\.allSettled/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"/);
   assert.match(page, /updateViaCache: "none"/);
+});
+
+test("service worker clones a network response before its body is consumed", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const listeners = new Map();
+  let releaseCache;
+  let cachedBody = "";
+  const cacheReady = new Promise((resolve) => { releaseCache = resolve; });
+
+  vm.runInNewContext(worker, {
+    URL,
+    Promise,
+    fetch: async () => new Response("fresh page"),
+    caches: {
+      open: () => cacheReady,
+      match: async () => undefined,
+      keys: async () => [],
+      delete: async () => true,
+    },
+    self: {
+      location: { origin: "https://psyzon.test" },
+      addEventListener: (type, listener) => listeners.set(type, listener),
+      skipWaiting() {},
+      clients: { claim() {} },
+    },
+  });
+
+  let responsePromise;
+  let cachePromise;
+  listeners.get("fetch")({
+    request: { method: "GET", url: "https://psyzon.test/", mode: "navigate" },
+    respondWith: (promise) => { responsePromise = promise; },
+    waitUntil: (promise) => { cachePromise = promise; },
+  });
+
+  const response = await responsePromise;
+  assert.equal(await response.text(), "fresh page");
+  releaseCache({ put: async (_key, cachedResponse) => { cachedBody = await cachedResponse.text(); } });
+  await cachePromise;
+  assert.equal(cachedBody, "fresh page");
 });

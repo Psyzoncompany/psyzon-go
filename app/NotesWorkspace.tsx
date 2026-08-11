@@ -35,11 +35,12 @@ export type BusinessNote = {
 
 type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned">;
 type SaveState = "saved" | "saving" | "error";
+type NoteTemplate = { title: string; category: NoteCategory; content: string };
 
 const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
 const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false };
 
-const templates: Array<{ title: string; category: NoteCategory; content: string }> = [
+const templates: NoteTemplate[] = [
   {
     title: "Ordem de produção",
     category: "Produção",
@@ -108,8 +109,8 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [calculatorTab, setCalculatorTab] = useState<"tecido" | "geral">("tecido");
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
-  const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("kg");
-  const [fabricValue, setFabricValue] = useState("1");
+  const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
+  const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
   const [pricePerKg, setPricePerKg] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -148,7 +149,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     setSaveState("saved");
   };
 
-  const createNote = async (template?: (typeof templates)[number]) => {
+  const createNote = async (template?: NoteTemplate) => {
     const nextDraft: Draft = {
       title: template?.title ?? "Nova anotação",
       content: template?.content ?? "",
@@ -205,6 +206,22 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const numericPrice = Math.max(0, Number(pricePerKg.replace(",", ".")) || 0);
   const costPerPiece = efficiency > 0 ? numericPrice / 4.2 / efficiency : 0;
 
+  const exportSupplierOrder = async () => {
+    if (!numericFabricValue) return;
+    const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
+    const orderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
+    const estimatedTotal = numericPrice > 0 ? orderKg * numericPrice : 0;
+    const formattedKg = orderKg.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedPrice = numericPrice > 0 ? numericPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
+    const formattedTotal = estimatedTotal > 0 ? estimatedTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "A confirmar";
+    await createNote({
+      title: `Pedido de tecido • ${plannedPieces} camisas`,
+      category: "Compras",
+      content: `PEDIDO DE TECIDO PARA FORNECEDOR\n\nDATA: ${new Intl.DateTimeFormat("pt-BR").format(new Date())}\nFORNECEDOR:\nCONTATO:\nTECIDO:\nCOR:\nGRAMATURA / LARGURA:\n\nQUANTIDADE A PEDIR: ${formattedKg} kg\nPRODUÇÃO PLANEJADA: ${plannedPieces} camisas\nRENDIMENTO UTILIZADO: 1 kg = 4,2 camisas\nMARGEM DE PERDA: ${numericWaste}%\nPREÇO POR KG: ${formattedPrice}\nTOTAL ESTIMADO: ${formattedTotal}\n\nPRAZO DE ENTREGA:\nFORMA DE PAGAMENTO:\n\nCONFERÊNCIA\n☐ Confirmar disponibilidade e tonalidade\n☐ Confirmar gramatura e largura\n☐ Confirmar valor do frete\n☐ Confirmar prazo de entrega\n☐ Guardar nota fiscal\n\nOBSERVAÇÕES:\n`,
+    });
+    setCalculatorOpen(false);
+  };
+
   return (
     <div className="notes-workspace">
       <div className="page-heading compact notes-heading">
@@ -255,12 +272,12 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
           <div className="calculator-tabs"><button className={calculatorTab === "tecido" ? "active" : ""} onClick={() => setCalculatorTab("tecido")}><Shirt size={16} /> Tecido e peças</button><button className={calculatorTab === "geral" ? "active" : ""} onClick={() => setCalculatorTab("geral")}><Calculator size={16} /> Calculadora</button></div>
           {calculatorTab === "tecido" ? <div className="fabric-calculator">
             <div className="fabric-rate"><Shirt size={20} /><span><small>RENDIMENTO PADRÃO</small><b>1 kg = 4,2 camisas</b></span></div>
-            <div className="fabric-mode"><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button></div>
+            <div className="fabric-mode"><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button></div>
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label><label>Preço por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Opcional" /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${requiredKg.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
             {numericPrice > 0 && <div className="cost-result"><span>Custo estimado de tecido por camisa</span><b>{costPerPiece.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</b></div>}
-            <button className="calculator-copy" onClick={() => insertAtCursor(`\nCÁLCULO DE TECIDO\n${fabricMode === "kg" ? `${numericFabricValue} kg → ${estimatedPieces} camisas` : `${numericFabricValue} camisas → ${requiredKg.toFixed(2).replace(".", ",")} kg`}${numericWaste ? ` (perda: ${numericWaste}%)` : ""}\n`)} disabled={!selectedId}><Copy size={16} /> Colocar resultado na anotação</button>
+            <button className="calculator-copy supplier-export" onClick={exportSupplierOrder} disabled={!numericFabricValue}><FilePlus2 size={16} /> Exportar pedido para o bloco de notas</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

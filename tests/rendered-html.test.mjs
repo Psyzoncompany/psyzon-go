@@ -40,6 +40,9 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(page, /"notes"/);
   assert.match(page, /<NotesWorkspace uid=\{uid\} notes=\{notes\}/);
   assert.match(notes, /1 kg = 4,2 camisas/);
+  assert.match(notes, /useState&lt;"kg" \| "pieces"&gt;\("pieces"\)|useState<"kg" \| "pieces">\("pieces"\)/);
+  assert.match(notes, /PEDIDO DE TECIDO PARA FORNECEDOR/);
+  assert.match(notes, /Exportar pedido para o bloco de notas/);
   assert.match(notes, /updatedAt: serverTimestamp\(\)/);
   assert.match(notes, /Salvo em tempo real/);
 });

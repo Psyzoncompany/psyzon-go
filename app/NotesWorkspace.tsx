@@ -154,7 +154,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [collarType, setCollarType] = useState<CollarType>("common");
   const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
-  const [pricePerKg, setPricePerKg] = useState("");
+  const [pricePerKg, setPricePerKg] = useState("43.90");
   const [ribanaPricePerKg, setRibanaPricePerKg] = useState("90.91");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<number | undefined>(undefined);

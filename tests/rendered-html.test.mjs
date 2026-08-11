@@ -45,6 +45,7 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /\["PV", "PP", "PIQUET"\]/);
   assert.match(notes, /calculatedOrderKg \* 0\.05/);
   assert.match(notes, /useState\("90\.91"\)/);
+  assert.match(notes, /useState\("43\.90"\)/);
   assert.match(notes, /ribanaKg \* numericRibanaPrice/);
   assert.match(notes, /Ribana/);
   assert.match(notes, /Gola polo/);

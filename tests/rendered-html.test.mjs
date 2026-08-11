@@ -43,6 +43,8 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /useState&lt;"kg" \| "pieces"&gt;\("pieces"\)|useState<"kg" \| "pieces">\("pieces"\)/);
   assert.match(notes, /PEDIDO DE TECIDO PARA FORNECEDOR/);
   assert.match(notes, /Exportar pedido para o bloco de notas/);
+  assert.match(notes, /Tarefas interativas/);
+  assert.match(notes, /type="checkbox" checked=\{task\.done\}/);
   assert.match(notes, /updatedAt: serverTimestamp\(\)/);
   assert.match(notes, /Salvo em tempo real/);
 });

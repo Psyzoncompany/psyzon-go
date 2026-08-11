@@ -628,8 +628,39 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .note-toolbar select, .note-toolbar button { height: 29px; padding: 0 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--muted); font: 650 9px inherit; }
 .note-toolbar button { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .note-toolbar button:hover { border-color: var(--blue); color: var(--blue); }
-.note-editor textarea { width: 100%; min-height: 430px; flex: 1; padding: 15px 20px; border: 0; border-top: 1px solid var(--border); outline: none; resize: none; background: color-mix(in srgb, var(--card) 98%, var(--bg)); color: var(--text); font: 450 13px/1.75 inherit; }
+.note-editor textarea { width: 100%; min-height: 300px; flex: 1; padding: 15px 20px; border: 0; border-top: 1px solid var(--border); outline: none; resize: vertical; background: color-mix(in srgb, var(--card) 98%, var(--bg)); color: var(--text); font: 450 13px/1.75 inherit; }
 .note-editor textarea::placeholder { color: var(--faint); }
+.note-organizer { padding: 12px 15px; border-top: 1px solid var(--border); background: var(--card-subtle); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(220px, .8fr); gap: 10px; }
+.interactive-task-card, .visual-list-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.interactive-task-card > header { display: flex; align-items: center; gap: 9px; }
+.interactive-task-card > header > span { width: 30px; height: 30px; border-radius: 9px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
+.interactive-task-card > header > div { display: flex; flex-direction: column; }
+.interactive-task-card > header b { font-size: 10px; }
+.interactive-task-card > header small { margin-top: 2px; color: var(--muted); font-size: 8px; }
+.interactive-task-card form { margin: 10px 0 8px; display: flex; gap: 6px; }
+.interactive-task-card form input { min-width: 0; flex: 1; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 10px; }
+.interactive-task-card form input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.interactive-task-card form button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: var(--blue); color: white; display: grid; place-items: center; cursor: pointer; }
+.interactive-task-list { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.interactive-task-list > div { min-height: 35px; padding: 5px 5px 5px 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.interactive-task-list > div:hover { border-color: color-mix(in srgb, var(--blue) 34%, var(--border)); }
+.interactive-task-list label { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.interactive-task-list label input { position: absolute; opacity: 0; pointer-events: none; }
+.interactive-task-list label > span { width: 20px; height: 20px; flex: 0 0 20px; border: 1.5px solid color-mix(in srgb, var(--blue) 42%, var(--border)); border-radius: 6px; color: transparent; display: grid; place-items: center; transition: .18s ease; }
+.interactive-task-list label input:focus-visible + span { box-shadow: 0 0 0 3px var(--blue-soft); }
+.interactive-task-list label input:checked + span { border-color: var(--blue); background: var(--blue); color: white; }
+.interactive-task-list label b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-size: 9px; font-weight: 620; }
+.interactive-task-list > div.done { background: color-mix(in srgb, var(--green-soft) 55%, var(--card)); }
+.interactive-task-list > div.done label b { color: var(--muted); text-decoration: line-through; }
+.interactive-task-list > div > button { width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--faint); display: grid; place-items: center; cursor: pointer; }
+.interactive-task-list > div > button:hover { background: var(--red-soft); color: var(--red); }
+.interactive-task-list > p { margin: 5px 2px; color: var(--muted); font-size: 8px; line-height: 1.5; }
+.visual-list-card > header { min-height: 30px; color: var(--blue); display: flex; align-items: center; gap: 7px; }
+.visual-list-card > header b { color: var(--text); font-size: 10px; }
+.visual-list-card > header span { margin-left: auto; width: 21px; height: 21px; border-radius: 7px; background: var(--blue-soft); display: grid; place-items: center; font-size: 8px; font-weight: 800; }
+.visual-list-card > div { margin-top: 8px; max-height: 215px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.visual-list-card p { margin: 0; padding: 7px 8px; border-radius: 8px; background: var(--card-subtle); color: var(--text); display: flex; align-items: center; gap: 8px; font-size: 9px; line-height: 1.35; }
+.visual-list-card p span { width: 20px; height: 20px; flex: 0 0 20px; border-radius: 6px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; font-size: 7px; font-weight: 850; }
 .note-editor-footer { min-height: 34px; padding: 0 19px; border-top: 1px solid var(--border); color: var(--faint); display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 8px; }
 .note-editor-empty { min-height: 570px; padding: 30px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .note-editor-empty svg { color: var(--blue); }
@@ -686,6 +717,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .note-template-strip { align-items: flex-start; flex-direction: column; }
   .note-template-strip > div:last-child { width: 100%; }
   .notes-layout { grid-template-columns: 260px minmax(0, 1fr); }
+  .note-organizer { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {
@@ -696,7 +728,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .notes-layout { min-height: 0; display: block; }
   .notes-sidebar { max-height: 310px; margin-bottom: 11px; }
   .notes-list { min-height: 150px; }
-  .note-editor textarea { min-height: 380px; font-size: 16px; }
+  .note-editor textarea { min-height: 300px; font-size: 16px; }
   .note-toolbar { flex-wrap: wrap; padding-block: 8px; }
   .note-toolbar > span { display: none; }
   .note-title-input { font-size: 20px; }

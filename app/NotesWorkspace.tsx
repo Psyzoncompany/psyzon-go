@@ -2,6 +2,7 @@
 
 import {
   Calculator,
+  Check,
   CheckSquare,
   ChevronRight,
   Clock3,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { getApps } from "firebase/app";
 import { addDoc, collection, deleteDoc, doc, getFirestore, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 export type NoteCategory = "Geral" | "Produção" | "Clientes" | "Compras" | "Modelagem";
 
@@ -104,6 +105,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [draft, setDraft] = useState<Draft>(initialDraft);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<(typeof categories)[number]>("Todos");
+  const [newTask, setNewTask] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [calculatorOpen, setCalculatorOpen] = useState(false);
   const [calculatorTab, setCalculatorTab] = useState<"tecido" | "geral">("tecido");
@@ -122,6 +124,11 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     const term = search.trim().toLocaleLowerCase("pt-BR");
     return sortedNotes.filter((note) => (category === "Todos" || note.category === category) && (!term || `${note.title} ${note.content}`.toLocaleLowerCase("pt-BR").includes(term)));
   }, [category, search, sortedNotes]);
+  const noteTasks = useMemo(() => draft.content.split("\n").map((line, index) => {
+    const match = line.match(/^([☐☑])\s+(.+)$/);
+    return match ? { index, done: match[1] === "☑", text: match[2] } : null;
+  }).filter((task): task is { index: number; done: boolean; text: string } => task !== null), [draft.content]);
+  const noteListItems = useMemo(() => draft.content.split("\n").map((line) => line.match(/^(?:•|-)\s+(.+)$/)?.[1]).filter((item): item is string => Boolean(item)), [draft.content]);
   useEffect(() => {
     if (!selectedId) return;
     const serialized = JSON.stringify(draft);
@@ -184,6 +191,30 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     window.requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(start + text.length, start + text.length);
+    });
+  };
+
+  const addInteractiveTask = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const task = newTask.trim();
+    if (!task) return;
+    setDraft((current) => ({ ...current, content: `${current.content}${current.content && !current.content.endsWith("\n") ? "\n" : ""}☐ ${task}` }));
+    setNewTask("");
+  };
+
+  const toggleTask = (lineIndex: number, done: boolean) => {
+    setDraft((current) => {
+      const lines = current.content.split("\n");
+      lines[lineIndex] = lines[lineIndex].replace(/^[☐☑]/, done ? "☐" : "☑");
+      return { ...current, content: lines.join("\n") };
+    });
+  };
+
+  const removeTask = (lineIndex: number) => {
+    setDraft((current) => {
+      const lines = current.content.split("\n");
+      lines.splice(lineIndex, 1);
+      return { ...current, content: lines.join("\n") };
     });
   };
 
@@ -259,6 +290,17 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
               <button onClick={() => insertAtCursor(`${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date())} — `)}><Clock3 size={15} /> Data</button>
             </div>
             <textarea ref={textareaRef} value={draft.content} onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))} placeholder="Escreva detalhes do pedido, medidas, materiais, tarefas e observações…" aria-label="Conteúdo da anotação" />
+            <div className="note-organizer">
+              <section className="interactive-task-card">
+                <header><span><CheckSquare size={16} /></span><div><b>Tarefas interativas</b><small>{noteTasks.filter((task) => task.done).length} de {noteTasks.length} concluídas</small></div></header>
+                <form onSubmit={addInteractiveTask}><input value={newTask} onChange={(event) => setNewTask(event.target.value)} placeholder="Adicionar tarefa…" aria-label="Nova tarefa" /><button type="submit" aria-label="Adicionar tarefa"><Plus size={16} /></button></form>
+                <div className="interactive-task-list">
+                  {noteTasks.map((task) => <div key={`${task.index}-${task.text}`} className={task.done ? "done" : ""}><label><input type="checkbox" checked={task.done} onChange={() => toggleTask(task.index, task.done)} /><span><Check size={12} /></span><b>{task.text}</b></label><button onClick={() => removeTask(task.index)} aria-label={`Remover tarefa ${task.text}`}><X size={14} /></button></div>)}
+                  {!noteTasks.length && <p>Adicione tarefas para acompanhar a produção e marque cada etapa quando terminar.</p>}
+                </div>
+              </section>
+              {noteListItems.length > 0 && <section className="visual-list-card"><header><List size={16} /><b>Lista da anotação</b><span>{noteListItems.length}</span></header><div>{noteListItems.map((item, index) => <p key={`${item}-${index}`}><span>{index + 1}</span>{item}</p>)}</div></section>}
+            </div>
             <footer className="note-editor-footer"><span>{draft.content.trim() ? draft.content.trim().split(/\s+/).length : 0} palavras</span><span>{draft.content.length} caracteres</span></footer>
           </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Organize a operação</h2><p>Crie uma anotação livre ou use um modelo preparado para a confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
         </section>

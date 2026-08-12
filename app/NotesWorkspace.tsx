@@ -78,11 +78,15 @@ function formatKg(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function materialNoteText(material: NoteMaterial, index: number) {
   const collarLines = material.collarType === "common"
     ? `🟩 Ribana – ${material.color}\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
     : `👕 Gola polo – ${material.color}\n🔢 Quantidade: ${material.poloUnits.toLocaleString("pt-BR")} unidades`;
-  return `🧵 MATERIAL ${index + 1}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}`;
+  return `🧵 MATERIAL ${index + 1}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
 }
 
 function nextMaterialNumber(content: string) {
@@ -97,12 +101,23 @@ function normalizeKgInText(content: string) {
   });
 }
 
+function includeMaterialCostLines(content: string, materials: NoteMaterial[]) {
+  let materialIndex = 0;
+  return content.replace(/🧵\s*\*?MATERIAL\s+\d+\*?[\s\S]*?(?=\n{2,}─{5,}\n{2,}🧵\s*\*?MATERIAL\s+\d+|🧵\s*\*?MATERIAL\s+\d+|$)/gi, (block) => {
+    const material = materials[materialIndex++];
+    if (!material) return block;
+    const withoutOldCost = block.replace(/\n*💰\s*Custo total do material:[^\n]*/gi, "").trimEnd();
+    return `${withoutOldCost}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
+  });
+}
+
 function toDraft(note: BusinessNote): Draft {
   const materials = Array.isArray(note.materials) ? note.materials : [];
   const hasMaterialText = /🧵\s*\*?MATERIAL\s+\d+/i.test(note.content);
-  const content = materials.length && !hasMaterialText
+  const baseContent = materials.length && !hasMaterialText
     ? [note.content.trim(), materials.map(materialNoteText).join("\n\n────────────────────\n\n")].filter(Boolean).join("\n\n")
     : note.content;
+  const content = materials.length ? includeMaterialCostLines(baseContent, materials) : baseContent;
   return { title: note.title, content: normalizeKgInText(content), category: note.category, pinned: note.pinned, materials };
 }
 
@@ -325,7 +340,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
         const ribanaCost = material.collarType === "common" ? ribanaKg * material.ribanaPricePerKg : 0;
         return { ...material, fabricType: (fabric?.[1] as FabricType | undefined) ?? material.fabricType, color: fabric?.[2]?.trim() || material.color, fabricKg, ribanaKg, poloUnits, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
       });
-      return { ...current, content, materials };
+      return { ...current, content: includeMaterialCostLines(content, materials), materials };
     });
   };
 
@@ -354,8 +369,6 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const ribanaCost = collarType === "common" ? ribanaKg * numericRibanaPrice : 0;
   const totalOrderCost = totalFabricCost + ribanaCost;
   const costPerPiece = plannedPieces > 0 ? totalOrderCost / plannedPieces : 0;
-  const formatCurrency = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
   const addMaterialToNote = () => {
     const color = titleCaseColor(fabricColor);
     if (!numericFabricValue || !selectedId || !fabricColor.trim()) return;

@@ -57,6 +57,8 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /Valor da ribana por kg/);
   assert.match(notes, /Valor total da ribana/);
   assert.match(notes, /🧵 MATERIAL \$\{index \+ 1\}/);
+  assert.match(notes, /Custo total do material: \$\{formatCurrency\(material\.totalCost\)\}/);
+  assert.match(notes, /includeMaterialCostLines/);
   assert.match(notes, /minimumFractionDigits: 2, maximumFractionDigits: 2/);
   assert.match(notes, /normalizeKgInText/);
   const exportStart = notes.indexOf("const exportedMaterials");

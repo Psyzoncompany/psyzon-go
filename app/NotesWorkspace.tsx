@@ -256,6 +256,12 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     });
   };
 
+  const supplierOrderText = () => {
+    const content = exportedMaterials();
+    if (!draft.materials.length) return content;
+    return [content, `💰 VALOR TOTAL DO PEDIDO: ${formatCurrency(materialsTotal)}`].filter(Boolean).join("\n\n");
+  };
+
   const exportedMaterials = () => {
     return draft.content
       .split("\n")
@@ -266,9 +272,9 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   };
 
   const copyMaterials = async () => {
-    await navigator.clipboard.writeText(exportedMaterials());
+    await navigator.clipboard.writeText(supplierOrderText());
     setExportMenuOpen(false);
-    showEditorNotice("Texto copiado para o WhatsApp");
+    showEditorNotice("Pedido de malha copiado com o valor total");
   };
 
   const downloadText = () => {
@@ -386,8 +392,8 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       <section className="notes-page-navigation panel" aria-label="Páginas do bloco de notas">
         <div className="notes-page-controls">
           <div className="notes-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar páginas…" aria-label="Buscar páginas" /></div>
-          <div className="notes-filters">{categories.map((item) => <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{item}</button>)}</div>
-          <button className="new-note-compact" onClick={() => createNote()}><Plus size={15} /> Nova página</button>
+          <label className="notes-category-filter"><span>Categoria</span><select value={category} onChange={(event) => setCategory(event.target.value as (typeof categories)[number])} aria-label="Filtrar páginas por categoria">{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <span className="notes-page-summary">{filteredNotes.length} {filteredNotes.length === 1 ? "página" : "páginas"}</span>
         </div>
         <div className="notes-page-tabs">
           {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)} title={note.title || "Sem título"}><NotebookPen size={15} /><span><b>{note.title || "Sem título"}</b><small>{note.category} · {formatUpdatedAt(note.updatedAt)}</small></span>{note.pinned ? <Pin size={11} /> : null}</button>)}
@@ -398,13 +404,8 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       <div className="notes-layout">
         <section className="note-editor notion-editor panel">
           {selectedId ? <>
-            <header className="notion-editor-topbar">
-              <div className="notion-breadcrumb"><NotebookPen size={14} /><span>Bloco de notas</span><b>/</b><strong>{draft.title || "Sem título"}</strong></div>
-              <div className="notion-page-actions"><button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar página" : "Fixar página"} title="Fixar"><Pin size={15} /></button><button onClick={copyMaterials} aria-label="Copiar página" title="Copiar"><Copy size={15} /></button><button className="danger" onClick={deleteNote} aria-label="Excluir página" title="Excluir"><Trash2 size={15} /></button></div>
-            </header>
             {editorNotice && <div className="editor-notice">{editorNotice}</div>}
             <div className="notion-document">
-              <button className="notion-page-icon" onClick={() => insertAtCursor("🧵 ")} aria-label="Inserir emoji de material" title="Adicionar emoji">🧵</button>
               <input className="notion-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Sem título" aria-label="Título da página" />
               <div className="notion-properties">
                 <label><span>Categoria</span><select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da página">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -424,11 +425,15 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
                 <button className="notion-material-action" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Calculator size={15} /> Calcular material</button>
                 <button onClick={duplicateLastMaterial} aria-label="Duplicar último material" title="Duplicar último material"><Files size={15} /></button>
                 <div className="note-export-wrap"><button className={exportMenuOpen ? "active" : ""} onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen} aria-label="Exportar" title="Exportar"><Download size={15} /></button>{exportMenuOpen && <div className="note-export-menu"><button onClick={downloadText}><FileText size={15} /> TXT</button><button onClick={() => { setExportMenuOpen(false); window.print(); }}><Printer size={15} /> PDF / Imprimir</button></div>}</div>
+                <button onClick={copyMaterials} aria-label="Copiar pedido de malha com valor total" title="Copiar pedido de malha com valor total"><Copy size={15} /></button>
+                <button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar página" : "Fixar página"} title="Fixar página"><Pin size={15} /></button>
+                <button className="danger" onClick={deleteNote} aria-label="Excluir página" title="Excluir página"><Trash2 size={15} /></button>
               </div>
               <textarea className="notion-text-editor" ref={textareaRef} value={draft.content} onChange={(event) => updateNoteContent(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase("pt-BR") === "b") { event.preventDefault(); wrapSelection("**"); } }} placeholder={'Comece a escrever…\n\nUse a calculadora para inserir materiais diretamente nesta página.'} aria-label="Conteúdo da página" spellCheck />
+              <div className="note-print-export" aria-hidden="true"><h1>{draft.title || "Sem título"}</h1><pre>{exportedMaterials()}</pre></div>
               <div className="notion-writing-help"><span><b>Texto livre</b> · o cálculo entra aqui e pode ser editado como TXT</span><span>{draft.content.length.toLocaleString("pt-BR")} caracteres</span></div>
             </div>
-            <footer className="notion-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material vinculado" : "materiais vinculados"}</span><span>Os valores financeiros são internos e não entram na exportação.</span></footer>
+            <footer className="notion-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material vinculado" : "materiais vinculados"}</span><span>O total entra apenas no pedido de malha copiado; TXT e PDF seguem sem valores.</span></footer>
           </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Comece uma página</h2><p>Crie uma anotação livre para organizar sua confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
         </section>
       </div>

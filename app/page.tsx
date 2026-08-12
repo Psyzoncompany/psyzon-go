@@ -93,6 +93,7 @@ type Order = {
   paid: number;
   dueDate: string;
   status: OrderStatus;
+  notes?: string;
   createdAt?: unknown;
 };
 
@@ -106,6 +107,7 @@ type Transaction = {
   category?: string;
   source?: "bill";
   billId?: string;
+  orderId?: string;
   createdAt?: unknown;
 };
 type Bill = {
@@ -176,6 +178,11 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "pessoal", label: "Pessoal", icon: UserRound },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
+const navGroups = [
+  { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "notas", "clientes"].includes(item.id)) },
+  { label: "Gestão", items: navItems.filter((item) => ["financeiro", "pessoal"].includes(item.id)) },
+  { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
+];
 
 const mobileNavItems = navItems.filter((item) => ["inicio", "producao", "pessoal", "mais"].includes(item.id));
 
@@ -220,6 +227,7 @@ export default function HomePage() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [modalAccount, setModalAccount] = useState<AccountType>("business");
@@ -572,6 +580,7 @@ export default function HomePage() {
           paid: Number(form.get("paid")),
           dueDate: String(form.get("dueDate")),
           status: "Aprovado",
+          notes: String(form.get("notes") || ""),
           createdAt: serverTimestamp(),
         };
         if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
@@ -636,6 +645,40 @@ export default function HomePage() {
       await updateDoc(userDocument(uid, "orders", order.id), { status });
     }
     showToast("Pedido atualizado");
+  };
+
+  const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingOrder || firebaseState !== "live") return showToast("Firestore ainda não está conectado");
+    const form = new FormData(event.currentTarget);
+    const updatedOrder = {
+      customer: String(form.get("customer")),
+      phone: String(form.get("phone") || ""),
+      product: String(form.get("product")),
+      quantity: Number(form.get("quantity")),
+      total: Number(form.get("total")),
+      paid: Number(form.get("paid")),
+      dueDate: String(form.get("dueDate")),
+      status: String(form.get("status")) as OrderStatus,
+      notes: String(form.get("notes") || ""),
+    };
+    const db = getFirestore(getApps()[0]);
+    const customerKey = updatedOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || editingOrder.id;
+    const linkedPayments = transactions.filter((transaction) => transaction.orderId === editingOrder.id);
+    const batch = writeBatch(db);
+    batch.update(userDocument(uid, "orders", editingOrder.id), updatedOrder);
+    batch.set(userDocument(uid, "customers", customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
+    if (updatedOrder.paid > 0) {
+      const payment = { description: `Entrada · ${updatedOrder.customer} · #${editingOrder.id.slice(0, 5).toUpperCase()}`, amount: updatedOrder.paid, type: "income", account: "business", category: "Vendas", orderId: editingOrder.id };
+      if (linkedPayments[0]) batch.update(userDocument(uid, "transactions", linkedPayments[0].id), payment);
+      else batch.set(doc(userCollection(uid, "transactions")), { ...payment, createdAt: serverTimestamp() });
+      linkedPayments.slice(1).forEach((transaction) => batch.delete(userDocument(uid, "transactions", transaction.id)));
+    } else {
+      linkedPayments.forEach((transaction) => batch.delete(userDocument(uid, "transactions", transaction.id)));
+    }
+    await batch.commit();
+    setEditingOrder(null);
+    showToast("Pedido e financeiro atualizados");
   };
 
   const payBill = async (bill: Bill) => {
@@ -731,7 +774,7 @@ export default function HomePage() {
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
         <nav>
-          {navItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
+          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}</div>)}
         </nav>
         <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
@@ -757,7 +800,7 @@ export default function HomePage() {
 
         <section className="content">
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
-          {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} />}
+          {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
           {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
           {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
@@ -775,6 +818,7 @@ export default function HomePage() {
       </nav>
 
       {modal && <CreateModalV2 kind={modal} account={modalAccount} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
+      {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={saveOrder} />}
       {editingBill && <FinancialEditModal bill={editingBill} close={() => setEditingBill(null)} onSubmit={saveBill} />}
       {editingTransaction && <FinancialEditModal transaction={editingTransaction} close={() => setEditingTransaction(null)} onSubmit={saveTransaction} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
@@ -847,13 +891,13 @@ function Metric({ icon: Icon, label, value, detail, onClick }: any) {
   return <Tag className="metric-card" onClick={onClick}><div className="metric-top"><span><Icon size={19} /></span><small>{label}</small>{onClick && <ChevronRight size={16} />}</div><strong>{value}</strong><div className="metric-detail">{detail}</div></Tag>;
 }
 
-function Production({ orders, board, setBoard, displayMoney, updateStatus }: any) {
+function Production({ orders, board, setBoard, displayMoney, updateStatus, editOrder }: any) {
   const statuses: OrderStatus[] = ["Aguardando material", "Produção", "Finalização", "Pronto"];
-  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span><b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.total - order.paid)} pendente</small></span></div>)}</section>}</>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span><b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.total - order.paid)} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
 }
 
-function OrderCard({ order, displayMoney, updateStatus }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void }) {
-  return <article className="order-card"><div><span>#{order.id}</span><button><MoreHorizontal size={17} /></button></div><h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" ? <a href={`https://wa.me/${order.phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`)}`} target="_blank"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
+function OrderCard({ order, displayMoney, updateStatus, editOrder }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void; editOrder: (order: Order) => void }) {
+  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div><h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" ? <a href={`https://wa.me/${order.phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`)}`} target="_blank"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
 }
 
 function Customers({ customers, orders, displayMoney, setModal }: any) {
@@ -934,6 +978,10 @@ function CreateModalV2({ kind, account, setKind, close, onSubmit }: { kind: Crea
   const titles: Record<CreateKind, string> = { pedido: "Novo pedido", cliente: "Novo cliente", entrada: "Nova entrada", despesa: "Nova despesa", transferencia: "Transferir para pessoal", conta: "Nova conta recorrente" };
   const financeKind = ["entrada", "despesa", "transferencia", "conta"].includes(kind);
   return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal"><header><div><span className="eyebrow">CADASTRO RÁPIDO</span><h2>{titles[kind]}</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button><button className={kind === "entrada" ? "active" : ""} onClick={() => setKind("entrada")}>Entrada</button><button className={kind === "despesa" ? "active" : ""} onClick={() => setKind("despesa")}>Despesa</button><button className={kind === "conta" ? "active" : ""} onClick={() => setKind("conta")}>Conta</button></div><form onSubmit={onSubmit}>{financeKind && <><input type="hidden" name="account" value={account} /><div className={`account-context ${account}`}><span>{account === "business" ? <BriefcaseBusiness size={15} /> : <UserRound size={15} />}</span><div><small>LANÇAMENTO EM</small><b>{account === "business" ? "Financeiro empresarial" : "Financeiro pessoal"}</b></div></div></>}{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Produto<input name="product" required placeholder="Ex.: Camisetas personalizadas" /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><label className="full">Observação<textarea name="notes" rows={3} /></label></> : kind === "cliente" ? <><label className="full">Nome<input name="name" required autoFocus /></label><label className="full">WhatsApp<input name="phone" required inputMode="tel" /></label><label className="full">Empresa <span>(opcional)</span><input name="company" /></label></> : kind === "conta" ? <><label className="full">Nome da conta<input name="description" required autoFocus placeholder="Ex.: Aluguel, internet ou notebook" /></label><div className="form-row"><label>Tipo<select name="billingType"><option value="fixed">Mensal fixa</option><option value="installment">Parcelada</option></select></label><label>Valor mensal/parcela<input name="amount" type="number" min="0.01" step="0.01" required /></label></div><div className="form-row"><label>Dia do vencimento<input name="dueDay" type="number" min="1" max="31" defaultValue="10" required /></label><label>Total de parcelas<input name="totalInstallments" type="number" min="2" defaultValue="12" /></label></div><CategoryFields options={billCategories} defaultCategory="Serviços" /><p className="form-help">Contas e parcelas entram automaticamente no custo mensal por peça.</p></> : <><label className="full">Descrição<input name="description" required autoFocus placeholder={kind === "despesa" ? "Ex.: Compra de material" : kind === "transferencia" ? "Ex.: Pró-labore" : "Ex.: Pagamento recebido"} /></label><label className="full">Valor<input name="amount" type="number" min="0.01" step="0.01" required /></label>{kind === "despesa" ? <CategoryFields options={expenseCategories} defaultCategory="Material" /> : kind === "entrada" ? <CategoryFields options={["Vendas", "Serviços", "Outros"]} defaultCategory="Vendas" /> : <CategoryFields options={["Pró-labore", "Transferência", "Outros"]} defaultCategory="Pró-labore" />}</>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar</button></footer></form></aside></div>;
+}
+
+function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></label><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }
 
 function FinancialEditModal({ bill, transaction, close, onSubmit }: { bill?: Bill; transaction?: Transaction; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

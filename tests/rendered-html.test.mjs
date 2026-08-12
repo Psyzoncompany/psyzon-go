@@ -64,6 +64,10 @@ test("includes the realtime apparel notes workspace", async () => {
   const supplierExporter = notes.slice(exportStart, exportEnd);
   assert.match(supplierExporter, /valor\|custo total\|preço/);
   assert.doesNotMatch(supplierExporter, /formatCurrency/);
+  assert.match(notes, /const supplierOrderText/);
+  assert.match(notes, /VALOR TOTAL DO PEDIDO/);
+  assert.match(notes, /navigator\.clipboard\.writeText\(supplierOrderText\(\)\)/);
+  assert.match(notes, /note-print-export/);
   assert.match(notes, /materials\.reduce\(\(total, material\) => total \+ material\.totalCost/);
   assert.match(notes, /notion-editor/);
   assert.match(notes, /notion-text-editor/);
@@ -76,6 +80,9 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /Calcular material/);
   assert.match(notes, /notes-page-navigation/);
   assert.match(notes, /notes-page-tabs/);
+  assert.match(notes, /notes-category-filter/);
+  assert.doesNotMatch(notes, /<header className="notion-editor-topbar"/);
+  assert.doesNotMatch(notes, /className="notion-page-icon"/);
   assert.match(notes, /updateNoteContent/);
   assert.match(notes, /materialNoteText\(material, nextNumber - 1\)/);
   assert.doesNotMatch(notes, /Modelos da confecção|Comece com uma estrutura pronta/);
@@ -120,6 +127,13 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /sidebar-collapse-button/);
   assert.match(page, /PanelLeftClose/);
   assert.match(page, /sidebar-collapsed/);
+  assert.match(page, /className="nav-group"/);
+  assert.match(page, /label: "Operação"/);
+  assert.match(page, /label: "Gestão"/);
+  assert.match(page, /label: "Conta"/);
+  assert.match(page, /editingOrder/);
+  assert.match(page, /OrderEditModal/);
+  assert.match(page, /Pedido e financeiro atualizados/);
 });
 
 test("service worker clones a network response before its body is consumed", async () => {

@@ -110,6 +110,15 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  useEffect(() => {
+    const storedConversation = sessionStorage.getItem("psyzon-ai-active-conversation");
+    if (storedConversation) setActiveConversation(storedConversation);
+  }, []);
+  useEffect(() => {
+    if (activeConversation) sessionStorage.setItem("psyzon-ai-active-conversation", activeConversation);
+    else sessionStorage.removeItem("psyzon-ai-active-conversation");
+  }, [activeConversation]);
+
   const api = useCallback(async (path: string, init?: RequestInit) => {
     const token = await getIdToken();
     const response = await fetch(path, { ...init, headers: { ...init?.headers, authorization: `Bearer ${token}`, "content-type": "application/json" } });
@@ -146,6 +155,7 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
   }, [activeConversation, api]);
 
   const newConversation = () => {
+    sessionStorage.removeItem("psyzon-ai-active-conversation");
     setActiveConversation(""); setMessages([initialAssistantMessage()]); setInput(""); setAttachment(null); setError("");
     if (mode === "panel") setSidebarOpen(false);
   };
@@ -224,7 +234,7 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
 
   const syncMercadoPago = async () => {
     setSyncing(true); setError("");
-    try { await api("/api/integrations/mercadopago", { method: "POST", body: "{}" }); await loadInitial(); void sendMessage("Mostre o resultado da conciliação do Mercado Pago que acabou de ser executada."); }
+    try { await api("/api/integrations/mercadopago", { method: "POST", body: "{}" }); await loadInitial(); void sendMessage("Mostre o resultado completo da conciliação do Mercado Pago. Para cada divergência, liste valor, descrição, observação, data, forma de pagamento, ID do Mercado Pago e referência externa."); }
     catch (nextError) { setError(apiErrorMessage(nextError)); }
     finally { setSyncing(false); }
   };

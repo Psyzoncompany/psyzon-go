@@ -234,7 +234,7 @@ const searchSystem: ToolDefinition = {
 };
 
 const getMercadoPagoSummary: ToolDefinition = {
-  declaration: { type: "function", name: "get_mercado_pago_summary", description: "Consulta o estado real da integração Mercado Pago e os resultados da última conciliação.", parameters: { type: "object", properties: {} } },
+  declaration: { type: "function", name: "get_mercado_pago_summary", description: "Consulta o estado real da integração Mercado Pago e detalha cada divergência com valor, descrição, data, observações e identificadores.", parameters: { type: "object", properties: {} } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }) => {
     const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
@@ -242,7 +242,25 @@ const getMercadoPagoSummary: ToolDefinition = {
     const payments = (await listMercadoPagoPayments(identity)).slice(0, 100);
     const reconciliation = (await listReconciliation(identity)).slice(0, 200);
     const byStatus = reconciliation.reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.status]: (acc[item.status] ?? 0) + 1 }), {});
-    return { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN), paymentCount: payments.length, approvedGross: payments.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.amountCents, 0) / 100, fees: payments.reduce((sum, item) => sum + (item.feeCents ?? 0), 0) / 100, reconciliation: byStatus, lastSyncedAt: payments[0]?.lastSyncedAt ?? null };
+    const paymentById = new Map(payments.map((payment) => [payment.paymentId, payment]));
+    const divergences = reconciliation.filter((item) => item.status !== "CONCILIADO").map((item) => {
+      const payment = item.providerPaymentId ? paymentById.get(item.providerPaymentId) : undefined;
+      return {
+        reconciliationStatus: item.status,
+        reason: item.reason,
+        amount: (item.providerAmountCents ?? item.systemAmountCents ?? 0) / 100,
+        difference: item.differenceCents === null ? null : item.differenceCents / 100,
+        description: payment?.description || "Sem descrição informada",
+        observation: payment?.statusDetail || item.reason,
+        paymentStatus: payment?.status ?? null,
+        paymentMethod: payment?.paymentMethod ?? null,
+        date: payment?.dateApproved || payment?.dateCreated || null,
+        mercadoPagoId: item.providerPaymentId,
+        externalReference: payment?.externalReference ?? null,
+        systemTransactionId: item.systemTransactionId,
+      };
+    });
+    return { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN), paymentCount: payments.length, approvedGross: payments.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.amountCents, 0) / 100, fees: payments.reduce((sum, item) => sum + (item.feeCents ?? 0), 0) / 100, reconciliation: byStatus, divergences, lastSyncedAt: payments[0]?.lastSyncedAt ?? null };
   },
 };
 

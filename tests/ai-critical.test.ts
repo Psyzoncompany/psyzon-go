@@ -3,6 +3,7 @@ import test from "node:test";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
 import { configuredAIProviders, getAIProviderSummary } from "../app/lib/server/ai-agent.ts";
+import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
 import { buildMercadoPagoReconciliation, type ProviderPayment, type SystemTransaction } from "../app/lib/server/reconciliation-core.ts";
 
@@ -132,4 +133,13 @@ test("AI provider pool accepts multiple Gemini projects and removes duplicate ke
   const providers = configuredAIProviders(env);
   assert.deepEqual(providers.map((item) => item.id), ["groq-1", "gemini-1", "gemini-2", "gemini-3"]);
   assert.deepEqual(getAIProviderSummary(env), { configured: true, provider: "1 Groq + 3 Gemini", model: "openai/gpt-oss-120b / gemini-3.6-flash" });
+});
+
+test("Mercado Pago AI tool exposes transaction values and observations for divergences", async () => {
+  const source = await readFile(new URL("../app/lib/server/ai-tools.ts", import.meta.url), "utf8");
+  assert.match(source, /divergences/);
+  assert.match(source, /description: payment\?\.description/);
+  assert.match(source, /observation: payment\?\.statusDetail/);
+  assert.match(source, /mercadoPagoId: item\.providerPaymentId/);
+  assert.match(source, /externalReference: payment\?\.externalReference/);
 });

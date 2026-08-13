@@ -199,6 +199,7 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(workspace, /ai-quick-grid/);
   assert.match(workspace, /SpeechRecognition/);
   assert.match(workspace, /Salvar hist/);
+  assert.match(workspace, /psyzon-ai-active-conversation/);
   assert.match(workspace, /financial_confirm/);
   assert.match(schema, /ai_conversations/);
   assert.match(schema, /ai_audit_logs/);

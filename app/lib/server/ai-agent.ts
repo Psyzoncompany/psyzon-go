@@ -5,6 +5,35 @@ import { GroqProvider } from "./groq-provider";
 import { executeAITool, geminiToolDeclarations } from "./ai-tools";
 import { getAISettings, saveAIUsage } from "./ai-store";
 
+type ProviderCandidate = { id: string; label: string; provider: GroqProvider | GeminiProvider };
+const providerCooldowns = new Map<string, number>();
+const RETRYABLE_PROVIDER_ERRORS = new Set([
+  "GROQ_KEY_INVALID", "GROQ_QUOTA_EXCEEDED", "GROQ_MODEL_NOT_FOUND", "GROQ_UNAVAILABLE", "GROQ_REQUEST_FAILED",
+  "GEMINI_KEY_INVALID", "GEMINI_QUOTA_EXCEEDED", "GEMINI_MODEL_NOT_FOUND", "GEMINI_UNAVAILABLE", "GEMINI_REQUEST_FAILED",
+]);
+
+function uniqueKeys(values: Array<string | undefined>) {
+  return [...new Set(values.flatMap((value) => (value ?? "").split(/[;,\n]/)).map((value) => value.trim()).filter(Boolean))];
+}
+
+export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env): ProviderCandidate[] {
+  const groqKeys = uniqueKeys([env.GROQ_API_KEY, env.GROQ_API_KEY_2, env.GROQ_API_KEY_3, env.GROQ_API_KEYS]);
+  const geminiKeys = uniqueKeys([env.GEMINI_API_KEY, env.GEMINI_API_KEY_2, env.GEMINI_API_KEY_3, env.GEMINI_API_KEY_4, env.GEMINI_API_KEY_5, env.GEMINI_API_KEYS]);
+  return [
+    ...groqKeys.map((key, index) => ({ id: `groq-${index + 1}`, label: `Groq ${index + 1}`, provider: new GroqProvider(key, env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b") })),
+    ...geminiKeys.map((key, index) => ({ id: `gemini-${index + 1}`, label: `Gemini ${index + 1}`, provider: new GeminiProvider(key, env.GEMINI_MODEL?.trim() || "gemini-3.6-flash") })),
+  ];
+}
+
+export function getAIProviderSummary(env: NodeJS.ProcessEnv = process.env) {
+  const providers = configuredAIProviders(env);
+  const groqCount = providers.filter((item) => item.id.startsWith("groq-")).length;
+  const geminiCount = providers.filter((item) => item.id.startsWith("gemini-")).length;
+  const names = [groqCount ? `${groqCount} Groq` : "", geminiCount ? `${geminiCount} Gemini` : ""].filter(Boolean).join(" + ");
+  const models = providers.map((item) => item.provider.model).filter((model, index, all) => all.indexOf(model) === index);
+  return { configured: providers.length > 0, provider: names || "Groq / Gemini", model: models.join(" / ") || "Nenhum" };
+}
+
 const SYSTEM_PROMPT = `Você é a PSYZON AI, copiloto administrativo e financeiro da PSYZON Company, uma empresa de confecção de camisas e uniformes.
 
 Seu objetivo é ajudar o proprietário a tomar decisões usando exclusivamente dados reais do sistema. Você entende pedidos, clientes, produção, malha, material, serigrafia, DTF, plastisol, sublimação, custos, pagamentos, receitas, despesas, lucro e margem.
@@ -22,6 +51,28 @@ REGRAS INEGOCIÁVEIS:
 10. Produza a resposta estruturada solicitada. Use métricas, alertas e ações somente quando agregarem clareza. Links de pedido levam para produção; transações para financeiro; clientes para clientes.
 
 A data atual é ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", dateStyle: "full", timeStyle: "short" }).format(new Date())}.`;
+
+async function createWithAvailableProvider(prompt: string, tools: Array<Record<string, unknown>>, excluded = new Set<string>()) {
+  const providers = configuredAIProviders().filter((item) => !excluded.has(item.id));
+  if (!providers.length) throw new Error("AI_PROVIDER_NOT_CONFIGURED");
+  const now = Date.now();
+  const ready = providers.filter((item) => (providerCooldowns.get(item.id) ?? 0) <= now);
+  const ordered = ready.length ? ready : providers;
+  let lastError: unknown = new Error("AI_PROVIDERS_UNAVAILABLE");
+  for (const candidate of ordered) {
+    try {
+      const interaction = await candidate.provider.create(prompt, SYSTEM_PROMPT, tools);
+      providerCooldowns.delete(candidate.id);
+      return { ...candidate, interaction };
+    } catch (error) {
+      lastError = error;
+      const code = error instanceof Error ? error.message : "";
+      if (!RETRYABLE_PROVIDER_ERRORS.has(code)) throw error;
+      providerCooldowns.set(candidate.id, Date.now() + 60_000);
+    }
+  }
+  throw lastError;
+}
 
 function cleanString(value: unknown, max = 6000) { return typeof value === "string" ? value.trim().slice(0, max) : ""; }
 function cleanPayload(value: unknown): AIResponsePayload {
@@ -42,18 +93,14 @@ function historyContext(messages: AIMessage[]) {
 }
 
 export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conversationId: string; question: string; history: AIMessage[] }) {
-  const groqApiKey = process.env.GROQ_API_KEY?.trim() ?? "";
-  const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
-  if (!groqApiKey && !geminiApiKey) throw new Error("AI_PROVIDER_NOT_CONFIGURED");
   const settings = await getAISettings(input.identity);
   if (!settings.enabled) throw new Error("AI_DISABLED");
-  const provider = groqApiKey
-    ? new GroqProvider(groqApiKey, process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b")
-    : new GeminiProvider(geminiApiKey, process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash");
-  const model = provider.model;
   const tools = geminiToolDeclarations as unknown as Array<Record<string, unknown>>;
   const prompt = `${historyContext(input.history)}SOLICITAÇÃO ATUAL DO USUÁRIO:\n${input.question.slice(0, 4000)}`;
-  let interaction = await provider.create(prompt, SYSTEM_PROMPT, tools);
+  let selected = await createWithAvailableProvider(prompt, tools);
+  let provider = selected.provider;
+  let model = `${selected.label} · ${provider.model}`;
+  let interaction = selected.interaction;
   let toolCalls = 0;
   const toolNames: string[] = [];
   let totalInput = interaction.usage.inputTokens; let totalOutput = interaction.usage.outputTokens; let totalTokens = interaction.usage.totalTokens;
@@ -71,7 +118,19 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
       }
       results.push({ id: call.id, name: call.name, result });
     }
-    interaction = await provider.continue(interaction.id, results, SYSTEM_PROMPT, tools);
+    try {
+      interaction = await provider.continue(interaction.id, results, SYSTEM_PROMPT, tools);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "";
+      if (!RETRYABLE_PROVIDER_ERRORS.has(code)) throw error;
+      providerCooldowns.set(selected.id, Date.now() + 60_000);
+      if (!configuredAIProviders().some((candidate) => candidate.id !== selected.id)) throw error;
+      const fallbackPrompt = `${prompt}\n\nRESULTADOS DE FERRAMENTAS JÁ EXECUTADAS (não execute novamente):\n${JSON.stringify(results.map((item) => ({ tool: item.name, result: item.result })))}\n\nResponda usando exclusivamente esses resultados.`;
+      selected = await createWithAvailableProvider(fallbackPrompt, [], new Set([selected.id]));
+      provider = selected.provider;
+      model = `${selected.label} · ${provider.model}`;
+      interaction = selected.interaction;
+    }
     totalInput += interaction.usage.inputTokens; totalOutput += interaction.usage.outputTokens; totalTokens += interaction.usage.totalTokens;
   }
 

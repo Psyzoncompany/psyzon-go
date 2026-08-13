@@ -64,10 +64,6 @@ function usage(completion: GroqCompletion) {
   };
 }
 
-function addUsage(left: ProviderInteraction["usage"], right: ProviderInteraction["usage"]) {
-  return { inputTokens: left.inputTokens + right.inputTokens, outputTokens: left.outputTokens + right.outputTokens, totalTokens: left.totalTokens + right.totalTokens };
-}
-
 function functionCalls(message: GroqMessage) {
   return (message.tool_calls ?? []).map((call) => {
     let args: Record<string, unknown> = {};
@@ -85,7 +81,7 @@ export class GroqProvider implements AIProvider {
     this.model = model;
   }
 
-  private async request(messages: GroqMessage[], tools?: Array<Record<string, unknown>>, structured = false) {
+  private async request(messages: GroqMessage[], tools?: Array<Record<string, unknown>>, jsonOutput = false) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 45_000);
     try {
@@ -97,9 +93,9 @@ export class GroqProvider implements AIProvider {
           model: this.model,
           messages,
           reasoning_effort: "low",
-          max_completion_tokens: 3000,
-          ...(tools?.length ? { tools: groqTools(tools), tool_choice: "auto", parallel_tool_calls: false } : {}),
-          ...(structured ? { response_format: { type: "json_schema", json_schema: { name: "psyzon_response", schema: responseSchema } } } : {}),
+          max_completion_tokens: tools?.length ? 700 : 1400,
+          ...(tools?.length ? { tools: groqTools(tools), tool_choice: "auto", parallel_tool_calls: true } : {}),
+          ...(jsonOutput ? { response_format: { type: "json_object" } } : {}),
         }),
       });
       if (!response.ok) throw new GroqHttpError(response.status);
@@ -111,23 +107,12 @@ export class GroqProvider implements AIProvider {
     }
   }
 
-  private async complete(messages: GroqMessage[], systemInstruction: string, draft: string, draftUsage: ProviderInteraction["usage"]): Promise<ProviderInteraction> {
-    const formattingMessages: GroqMessage[] = [
-      { role: "system", content: `${systemInstruction}\n\nOrganize o rascunho recebido no formato JSON solicitado. Preserve todos os fatos, números, limitações e fontes. Não invente dados.` },
-      { role: "user", content: `RASCUNHO A FORMATAR:\n${draft || "Não há dados suficientes para responder."}` },
-    ];
-    const completion = await this.request(formattingMessages, undefined, true);
-    const message = completion.choices?.[0]?.message;
-    if (!message) throw new Error("GROQ_EMPTY_RESPONSE");
-    return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content ?? "", functionCalls: [], usage: addUsage(draftUsage, usage(completion)) };
-  }
-
   private async run(messages: GroqMessage[], systemInstruction: string, tools: Array<Record<string, unknown>>) {
     const completion = await this.request(messages, tools);
     const message = completion.choices?.[0]?.message;
     if (!message) throw new Error("GROQ_EMPTY_RESPONSE");
     const calls = functionCalls(message);
-    if (!calls.length) return this.complete(messages, systemInstruction, message.content ?? "", usage(completion));
+    if (!calls.length) return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content ?? "", functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
     const id = completion.id ?? crypto.randomUUID();
     this.histories.set(id, [...messages, message]);
     return { id, status: "requires_action", outputText: message.content ?? "", functionCalls: calls, usage: usage(completion) } satisfies ProviderInteraction;
@@ -141,7 +126,14 @@ export class GroqProvider implements AIProvider {
     const history = this.histories.get(previousInteractionId);
     if (!history) throw new Error("GROQ_STATE_LOST");
     this.histories.delete(previousInteractionId);
-    const messages = [...history, ...results.map<GroqMessage>((item) => ({ role: "tool", tool_call_id: item.id, name: item.name, content: JSON.stringify(item.result) }))];
-    return this.run(messages, systemInstruction, tools);
+    const messages = [
+      ...history,
+      ...results.map<GroqMessage>((item) => ({ role: "tool", tool_call_id: item.id, name: item.name, content: JSON.stringify(item.result) })),
+      { role: "system" as const, content: `Responda agora SOMENTE como JSON válido neste formato: ${JSON.stringify(responseSchema)}. Preserve os fatos dos resultados e não invente dados.` },
+    ];
+    const completion = await this.request(messages, undefined, true);
+    const message = completion.choices?.[0]?.message;
+    if (!message) throw new Error("GROQ_EMPTY_RESPONSE");
+    return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content ?? "", functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
   }
 }

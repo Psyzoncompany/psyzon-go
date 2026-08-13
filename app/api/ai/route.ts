@@ -1,5 +1,5 @@
 import type { AIResponsePayload, AISettings } from "../../ai/types";
-import { runPSYZONAgent } from "../../lib/server/ai-agent";
+import { getAIProviderSummary, runPSYZONAgent } from "../../lib/server/ai-agent";
 import {
   checkRateLimit,
   deleteConversation,
@@ -25,6 +25,7 @@ async function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
     AI_PROVIDER_NOT_CONFIGURED: ["Configure GROQ_API_KEY para ativar a PSYZON AI.", 503],
+    AI_PROVIDERS_UNAVAILABLE: ["Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em um minuto.", 503],
     GROQ_KEY_INVALID: ["A chave GROQ_API_KEY foi recusada. Gere uma nova chave no Groq Console.", 503],
     GROQ_QUOTA_EXCEEDED: ["O limite gratuito da Groq foi atingido. Aguarde a renovação indicada no Groq Console.", 429],
     GROQ_MODEL_NOT_FOUND: ["O modelo definido em GROQ_MODEL não está disponível para essa conta.", 503],
@@ -73,11 +74,7 @@ export async function GET(request: Request) {
       settings,
       conversations,
       integrations: {
-        ai: process.env.GROQ_API_KEY?.trim()
-          ? { configured: true, provider: "Groq", model: process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b" }
-          : process.env.GEMINI_API_KEY
-            ? { configured: true, provider: "Gemini (fallback)", model: process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash" }
-            : { configured: false, provider: "Groq", model: process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b" },
+        ai: getAIProviderSummary(),
         mercadoPago: { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN && process.env.MERCADO_PAGO_OWNER_FIREBASE_UID === identity.uid), enabled: settings.mercadoPagoEnabled, status: sync.status, lastSyncedAt: sync.lastSyncedAt, lastError: sync.lastError, recordsChecked: sync.recordsChecked },
       },
     });

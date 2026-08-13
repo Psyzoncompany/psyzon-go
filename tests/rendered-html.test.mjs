@@ -192,6 +192,8 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(page, /label: "PSYZON AI"/);
   assert.match(page, /ai-floating-button/);
   assert.match(page, /event\.ctrlKey \|\| event\.metaKey \|\| event\.altKey/);
+  assert.match(page, /Tamanho das letras/);
+  assert.match(page, /extra-large/);
   assert.match(page, /main \$\{view === "ai" \? "ai-view" : ""\}/);
   assert.match(page, /<PSYZONAIWorkspace/);
   assert.match(workspace, /ai-quick-grid/);

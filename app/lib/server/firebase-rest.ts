@@ -29,6 +29,14 @@ export type UserCollection = BusinessCollection | "aiSettings" | "aiConversation
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
 const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
 
+function firestoreError(status: number) {
+  if (status === 401) return new Error("FIREBASE_SESSION_EXPIRED");
+  if (status === 403) return new Error("FIRESTORE_PERMISSION_DENIED");
+  if (status === 404) return new Error("FIRESTORE_DATABASE_NOT_FOUND");
+  if (status === 429) return new Error("FIRESTORE_RATE_LIMITED");
+  return new Error(`FIRESTORE_HTTP_${status}`);
+}
+
 function withTimeout(ms = 12_000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -103,7 +111,7 @@ export async function listUserCollection(identity: FirebaseIdentity, collection:
     headers: { authorization: `Bearer ${identity.idToken}` },
   });
   if (response.status === 404) return [];
-  if (!response.ok) throw new Error(`Falha ao consultar ${collection}.`);
+  if (!response.ok) throw firestoreError(response.status);
   const data = await response.json() as { documents?: FirestoreDocument[] };
   return (data.documents ?? []).map(decodeDocument);
 }
@@ -113,7 +121,7 @@ export async function getUserDocument(identity: FirebaseIdentity, collection: Us
     headers: { authorization: `Bearer ${identity.idToken}` },
   });
   if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`Registro ${id} não encontrado.`);
+  if (!response.ok) throw firestoreError(response.status);
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
@@ -124,7 +132,7 @@ export async function patchUserDocument(identity: FirebaseIdentity, collection: 
     headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
     body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
   });
-  if (!response.ok) throw new Error(`Não foi possível atualizar ${collection}/${id}.`);
+  if (!response.ok) throw firestoreError(response.status);
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
@@ -134,7 +142,7 @@ export async function setUserDocument(identity: FirebaseIdentity, collection: Us
     headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
     body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
   });
-  if (!response.ok) throw new Error(`Não foi possível salvar ${collection}/${id}.`);
+  if (!response.ok) throw firestoreError(response.status);
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
@@ -144,7 +152,7 @@ export async function createUserDocument(identity: FirebaseIdentity, collection:
     headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
     body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
   });
-  if (!response.ok) throw new Error(`Não foi possível criar registro em ${collection}.`);
+  if (!response.ok) throw firestoreError(response.status);
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
@@ -153,6 +161,6 @@ export async function deleteUserDocument(identity: FirebaseIdentity, collection:
     method: "DELETE",
     headers: { authorization: `Bearer ${identity.idToken}` },
   });
-  if (!response.ok && response.status !== 404) throw new Error(`Não foi possível excluir ${collection}/${id}.`);
+  if (!response.ok && response.status !== 404) throw firestoreError(response.status);
   return { deleted: true, id };
 }

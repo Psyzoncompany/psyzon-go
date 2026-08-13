@@ -32,6 +32,18 @@ function normalizeInteraction(interaction: Awaited<ReturnType<GoogleGenAI["inter
   };
 }
 
+function normalizeGeminiError(error: unknown) {
+  const details = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const status = Number(details.status ?? details.statusCode ?? details.code ?? 0);
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (status === 401 || status === 403 || message.includes("api key not valid")) return new Error("GEMINI_KEY_INVALID");
+  if (status === 429 || message.includes("quota")) return new Error("GEMINI_QUOTA_EXCEEDED");
+  if (status === 404 || message.includes("model") && message.includes("not found")) return new Error("GEMINI_MODEL_NOT_FOUND");
+  if (status === 400) return new Error("GEMINI_REQUEST_INVALID");
+  if (status >= 500) return new Error("GEMINI_UNAVAILABLE");
+  return new Error("GEMINI_REQUEST_FAILED");
+}
+
 export class GeminiProvider implements AIProvider {
   readonly model: string;
   private client: GoogleGenAI;
@@ -54,14 +66,22 @@ export class GeminiProvider implements AIProvider {
 
   async create(input: string, systemInstruction: string, tools: Array<Record<string, unknown>>) {
     const params = { ...this.common(systemInstruction, tools), input } as unknown as Parameters<typeof this.client.interactions.create>[0];
-    const interaction = await this.client.interactions.create(params);
-    return normalizeInteraction(interaction);
+    try {
+      const interaction = await this.client.interactions.create(params);
+      return normalizeInteraction(interaction);
+    } catch (error) {
+      throw normalizeGeminiError(error);
+    }
   }
 
   async continue(previousInteractionId: string, results: ProviderFunctionResult[], systemInstruction: string, tools: Array<Record<string, unknown>>) {
     const input = results.map((item) => ({ type: "function_result" as const, name: item.name, call_id: item.id, result: [{ type: "text" as const, text: JSON.stringify(item.result) }] }));
     const params = { ...this.common(systemInstruction, tools), previous_interaction_id: previousInteractionId, input } as unknown as Parameters<typeof this.client.interactions.create>[0];
-    const interaction = await this.client.interactions.create(params);
-    return normalizeInteraction(interaction);
+    try {
+      const interaction = await this.client.interactions.create(params);
+      return normalizeInteraction(interaction);
+    } catch (error) {
+      throw normalizeGeminiError(error);
+    }
   }
 }

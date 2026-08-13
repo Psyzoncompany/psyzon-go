@@ -25,10 +25,24 @@ async function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
     GEMINI_NOT_CONFIGURED: ["A PSYZON AI está pronta, mas a chave GEMINI_API_KEY ainda precisa ser configurada.", 503],
+    GEMINI_KEY_INVALID: ["A chave GEMINI_API_KEY foi recusada pelo Google. Confira a chave configurada na Vercel.", 503],
+    GEMINI_QUOTA_EXCEEDED: ["A cota da API Gemini foi atingida. Confira faturamento e limites no Google AI Studio.", 429],
+    GEMINI_MODEL_NOT_FOUND: ["O modelo definido em GEMINI_MODEL não está disponível para essa chave.", 503],
+    GEMINI_REQUEST_INVALID: ["A API Gemini recusou a configuração da solicitação. Confira o modelo e a versão da integração.", 502],
+    GEMINI_UNAVAILABLE: ["A API Gemini está temporariamente indisponível. Tente novamente em alguns instantes.", 503],
+    GEMINI_REQUEST_FAILED: ["Não foi possível conectar à API Gemini. Confira a chave e as restrições dela.", 502],
     AI_DISABLED: ["A PSYZON AI está desativada nas configurações.", 403],
     TOOL_LOOP_LIMIT: ["Interrompi uma sequência longa de consultas para manter a operação segura. Reformule o pedido em uma análise por vez.", 422],
+    FIREBASE_SESSION_EXPIRED: ["Sua sessão do Firebase expirou. Saia da conta e entre novamente.", 401],
+    FIRESTORE_PERMISSION_DENIED: ["O Firestore bloqueou o acesso da PSYZON AI. Publique as regras do arquivo firestore.rules no projeto psyzon-go.", 403],
+    FIRESTORE_DATABASE_NOT_FOUND: ["O banco Firestore ainda não foi criado no projeto psyzon-go. Crie o banco no modo de produção e tente novamente.", 503],
+    FIRESTORE_RATE_LIMITED: ["O Firestore recebeu solicitações demais. Aguarde alguns segundos e tente novamente.", 429],
   };
-  const [message, status] = messages[code] ?? ["A PSYZON AI não conseguiu concluir agora. O restante do sistema continua funcionando normalmente.", 500];
+  const firestoreHttpStatus = code.startsWith("FIRESTORE_HTTP_") ? Number(code.slice("FIRESTORE_HTTP_".length)) : 0;
+  const fallback: [string, number] = firestoreHttpStatus
+    ? [`O Firestore respondeu com erro ${firestoreHttpStatus}. Confira a configuração do projeto Firebase.`, 502]
+    : ["A PSYZON AI não conseguiu concluir agora. Confira os logs da função /api/ai na Vercel.", 500];
+  const [message, status] = messages[code] ?? fallback;
   console.error("PSYZON AI request failed", { code });
   return Response.json({ error: message, code }, { status });
 }

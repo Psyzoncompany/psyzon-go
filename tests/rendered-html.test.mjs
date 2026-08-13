@@ -177,3 +177,30 @@ test("service worker clones a network response before its body is consumed", asy
   await cachePromise;
   assert.equal(cachedBody, "fresh page");
 });
+
+test("ships the secured PSYZON AI page, floating assistant and server integrations", async () => {
+  const [page, workspace, schema, aiRoute, webhook, exampleEnv] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/PSYZONAIWorkspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/ai/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/webhooks/mercadopago/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.env.example", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /label: "PSYZON AI"/);
+  assert.match(page, /ai-floating-button/);
+  assert.match(page, /<PSYZONAIWorkspace/);
+  assert.match(workspace, /ai-quick-grid/);
+  assert.match(workspace, /SpeechRecognition/);
+  assert.match(workspace, /Salvar hist/);
+  assert.match(workspace, /financial_confirm/);
+  assert.match(schema, /ai_conversations/);
+  assert.match(schema, /ai_audit_logs/);
+  assert.match(schema, /financial_reconciliation/);
+  assert.match(aiRoute, /authenticateFirebaseRequest/);
+  assert.match(webhook, /verifyMercadoPagoSignature/);
+  assert.match(exampleEnv, /^GEMINI_API_KEY=/m);
+  assert.match(exampleEnv, /^MERCADO_PAGO_ACCESS_TOKEN=/m);
+  assert.doesNotMatch(exampleEnv, /NEXT_PUBLIC_(GEMINI|MERCADO_PAGO)/);
+});

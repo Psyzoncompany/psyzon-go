@@ -55,6 +55,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  Sparkles,
   Sun,
   TrendingDown,
   TrendingUp,
@@ -66,7 +67,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type View = "inicio" | "producao" | "notas" | "clientes" | "financeiro" | "pessoal" | "mais";
+type View = "inicio" | "producao" | "notas" | "clientes" | "financeiro" | "pessoal" | "ai" | "mais";
 type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia" | "conta";
 type AccountType = "business" | "personal";
 type UISize = "compact" | "comfortable" | "large";
@@ -106,7 +107,9 @@ type Transaction = {
   account: "business" | "personal";
   category?: string;
   transactionDate?: string;
-  source?: "bill";
+  source?: "bill" | "ai_adjustment" | "mercado_pago";
+  provider?: "mercado_pago";
+  providerTransactionId?: string;
   billId?: string;
   orderId?: string;
   createdAt?: unknown;
@@ -134,6 +137,7 @@ type AppNotification = {
 };
 
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
+const PSYZONAIWorkspace = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -177,11 +181,12 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
   { id: "pessoal", label: "Pessoal", icon: UserRound },
+  { id: "ai", label: "PSYZON AI", icon: Sparkles },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "notas", "clientes"].includes(item.id)) },
-  { label: "Gestão", items: navItems.filter((item) => ["financeiro", "pessoal"].includes(item.id)) },
+  { label: "Gestão", items: navItems.filter((item) => ["financeiro", "pessoal", "ai"].includes(item.id)) },
   { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
 ];
 
@@ -237,6 +242,7 @@ export default function HomePage() {
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
   const [mobileFloatingOpen, setMobileFloatingOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
 
@@ -765,6 +771,8 @@ export default function HomePage() {
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const floatingActive = floatingModeOpen || mobileFloatingOpen;
+  const getAIIdToken = () => user.getIdToken();
+  const navigateFromAI = (target: View) => { setView(target); setAiPanelOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -801,18 +809,21 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="content">
+        <section className={`content ${view === "ai" ? "ai-content" : ""}`}>
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
           {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
           {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
           {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
+          {view === "ai" && <PSYZONAIWorkspace getIdToken={getAIIdToken} onNavigate={navigateFromAI} />}
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
-      {view !== "notas" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "notas" && view !== "ai" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "ai" && <button className={`ai-floating-button ${aiPanelOpen ? "active" : ""}`} onClick={() => setAiPanelOpen((current) => !current)} aria-label={aiPanelOpen ? "Fechar PSYZON AI" : "Abrir PSYZON AI"} aria-expanded={aiPanelOpen}><span><Sparkles size={22} /></span><span><b>PSYZON AI</b><small>Pergunte sobre sua empresa</small></span></button>}
+      {aiPanelOpen && <div className="ai-floating-panel"><PSYZONAIWorkspace mode="panel" getIdToken={getAIIdToken} onClose={() => setAiPanelOpen(false)} onOpenFull={() => { setView("ai"); setAiPanelOpen(false); }} onNavigate={navigateFromAI} /></div>}
       {mobileFloatingOpen && <button className="mobile-floating-launcher" onClick={() => { setView("inicio"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Abrir início do PSYZON GO"><Image src="/icon-192-v3.png" alt="" width={40} height={40} /><span>Início</span></button>}
       <nav className="mobile-nav">
         {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
@@ -910,6 +921,7 @@ function Dashboard({ userName, orders, transactions, businessBalance, businessIn
       <Metric icon={Boxes} label="Produção" value={`${orders.length} pedidos`} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
       <Metric icon={UserRound} label="Saldo pessoal" value={displayMoney(personalBalance)} detail={<span className="personal-label">PESSOAL · separado da empresa</span>} />
     </div>
+    <section className="ai-dashboard-summary"><span><Sparkles size={20} /></span><div><small>PSYZON AI · RESUMO EXECUTIVO</small><h2>{overdue.length ? `${overdue.length} pedido(s) atrasado(s) precisam da sua atenção.` : "Nenhum pedido atrasado neste momento."}</h2><p>{pending > 0 ? `Há ${displayMoney(pending)} para receber. ` : "Não há valores pendentes nos pedidos. "}{businessIncome - businessExpense >= 0 ? `O resultado financeiro registrado está positivo em ${displayMoney(businessIncome - businessExpense)}.` : `As saídas superam as entradas registradas em ${displayMoney(Math.abs(businessIncome - businessExpense))}.`}</p></div><button onClick={() => setView("ai")}>Ver análise completa <ChevronRight size={15} /></button></section>
     <div className="dashboard-grid">
       <div className="main-column">
         {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + orders.filter((o: Order) => o.total > o.paid).length} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido #{order.id} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}

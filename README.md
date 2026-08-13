@@ -29,6 +29,29 @@ Authentication, ative o Cloud Firestore e publique as regras presentes em
 O aplicativo não usa Realtime Database nem Cloud Storage nesta etapa. As regras
 do Firestore garantem que cada conta Google acesse somente os próprios dados.
 
+## PSYZON AI e Gemini
+
+A PSYZON AI possui página dedicada, painel flutuante, histórico por usuário,
+anexos de texto, ditado por voz, respostas estruturadas e ferramentas controladas
+para consultar pedidos, clientes e financeiro. O modo inicial é somente leitura.
+
+Configure os valores sensíveis apenas no ambiente do servidor:
+
+- `GEMINI_API_KEY`: chave da Gemini API.
+- `GEMINI_MODEL`: modelo usado pelo provedor; o padrão está em `.env.example`.
+- `MERCADO_PAGO_ACCESS_TOKEN`: token privado para consultar pagamentos.
+- `MERCADO_PAGO_WEBHOOK_SECRET`: assinatura secreta configurada no webhook.
+- `MERCADO_PAGO_OWNER_FIREBASE_UID`: UID Firebase do proprietário autorizado.
+
+Não use o prefixo `NEXT_PUBLIC_` nessas variáveis. O endpoint de notificações do
+Mercado Pago é `/api/webhooks/mercadopago`. A integração valida a assinatura,
+processa eventos de forma idempotente e apenas consulta/concilia pagamentos; ela
+não transfere dinheiro.
+
+Depois de alterar `db/schema.ts`, gere e publique as migrações com
+`npm run db:generate`. Os testes críticos da IA podem ser executados isoladamente
+com `npm run test:ai`.
+
 ## Workspace Auth Headers
 
 Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.

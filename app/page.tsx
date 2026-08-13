@@ -347,6 +347,10 @@ export default function HomePage() {
     document.documentElement.dataset.uiSize = uiSize;
     localStorage.setItem("psy-ui-size", uiSize);
   }, [uiSize]);
+  useEffect(() => {
+    document.body.classList.toggle("ai-workspace-active", view === "ai");
+    return () => document.body.classList.remove("ai-workspace-active");
+  }, [view]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -777,7 +781,7 @@ export default function HomePage() {
   const navigateFromAI = (target: View) => { setView(target); setAiPanelOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${view === "ai" ? "ai-page-active" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-brand-row">
           <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">

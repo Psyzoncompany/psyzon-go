@@ -215,3 +215,13 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(exampleEnv, /^MERCADO_PAGO_ACCESS_TOKEN=/m);
   assert.doesNotMatch(exampleEnv, /NEXT_PUBLIC_(GEMINI|MERCADO_PAGO)/);
 });
+
+test("keeps the AI workspace stable with large global fonts", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(css, /body\.ai-workspace-active \{ zoom: 1;/);
+  assert.match(css, /\.app-shell\.ai-page-active > \.sidebar/);
+  assert.match(css, /--ai-answer-text: 14\.5px/);
+  assert.match(css, /overflow-x: hidden/);
+  assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", view === "ai"\)/);
+});

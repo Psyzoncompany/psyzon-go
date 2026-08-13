@@ -158,3 +158,11 @@ test("AI prompt requires Brazilian currency punctuation and separates outgoing a
   assert.match(source, /R\$ 5,20; R\$ 1\.875,00; R\$ 12\.870,00/);
   assert.match(source, /auditoria das saídas internas/);
 });
+
+test("Mercado Pago synchronization backfills one year and paginates payment search", async () => {
+  const source = await readFile(new URL("../app/lib/server/mercado-pago.ts", import.meta.url), "utf8");
+  assert.match(source, /365 \* 86_400_000/);
+  assert.match(source, /maximumPayments = 1_000/);
+  assert.match(source, /offset: String\(offset\)/);
+  assert.match(source, /fullBackfillCompletedAt/);
+});

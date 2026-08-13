@@ -41,3 +41,4 @@ google-services.json
 /outputs/
 /work/
 *.tsbuildinfo
+.openai/site-version-*.tar.gz

@@ -70,18 +70,28 @@ export async function upsertMercadoPagoPayment(identity: FirebaseIdentity, payme
 export async function syncMercadoPagoPayments(identity: FirebaseIdentity, beginDate?: string, endDate?: string) {
   const previous = await getUserDocument(identity, "integrationSyncState", "mercado_pago");
   const end = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? `${endDate}T23:59:59.999-03:00` : new Date().toISOString();
-  const fallbackBegin = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  const fallbackBegin = new Date(Date.now() - 365 * 86_400_000).toISOString();
   const lastSyncedAt = Number(previous?.lastSyncedAt ?? 0);
   const incrementalBegin = lastSyncedAt ? new Date((lastSyncedAt - 86_400) * 1000).toISOString() : fallbackBegin;
-  const begin = beginDate && /^\d{4}-\d{2}-\d{2}$/.test(beginDate) ? `${beginDate}T00:00:00.000-03:00` : incrementalBegin;
-  const params = new URLSearchParams({ sort: "date_created", criteria: "desc", range: "date_created", begin_date: begin, end_date: end, limit: "100", offset: "0" });
+  const needsBackfill = !previous?.fullBackfillCompletedAt;
+  const begin = beginDate && /^\d{4}-\d{2}-\d{2}$/.test(beginDate) ? `${beginDate}T00:00:00.000-03:00` : needsBackfill ? fallbackBegin : incrementalBegin;
   try {
-    const data = await mercadoPagoFetch(`/v1/payments/search?${params}`) as { results?: MercadoPagoPayment[]; paging?: { total?: number } };
-    const payments = data.results ?? [];
+    const payments: MercadoPagoPayment[] = [];
+    const pageSize = 100;
+    const maximumPayments = 1_000;
+    let available = 0;
+    for (let offset = 0; offset < maximumPayments; offset += pageSize) {
+      const params = new URLSearchParams({ sort: "date_created", criteria: "desc", range: "date_created", begin_date: begin, end_date: end, limit: String(pageSize), offset: String(offset) });
+      const data = await mercadoPagoFetch(`/v1/payments/search?${params}`) as { results?: MercadoPagoPayment[]; paging?: { total?: number } };
+      const page = data.results ?? [];
+      available = Number(data.paging?.total ?? (available || page.length));
+      payments.push(...page);
+      if (page.length < pageSize || payments.length >= available) break;
+    }
     await Promise.all(payments.map((payment) => upsertMercadoPagoPayment(identity, payment)));
     const now = Math.floor(Date.now() / 1000);
-    await setUserDocument(identity, "integrationSyncState", "mercado_pago", { status: "connected", lastSyncedAt: now, lastError: null, recordsChecked: payments.length, updatedAt: now });
-    return { synced: payments.length, available: data.paging?.total ?? payments.length, lastSyncedAt: now, begin, end };
+    await setUserDocument(identity, "integrationSyncState", "mercado_pago", { status: "connected", lastSyncedAt: now, lastError: null, recordsChecked: payments.length, fullBackfillCompletedAt: previous?.fullBackfillCompletedAt ?? (needsBackfill ? now : null), updatedAt: now });
+    return { synced: payments.length, available: available || payments.length, truncated: available > payments.length, lastSyncedAt: now, begin, end };
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 180) : "Erro desconhecido";
     const now = Math.floor(Date.now() / 1000);

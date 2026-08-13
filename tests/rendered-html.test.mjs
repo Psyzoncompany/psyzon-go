@@ -107,9 +107,11 @@ test("ships a stable and installable PWA manifest", async () => {
 });
 
 test("service worker caches only safe same-origin app assets", async () => {
-  const [worker, page] = await Promise.all([
+  const [worker, page, localNotifications, androidManifest] = await Promise.all([
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/localNotifications.ts", import.meta.url), "utf8"),
+    readFile(new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url), "utf8"),
   ]);
 
   assert.match(worker, /url\.origin !== self\.location\.origin/);
@@ -122,9 +124,17 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /requestWindow\(\{ width: 230, height: 128 \}\)/);
   assert.match(page, /Modo flutuante/);
   assert.match(page, /Clique para abrir o sistema/);
-  assert.match(page, /mobileFloatingOpen/);
-  assert.match(page, /Atalho flutuante ativado no celular/);
-  assert.match(page, /mobile-floating-launcher/);
+  assert.doesNotMatch(page, /mobileFloatingOpen/);
+  assert.doesNotMatch(page, /Atalho flutuante ativado no celular/);
+  assert.doesNotMatch(page, /mobile-floating-launcher/);
+  assert.match(page, /syncDailyReminders/);
+  assert.match(page, /08:00, 14:00 e 19:00/);
+  assert.match(localNotifications, /hour: 8/);
+  assert.match(localNotifications, /hour: 14/);
+  assert.match(localNotifications, /hour: 19/);
+  assert.match(localNotifications, /allowWhileIdle: true/);
+  assert.match(localNotifications, /LocalNotifications\.schedule/);
+  assert.match(androidManifest, /android\.permission\.SCHEDULE_EXACT_ALARM/);
   assert.match(page, /sidebarCollapsed/);
   assert.match(page, /sidebar-collapse-button/);
   assert.match(page, /PanelLeftClose/);

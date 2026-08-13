@@ -3,6 +3,8 @@
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
+import { Capacitor } from "@capacitor/core";
+import { syncDailyReminders } from "./localNotifications";
 import {
   browserLocalPersistence,
   GoogleAuthProvider,
@@ -240,11 +242,11 @@ export default function HomePage() {
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
-  const [mobileFloatingOpen, setMobileFloatingOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
+  const dailyRemindersInitialized = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIntroComplete(true), 1900);
@@ -380,13 +382,7 @@ export default function HomePage() {
 
   const toggleFloatingMode = async () => {
     const controller = (window as Window & { documentPictureInPicture?: DocumentPictureInPictureController }).documentPictureInPicture;
-    if (!controller) {
-      if (!window.matchMedia("(max-width: 760px)").matches) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
-      const nextState = !mobileFloatingOpen;
-      setMobileFloatingOpen(nextState);
-      showToast(nextState ? "Atalho flutuante ativado no celular" : "Atalho flutuante desativado");
-      return;
-    }
+    if (!controller) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
     if (floatingWindowRef.current && !floatingWindowRef.current.closed) {
       floatingWindowRef.current.close();
       floatingWindowRef.current = null;
@@ -556,13 +552,39 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!notificationsEnabled || !dataReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (Capacitor.isNativePlatform()) return;
     const todayKey = new Date().toISOString().slice(0, 10);
     if (localStorage.getItem("psy-last-system-notification") === todayKey) return;
     new Notification("PSYZON GO", { body: `${notifications.length} item(ns) precisam da sua atenção.`, icon: "/icon-192-v3.png" });
     localStorage.setItem("psy-last-system-notification", todayKey);
   }, [dataReady, notifications, notificationsEnabled]);
 
+  useEffect(() => {
+    if (!dataReady || !notificationsEnabled || !Capacitor.isNativePlatform() || dailyRemindersInitialized.current) return;
+    dailyRemindersInitialized.current = true;
+    syncDailyReminders(true, true).then((status) => {
+      if (status !== "denied") return;
+      setNotificationsEnabled(false);
+      localStorage.setItem("psy-notifications", "off");
+      showToast("Permissão de notificações não concedida");
+    }).catch((error) => console.error("Não foi possível agendar os lembretes", error));
+  }, [dataReady, notificationsEnabled]);
+
   const changeNotifications = async (enabled: boolean) => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const status = await syncDailyReminders(enabled, enabled);
+        const accepted = status !== "denied";
+        setNotificationsEnabled(enabled && accepted);
+        localStorage.setItem("psy-notifications", enabled && accepted ? "on" : "off");
+        showToast(enabled && accepted ? "Lembretes ativados para 08:00, 14:00 e 19:00" : enabled ? "Permissão de notificações não concedida" : "Lembretes desativados");
+      } catch (error) {
+        console.error("Não foi possível alterar os lembretes", error);
+        showToast("Não foi possível configurar as notificações");
+      }
+      return;
+    }
+
     setNotificationsEnabled(enabled);
     localStorage.setItem("psy-notifications", enabled ? "on" : "off");
     if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission();
@@ -776,7 +798,7 @@ export default function HomePage() {
   const userName = user.displayName || "Usuário PSYZON";
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  const floatingActive = floatingModeOpen || mobileFloatingOpen;
+  const floatingActive = floatingModeOpen;
   const getAIIdToken = () => user.getIdToken();
   const navigateFromAI = (target: View) => { setView(target); setAiPanelOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
@@ -830,7 +852,6 @@ export default function HomePage() {
       {view !== "notas" && view !== "ai" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
       {view !== "ai" && <button className={`ai-floating-button ${aiPanelOpen ? "active" : ""}`} onClick={() => setAiPanelOpen((current) => !current)} aria-label={aiPanelOpen ? "Fechar PSYZON AI" : "Abrir PSYZON AI"} aria-expanded={aiPanelOpen}><span><Sparkles size={22} /></span><span><b>PSYZON AI</b><small>Pergunte sobre sua empresa</small></span></button>}
       {aiPanelOpen && <div className="ai-floating-panel"><PSYZONAIWorkspace mode="panel" getIdToken={getAIIdToken} onClose={() => setAiPanelOpen(false)} onOpenFull={() => { setView("ai"); setAiPanelOpen(false); }} onNavigate={navigateFromAI} /></div>}
-      {mobileFloatingOpen && <button className="mobile-floating-launcher" onClick={() => { setView("inicio"); window.scrollTo({ top: 0, behavior: "smooth" }); }} aria-label="Abrir início do PSYZON GO"><Image src="/icon-192-v3.png" alt="" width={40} height={40} /><span>Início</span></button>}
       <nav className="mobile-nav">
         {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
         <button className="mobile-new" onClick={() => setModal("pedido")} aria-label="Novo pedido"><Plus /></button>
@@ -1052,7 +1073,7 @@ function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValue
     { value: "large", label: "Grande", hint: "114%" },
     { value: "extra-large", label: "Muito grande", hint: "128%" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>Um resumo diário, sem excesso de avisos</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>Os alertas continuam disponíveis no sino mesmo se as notificações do dispositivo estiverem desligadas.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 const businessExpenseCategories = ["Material", "Fornecedor", "Mão de obra", "Impostos", "Equipamentos", "Serviços", "Software", "Frete", "Outros"];

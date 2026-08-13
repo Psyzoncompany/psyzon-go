@@ -17,12 +17,14 @@ import {
 import { executeConfirmedTool } from "../../lib/server/ai-tools";
 import { authenticateFirebaseRequest } from "../../lib/server/firebase-rest";
 
-function errorResponse(error: unknown) {
-  if (error instanceof Response) return error;
+async function errorResponse(error: unknown) {
+  if (error instanceof Response) {
+    const message = await error.text().catch(() => "Não foi possível validar sua sessão.");
+    return Response.json({ error: message || "Não foi possível validar sua sessão." }, { status: error.status });
+  }
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
     GEMINI_NOT_CONFIGURED: ["A PSYZON AI está pronta, mas a chave GEMINI_API_KEY ainda precisa ser configurada.", 503],
-    AI_DATABASE_NOT_CONFIGURED: ["O banco da PSYZON AI ainda não foi configurado neste ambiente. Na Vercel, adicione TURSO_DATABASE_URL e TURSO_AUTH_TOKEN.", 503],
     AI_DISABLED: ["A PSYZON AI está desativada nas configurações.", 403],
     TOOL_LOOP_LIMIT: ["Interrompi uma sequência longa de consultas para manter a operação segura. Reformule o pedido em uma análise por vez.", 422],
   };
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const conversationId = url.searchParams.get("conversationId");
     if (conversationId) return Response.json({ messages: await getConversationMessages(identity, conversationId) });
-    const [settings, conversations, sync] = await Promise.all([getAISettings(identity), listConversations(identity), getIntegrationStatus(identity.uid)]);
+    const [settings, conversations, sync] = await Promise.all([getAISettings(identity), listConversations(identity), getIntegrationStatus(identity)]);
     return Response.json({
       settings,
       conversations,
@@ -51,7 +53,7 @@ export async function GET(request: Request) {
         mercadoPago: { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN && process.env.MERCADO_PAGO_OWNER_FIREBASE_UID === identity.uid), enabled: settings.mercadoPagoEnabled, status: sync.status, lastSyncedAt: sync.lastSyncedAt, lastError: sync.lastError, recordsChecked: sync.recordsChecked },
       },
     });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return await errorResponse(error); }
 }
 
 export async function POST(request: Request) {
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
     const result = await runPSYZONAgent({ identity, conversationId: conversation.id, question, history });
     const assistantMessage = settings.saveHistory ? await saveMessage(identity, conversation.id, "assistant", result.payload.summary, result.payload, result.toolNames) : { id: crypto.randomUUID(), role: "assistant" as const, content: result.payload.summary, payload: result.payload, toolNames: result.toolNames, createdAt: Math.floor(Date.now() / 1000) };
     return Response.json({ conversation: { ...conversation, title: conversation.title === "Nova conversa" ? question.replace(/[?.!]+$/g, "").slice(0, 64) : conversation.title }, userMessage, message: assistantMessage, model: result.model, rateLimitRemaining: rate.remaining });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return await errorResponse(error); }
 }
 
 export async function PATCH(request: Request) {
@@ -108,7 +110,7 @@ export async function PATCH(request: Request) {
     if (typeof body.financialAnalysis === "boolean") allowed.financialAnalysis = body.financialAnalysis;
     if (typeof body.mercadoPagoEnabled === "boolean") allowed.mercadoPagoEnabled = body.mercadoPagoEnabled;
     return Response.json({ settings: await saveAISettings(identity, allowed) });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return await errorResponse(error); }
 }
 
 export async function DELETE(request: Request) {
@@ -118,5 +120,5 @@ export async function DELETE(request: Request) {
     if (!conversationId) return Response.json({ error: "Conversa não informada." }, { status: 400 });
     await deleteConversation(identity, conversationId);
     return Response.json({ deleted: true });
-  } catch (error) { return errorResponse(error); }
+  } catch (error) { return await errorResponse(error); }
 }

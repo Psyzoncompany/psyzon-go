@@ -45,37 +45,18 @@ Configure os valores sensíveis apenas no ambiente do servidor:
 
 Não use o prefixo `NEXT_PUBLIC_` nessas variáveis. O endpoint de notificações do
 Mercado Pago é `/api/webhooks/mercadopago`. A integração valida a assinatura,
-processa eventos de forma idempotente e apenas consulta/concilia pagamentos; ela
-não transfere dinheiro.
+confirma o pagamento na API oficial e sincroniza/concilia pelo acesso autenticado
+da PSYZON AI; ela não transfere dinheiro.
 
 Depois de alterar `db/schema.ts`, gere e publique as migrações com
 `npm run db:generate`. Os testes críticos da IA podem ser executados isoladamente
 com `npm run test:ai`.
 
-### Armazenamento da IA na Vercel
+### Armazenamento da IA
 
-Histórico, configurações, confirmações, auditoria e uso da PSYZON AI ficam no
-mesmo Cloud Firestore já utilizado por pedidos e finanças. Portanto, a IA básica
-na Vercel não exige Turso nem outro banco adicional.
-
-Turso/libSQL é opcional e necessário apenas se a conciliação avançada com o
-Mercado Pago também for executada na Vercel. Nesse caso, configure:
-
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN` (marque como segredo)
-
-Antes do primeiro uso da conciliação na Vercel, aplique a estrutura das tabelas
-uma vez. No
-PowerShell, defina temporariamente as duas variáveis na sessão e execute:
-
-```powershell
-$env:TURSO_DATABASE_URL="libsql://..."
-$env:TURSO_AUTH_TOKEN="..."
-npm run db:migrate:turso
-```
-
-O script registra a migração aplicada e pode ser executado novamente com
-segurança. Nunca salve o token no Git ou em uma variável `NEXT_PUBLIC_*`.
+Histórico, configurações, confirmações, auditoria, uso da PSYZON AI e dados de
+conciliação do Mercado Pago ficam no mesmo Cloud Firestore já utilizado por
+pedidos e finanças. A Vercel não exige Turso nem outro banco adicional.
 
 ## Workspace Auth Headers
 

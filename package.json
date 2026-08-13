@@ -13,15 +13,13 @@
     "test": "npm run build && npm run test:ai && node --test tests/rendered-html.test.mjs",
     "test:ai": "tsx --test tests/ai-critical.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate:turso": "node scripts/migrate-turso.mjs"
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@google/genai": "^2.17.0",
-    "@libsql/client": "^0.17.4",
     "drizzle-orm": "0.45.2",
     "firebase": "^12.17.1",
     "lucide-react": "^1.31.0",
@@ -31,7 +29,6 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "^4.20260702.1",
     "@eslint/js": "9.39.4",
     "@next/eslint-plugin-next": "16.2.6",
     "@tailwindcss/postcss": "4.2.1",

@@ -1,6 +1,3 @@
-import { desc, eq } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { financialReconciliation, mercadoPagoPayments } from "../../../db/schema";
 import type { AIPermissionMode } from "../../ai/types";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
@@ -12,6 +9,8 @@ import {
   type FirebaseIdentity,
 } from "./firebase-rest";
 import { createConfirmation, logAIAudit } from "./ai-store";
+import { listMercadoPagoPayments } from "./mercado-pago";
+import { listReconciliation } from "./reconciliation";
 
 export type AIToolContext = {
   identity: FirebaseIdentity;
@@ -240,8 +239,8 @@ const getMercadoPagoSummary: ToolDefinition = {
   execute: async ({ identity }) => {
     const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
     if (!ownerUserId || ownerUserId !== identity.uid) return { configured: false, restricted: true, message: "A integração Mercado Pago ainda não foi vinculada a esta conta proprietária." };
-    const payments = await getDb().select().from(mercadoPagoPayments).where(eq(mercadoPagoPayments.ownerUserId, identity.uid)).orderBy(desc(mercadoPagoPayments.lastSyncedAt)).limit(100);
-    const reconciliation = await getDb().select().from(financialReconciliation).where(eq(financialReconciliation.ownerUserId, identity.uid)).limit(200);
+    const payments = (await listMercadoPagoPayments(identity)).slice(0, 100);
+    const reconciliation = (await listReconciliation(identity)).slice(0, 200);
     const byStatus = reconciliation.reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.status]: (acc[item.status] ?? 0) + 1 }), {});
     return { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN), paymentCount: payments.length, approvedGross: payments.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.amountCents, 0) / 100, fees: payments.reduce((sum, item) => sum + (item.feeCents ?? 0), 0) / 100, reconciliation: byStatus, lastSyncedAt: payments[0]?.lastSyncedAt ?? null };
   },

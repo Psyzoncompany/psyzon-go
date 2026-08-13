@@ -24,7 +24,7 @@ export type FirebaseIdentity = {
 };
 
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
-export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits";
+export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState";
 
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
 const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";

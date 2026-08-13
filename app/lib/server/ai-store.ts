@@ -1,6 +1,3 @@
-import { and, eq } from "drizzle-orm";
-import { getDb } from "../../../db";
-import { integrationSyncState } from "../../../db/schema";
 import type { AIConversation, AIMessage, AIResponsePayload, AISettings } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
 import { deleteUserDocument, getUserDocument, listUserCollection, patchUserDocument, setUserDocument } from "./firebase-rest";
@@ -185,12 +182,12 @@ export async function saveAIUsage(input: { identity: FirebaseIdentity; conversat
   });
 }
 
-export async function getIntegrationStatus(userId: string) {
-  try {
-    const [row] = await getDb().select().from(integrationSyncState).where(and(eq(integrationSyncState.ownerUserId, userId), eq(integrationSyncState.provider, "mercado_pago"))).limit(1);
-    return row ?? { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 };
-  } catch (error) {
-    if (error instanceof Error && error.message === "AI_DATABASE_NOT_CONFIGURED") return { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 };
-    throw error;
-  }
+export async function getIntegrationStatus(identity: FirebaseIdentity) {
+  const row = await getUserDocument(identity, "integrationSyncState", "mercado_pago");
+  return row ? {
+    status: String(row.status ?? "not_configured"),
+    lastSyncedAt: row.lastSyncedAt === null ? null : numberValue(row.lastSyncedAt),
+    lastError: typeof row.lastError === "string" ? row.lastError : null,
+    recordsChecked: numberValue(row.recordsChecked),
+  } : { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 };
 }

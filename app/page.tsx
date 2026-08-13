@@ -350,7 +350,9 @@ export default function HomePage() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement).matches("input, textarea, select")) {
+      const target = event.target as HTMLElement | null;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (target?.matches("input, textarea, select") || target?.isContentEditable) {
         if (event.key === "Escape") setModal(null);
         return;
       }
@@ -791,7 +793,7 @@ export default function HomePage() {
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
       </aside>
 
-      <main className="main">
+      <main className={`main ${view === "ai" ? "ai-view" : ""}`}>
         <header className="topbar">
           <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
           <div className="search-wrap">

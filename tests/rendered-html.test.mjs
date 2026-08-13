@@ -191,6 +191,8 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
 
   assert.match(page, /label: "PSYZON AI"/);
   assert.match(page, /ai-floating-button/);
+  assert.match(page, /event\.ctrlKey \|\| event\.metaKey \|\| event\.altKey/);
+  assert.match(page, /main \$\{view === "ai" \? "ai-view" : ""\}/);
   assert.match(page, /<PSYZONAIWorkspace/);
   assert.match(workspace, /ai-quick-grid/);
   assert.match(workspace, /SpeechRecognition/);
@@ -202,6 +204,7 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(aiRoute, /authenticateFirebaseRequest/);
   assert.match(aiStore, /listUserCollection\(identity, "aiConversations"/);
   assert.match(aiStore, /setUserDocument\(identity, "aiSettings"/);
+  assert.match(aiStore, /getUserDocument\(identity, "integrationSyncState", "mercado_pago"/);
   assert.match(webhook, /verifyMercadoPagoSignature/);
   assert.match(exampleEnv, /^GEMINI_API_KEY=/m);
   assert.match(exampleEnv, /^MERCADO_PAGO_ACCESS_TOKEN=/m);

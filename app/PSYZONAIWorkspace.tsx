@@ -7,6 +7,7 @@ import {
   BarChart3,
   BrainCircuit,
   Check,
+  ChevronLeft,
   Clock3,
   Copy,
   FileText,
@@ -101,7 +102,7 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
   const [loadingState, setLoadingState] = useState("");
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(mode === "page");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listening, setListening] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -248,13 +249,13 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
       <header><div className="ai-brand"><span><Sparkles size={17} /></span><div><b>PSYZON AI</b><small>Copiloto administrativo</small></div></div>{mode === "panel" && <button onClick={() => setSidebarOpen(false)} aria-label="Fechar histórico"><X size={17} /></button>}</header>
       <button className="ai-new-chat" onClick={newConversation}><MessageSquarePlus size={16} /> Nova conversa</button>
       <div className="ai-history-label"><History size={13} /> Histórico</div>
-      <div className="ai-conversation-list">{conversations.length ? conversations.map((conversation) => <div key={conversation.id} className={activeConversation === conversation.id ? "active" : ""}><button onClick={() => { setActiveConversation(conversation.id); if (mode === "panel") setSidebarOpen(false); }}><span>{conversation.title}</span><small>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(conversation.updatedAt * 1000))}</small></button><button onClick={() => void deleteConversationById(conversation.id)} aria-label={`Excluir ${conversation.title}`}><Trash2 size={13} /></button></div>) : <p>Suas análises salvas aparecerão aqui.</p>}</div>
+      <div className="ai-conversation-list">{conversations.length ? conversations.map((conversation) => <div key={conversation.id} className={activeConversation === conversation.id ? "active" : ""}><button onClick={() => { setActiveConversation(conversation.id); setSidebarOpen(false); }}><span>{conversation.title}</span><small>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(conversation.updatedAt * 1000))}</small></button><button onClick={() => void deleteConversationById(conversation.id)} aria-label={`Excluir ${conversation.title}`}><Trash2 size={13} /></button></div>) : <p>Suas análises salvas aparecerão aqui.</p>}</div>
       <footer><button onClick={() => setSettingsOpen(true)}><Settings2 size={15} /><span><b>Configurações</b><small>Permissões e integrações</small></span></button><div className="ai-security"><ShieldCheck size={13} /><span>Chaves protegidas no servidor</span></div></footer>
     </aside>
-    {sidebarOpen && mode === "panel" && <button className="ai-sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Fechar histórico" />}
+    {sidebarOpen && <button className={`ai-sidebar-scrim ${mode}`} onClick={() => setSidebarOpen(false)} aria-label="Fechar histórico" />}
 
     <div className="ai-main">
-      <header className="ai-topbar"><div><button onClick={() => setSidebarOpen((current) => !current)} aria-label="Abrir histórico"><Menu size={19} /></button><span className="ai-avatar"><Sparkles size={18} /></span><span><b>{currentTitle}</b><small><i /> PSYZON AI · dados em tempo real</small></span></div><div><button onClick={exportConversation} aria-label="Exportar conversa"><ArrowDownToLine size={17} /></button><button onClick={() => setSettingsOpen(true)} aria-label="Configurações da IA"><Settings2 size={17} /></button>{mode === "panel" && onOpenFull && <button className="ai-open-full" onClick={onOpenFull}><ArrowRight size={16} /><span>Abrir página</span></button>}{mode === "panel" && onClose && <button onClick={onClose} aria-label="Fechar PSYZON AI"><X size={18} /></button>}</div></header>
+      <header className="ai-topbar"><div>{mode === "page" && <button className="ai-mobile-back" onClick={() => onNavigate("inicio")} aria-label="Voltar ao início"><ChevronLeft size={20} /></button>}<button onClick={() => setSidebarOpen((current) => !current)} aria-label="Abrir histórico"><Menu size={19} /></button><span className="ai-avatar"><Sparkles size={18} /></span><span><b>{currentTitle}</b><small><i /> PSYZON AI · dados em tempo real</small></span></div><div><button className="ai-export-action" onClick={exportConversation} aria-label="Exportar conversa"><ArrowDownToLine size={17} /></button><button onClick={() => setSettingsOpen(true)} aria-label="Configurações da IA"><Settings2 size={17} /></button>{mode === "panel" && onOpenFull && <button className="ai-open-full" onClick={onOpenFull}><ArrowRight size={16} /><span>Abrir página</span></button>}{mode === "panel" && onClose && <button onClick={onClose} aria-label="Fechar PSYZON AI"><X size={18} /></button>}</div></header>
 
       <div className="ai-chat-scroll">
         {showWelcome && <div className="ai-welcome"><div className="ai-welcome-orb"><BrainCircuit size={31} /></div><span className="eyebrow">INTELIGÊNCIA PARA SUA OPERAÇÃO</span><h1>O que vamos analisar hoje?</h1><p>Pergunte sobre financeiro, pedidos, clientes, produção ou o que precisa da sua atenção. Eu consulto os dados reais antes de responder.</p><div className="ai-quick-grid">{quickPrompts.map(({ icon: Icon, label, prompt }) => <button key={label} onClick={() => void sendMessage(prompt)}><span><Icon size={18} /></span><b>{label}</b><ArrowRight size={15} /></button>)}</div></div>}

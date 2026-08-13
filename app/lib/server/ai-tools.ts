@@ -38,6 +38,7 @@ type ToolDefinition = {
 };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const formatMoney = (value: number) => money.format(Number.isFinite(value) ? value : 0);
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bahia", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const monthKey = (offset = 0) => {
   const [year, month] = today().split("-").map(Number);
@@ -234,33 +235,113 @@ const searchSystem: ToolDefinition = {
 };
 
 const getMercadoPagoSummary: ToolDefinition = {
-  declaration: { type: "function", name: "get_mercado_pago_summary", description: "Consulta o estado real da integração Mercado Pago e detalha cada divergência com valor, descrição, data, observações e identificadores.", parameters: { type: "object", properties: {} } },
+  declaration: { type: "function", name: "get_mercado_pago_summary", description: "Consulta a conciliação do Mercado Pago, entrega valores já formatados em BRL e audita também as saídas empresariais internas.", parameters: { type: "object", properties: {} } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }) => {
     const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
     if (!ownerUserId || ownerUserId !== identity.uid) return { configured: false, restricted: true, message: "A integração Mercado Pago ainda não foi vinculada a esta conta proprietária." };
-    const payments = (await listMercadoPagoPayments(identity)).slice(0, 100);
-    const reconciliation = (await listReconciliation(identity)).slice(0, 200);
+    const [paymentsResult, reconciliationResult, transactions] = await Promise.all([
+      listMercadoPagoPayments(identity),
+      listReconciliation(identity),
+      listUserCollection(identity, "transactions", 500),
+    ]);
+    const payments = paymentsResult;
+    const reconciliation = reconciliationResult.slice(0, 200);
     const byStatus = reconciliation.reduce<Record<string, number>>((acc, item) => ({ ...acc, [item.status]: (acc[item.status] ?? 0) + 1 }), {});
     const paymentById = new Map(payments.map((payment) => [payment.paymentId, payment]));
+    const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
     const divergences = reconciliation.filter((item) => item.status !== "CONCILIADO").map((item) => {
       const payment = item.providerPaymentId ? paymentById.get(item.providerPaymentId) : undefined;
+      const internal = item.systemTransactionId ? transactionById.get(item.systemTransactionId) : undefined;
+      const providerAmount = item.providerAmountCents === null ? null : item.providerAmountCents / 100;
+      const systemAmount = item.systemAmountCents === null ? null : item.systemAmountCents / 100;
+      const amount = providerAmount ?? systemAmount ?? 0;
+      const difference = item.differenceCents === null ? null : item.differenceCents / 100;
       return {
         reconciliationStatus: item.status,
         reason: item.reason,
-        amount: (item.providerAmountCents ?? item.systemAmountCents ?? 0) / 100,
-        difference: item.differenceCents === null ? null : item.differenceCents / 100,
-        description: payment?.description || "Sem descrição informada",
+        amount,
+        amountFormatted: formatMoney(amount),
+        providerAmount,
+        providerAmountFormatted: providerAmount === null ? null : formatMoney(providerAmount),
+        systemAmount,
+        systemAmountFormatted: systemAmount === null ? null : formatMoney(systemAmount),
+        difference,
+        differenceFormatted: difference === null ? null : formatMoney(difference),
+        description: payment?.description || text(internal?.description, "Sem descrição informada"),
         observation: payment?.statusDetail || item.reason,
         paymentStatus: payment?.status ?? null,
         paymentMethod: payment?.paymentMethod ?? null,
-        date: payment?.dateApproved || payment?.dateCreated || null,
+        date: payment?.dateApproved || payment?.dateCreated || (internal ? recordDate(internal) : null),
         mercadoPagoId: item.providerPaymentId,
         externalReference: payment?.externalReference ?? null,
         systemTransactionId: item.systemTransactionId,
+        internalCategory: internal ? text(internal.category, "Sem categoria") : null,
+        internalOrderId: internal ? text(internal.orderId) || null : null,
+        internalSource: internal ? text(internal.source, text(internal.orderId) ? "pedido" : "manual") : null,
+        missingExternalPayment: Boolean(internal && !payment),
+        likelyCause: internal && !payment
+          ? text(internal.providerTransactionId) || text(internal.paymentId)
+            ? "O lançamento interno informa um ID externo, mas o pagamento não foi localizado entre os dados sincronizados do Mercado Pago."
+            : text(internal.orderId)
+              ? "Entrada criada pelo cadastro ou edição de um pedido, sem ID de pagamento do Mercado Pago. Pode ser dinheiro, Pix manual ou outro meio de recebimento."
+              : "Entrada criada manualmente no financeiro, sem vínculo identificável com o Mercado Pago."
+          : null,
+      };
+    }).slice(0, 100);
+    const outgoings = transactions
+      .filter((item) => text(item.account) === "business" && ["expense", "transfer"].includes(text(item.type)))
+      .sort((left, right) => recordDate(right).localeCompare(recordDate(left)));
+    const duplicateGroups = new Map<string, string[]>();
+    outgoings.forEach((item) => {
+      const key = `${recordDate(item)}|${number(item.amount).toFixed(2)}|${text(item.description).toLocaleLowerCase("pt-BR")}`;
+      duplicateGroups.set(key, [...(duplicateGroups.get(key) ?? []), item.id]);
+    });
+    const duplicatedIds = new Set([...duplicateGroups.values()].filter((ids) => ids.length > 1).flat());
+    const outgoingTransactions = outgoings.map((item) => {
+      const amount = number(item.amount);
+      const issues = [
+        ...(!text(item.description) ? ["Descrição ausente"] : []),
+        ...(text(item.type) === "expense" && !text(item.category) ? ["Categoria ausente"] : []),
+        ...(amount <= 0 ? ["Valor inválido ou zerado"] : []),
+        ...(duplicatedIds.has(item.id) ? ["Possível saída duplicada"] : []),
+      ];
+      return {
+        id: item.id,
+        date: recordDate(item),
+        description: text(item.description, "Sem descrição"),
+        category: text(item.category, text(item.type) === "transfer" ? "Transferência" : "Sem categoria"),
+        type: text(item.type),
+        amount,
+        amountFormatted: formatMoney(amount),
+        status: issues.length ? "REVISAR" : "OK",
+        issues,
       };
     });
-    return { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN), paymentCount: payments.length, approvedGross: payments.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.amountCents, 0) / 100, fees: payments.reduce((sum, item) => sum + (item.feeCents ?? 0), 0) / 100, reconciliation: byStatus, divergences, lastSyncedAt: payments[0]?.lastSyncedAt ?? null };
+    const outgoingTotal = outgoings.reduce((sum, item) => sum + number(item.amount), 0);
+    const approvedGross = payments.filter((item) => item.status === "approved").reduce((sum, item) => sum + item.amountCents, 0) / 100;
+    const fees = payments.reduce((sum, item) => sum + (item.feeCents ?? 0), 0) / 100;
+    return {
+      configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN),
+      paymentCount: payments.length,
+      approvedGross,
+      approvedGrossFormatted: formatMoney(approvedGross),
+      fees,
+      feesFormatted: formatMoney(fees),
+      reconciliation: byStatus,
+      divergences,
+      outgoingAudit: {
+        checked: outgoings.length,
+        returned: Math.min(200, outgoingTransactions.filter((item) => item.status === "REVISAR").length),
+        total: outgoingTotal,
+        totalFormatted: formatMoney(outgoingTotal),
+        ok: outgoingTransactions.filter((item) => item.status === "OK").length,
+        needsReview: outgoingTransactions.filter((item) => item.status === "REVISAR").length,
+        possibleDuplicates: duplicatedIds.size,
+        reviewItems: outgoingTransactions.filter((item) => item.status === "REVISAR").slice(0, 200),
+      },
+      lastSyncedAt: payments[0]?.lastSyncedAt ?? null,
+    };
   },
 };
 

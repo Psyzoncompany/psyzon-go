@@ -61,7 +61,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 const quickPrompts = [
   { icon: Landmark, label: "Como está meu financeiro?", prompt: "Como está meu financeiro neste mês? Compare entradas, saídas, resultado e valores a receber." },
   { icon: AlertTriangle, label: "Ver problemas", prompt: "Analise os dados reais e me mostre os problemas que preciso resolver primeiro." },
-  { icon: RefreshCw, label: "Conferir Mercado Pago", prompt: "Como está a conciliação com o Mercado Pago? Mostre divergências e o que precisa ser conferido." },
+  { icon: RefreshCw, label: "Conferir movimentações", prompt: "Confira a conciliação com o Mercado Pago e audite também todas as saídas empresariais. Mostre os valores usando exatamente a formatação brasileira retornada pelo sistema, as divergências, possíveis duplicidades e o que precisa ser revisado." },
   { icon: Clock3, label: "Pedidos atrasados", prompt: "Quais pedidos estão atrasados e qual deve ser minha prioridade?" },
   { icon: TrendingUp, label: "Vendas deste mês", prompt: "Analise as vendas deste mês e compare com o mês passado." },
   { icon: FileText, label: "O que preciso fazer?", prompt: "O que preciso resolver hoje? Organize em urgente, importante e oportunidade." },
@@ -234,7 +234,7 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
 
   const syncMercadoPago = async () => {
     setSyncing(true); setError("");
-    try { await api("/api/integrations/mercadopago", { method: "POST", body: "{}" }); await loadInitial(); void sendMessage("Mostre o resultado completo da conciliação do Mercado Pago. Para cada divergência, liste valor, descrição, observação, data, forma de pagamento, ID do Mercado Pago e referência externa."); }
+    try { await api("/api/integrations/mercadopago", { method: "POST", body: "{}" }); await loadInitial(); void sendMessage("Mostre o resultado completo da conciliação do Mercado Pago e da auditoria das saídas empresariais. Use somente os campos de valor já formatados em BRL, sem alterar pontos ou vírgulas. Para cada divergência, liste os dados externos e internos disponíveis. Quando não houver pagamento externo, explique a causa provável e mostre valor, descrição, data, categoria, pedido e ID interno; não peça um ID externo que não existe. Nas saídas, mostre total conferido, itens que precisam de revisão e possíveis duplicidades com valor, descrição, categoria, data e ID."); }
     catch (nextError) { setError(apiErrorMessage(nextError)); }
     finally { setSyncing(false); }
   };

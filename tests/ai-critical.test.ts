@@ -138,8 +138,23 @@ test("AI provider pool accepts multiple Gemini projects and removes duplicate ke
 test("Mercado Pago AI tool exposes transaction values and observations for divergences", async () => {
   const source = await readFile(new URL("../app/lib/server/ai-tools.ts", import.meta.url), "utf8");
   assert.match(source, /divergences/);
+  assert.match(source, /amountFormatted: formatMoney\(amount\)/);
+  assert.match(source, /providerAmountFormatted/);
+  assert.match(source, /systemAmountFormatted/);
+  assert.match(source, /differenceFormatted/);
   assert.match(source, /description: payment\?\.description/);
   assert.match(source, /observation: payment\?\.statusDetail/);
   assert.match(source, /mercadoPagoId: item\.providerPaymentId/);
   assert.match(source, /externalReference: payment\?\.externalReference/);
+  assert.match(source, /outgoingAudit/);
+  assert.match(source, /Possível saída duplicada/);
+  assert.match(source, /missingExternalPayment/);
+  assert.match(source, /internalOrderId/);
+  assert.match(source, /likelyCause/);
+});
+
+test("AI prompt requires Brazilian currency punctuation and separates outgoing audit", async () => {
+  const source = await readFile(new URL("../app/lib/server/ai-agent.ts", import.meta.url), "utf8");
+  assert.match(source, /R\$ 5,20; R\$ 1\.875,00; R\$ 12\.870,00/);
+  assert.match(source, /auditoria das saídas internas/);
 });

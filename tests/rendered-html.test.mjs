@@ -225,3 +225,24 @@ test("keeps the AI workspace stable with large global fonts", async () => {
   assert.match(css, /overflow-x: hidden/);
   assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", view === "ai"\)/);
 });
+
+test("uses readable typography in AI response cards and conversation sidebar", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.ai-brand b \{ font-size: 14px/);
+  assert.match(css, /\.ai-conversation-list > div > button:first-child span[^}]+font-size: 12px/);
+  assert.match(css, /\.ai-response-metrics small \{[^}]+font-size: 11px/);
+  assert.match(css, /\.ai-response-metrics b \{[^}]+font-size: 18px/);
+  assert.match(css, /\.ai-confirmation dd \{[^}]+font-size: 11\.5px/);
+});
+
+test("renders professional markdown structure in AI answers", async () => {
+  const [workspace, css] = await Promise.all([
+    readFile(new URL("../app/PSYZONAIWorkspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+  assert.match(workspace, /function MarkdownText/);
+  assert.match(workspace, /ai-markdown-table-wrap/);
+  assert.match(workspace, /formatInlineMarkdown/);
+  assert.match(css, /\.ai-markdown-content blockquote/);
+  assert.match(css, /\.ai-markdown-table-wrap table/);
+});

@@ -28,7 +28,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { AIConversation, AIIntegrationStatus, AIMessage, AISettings } from "./ai/types";
 
 type AIViewTarget = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "ai";
@@ -88,6 +88,56 @@ function initialAssistantMessage(): AIMessage {
     },
     createdAt: Math.floor(Date.now() / 1000),
   };
+}
+
+function formatInlineMarkdown(value: string): ReactNode[] {
+  return value.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function MarkdownText({ text }: { text: string }) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const content: ReactNode[] = [];
+  let index = 0;
+  const isTableDivider = (line: string) => /^\s*\|?(?:\s*:?-{3,}:?\s*\|)+\s*:?-{3,}:?\s*\|?\s*$/.test(line);
+  const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) { index += 1; continue; }
+
+    if (line.includes("|") && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
+      const header = cells(line); index += 2;
+      const rows: string[][] = [];
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) { rows.push(cells(lines[index])); index += 1; }
+      content.push(<div className="ai-markdown-table-wrap" key={`table-${index}`}><table><thead><tr>{header.map((cell, cellIndex) => <th key={cellIndex}>{formatInlineMarkdown(cell)}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{header.map((_, cellIndex) => <td key={cellIndex}>{formatInlineMarkdown(row[cellIndex] ?? "")}</td>)}</tr>)}</tbody></table></div>);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) { content.push(<h3 key={`heading-${index}`} className={`level-${heading[1].length}`}>{formatInlineMarkdown(heading[2])}</h3>); index += 1; continue; }
+    if (line.startsWith(">")) { content.push(<blockquote key={`quote-${index}`}>{formatInlineMarkdown(line.replace(/^>\s?/, ""))}</blockquote>); index += 1; continue; }
+
+    const unordered = /^[-*]\s+/.test(line); const ordered = /^\d+[.)]\s+/.test(line);
+    if (unordered || ordered) {
+      const items: string[] = [];
+      const matcher = ordered ? /^\d+[.)]\s+/ : /^[-*]\s+/;
+      while (index < lines.length && matcher.test(lines[index].trim())) { items.push(lines[index].trim().replace(matcher, "")); index += 1; }
+      const listItems = items.map((item, itemIndex) => <li key={itemIndex}>{formatInlineMarkdown(item)}</li>);
+      content.push(ordered ? <ol key={`list-${index}`}>{listItems}</ol> : <ul key={`list-${index}`}>{listItems}</ul>);
+      continue;
+    }
+
+    const paragraph = [line]; index += 1;
+    while (index < lines.length && lines[index].trim() && !/^(#{1,3})\s+|^>\s?|^[-*]\s+|^\d+[.)]\s+/.test(lines[index].trim()) && !(lines[index].includes("|") && index + 1 < lines.length && isTableDivider(lines[index + 1]))) {
+      paragraph.push(lines[index].trim()); index += 1;
+    }
+    content.push(<p key={`paragraph-${index}`}>{paragraph.map((part, partIndex) => <span key={partIndex}>{formatInlineMarkdown(part)}{partIndex < paragraph.length - 1 && <br />}</span>)}</p>);
+  }
+  return <div className="ai-markdown-content">{content}</div>;
 }
 
 export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, onOpenFull, onNavigate }: Props) {
@@ -289,5 +339,5 @@ function IntegrationCard({ icon: Icon, name, configured, detail, action }: { ico
 
 function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, onCancel }: { message: AIMessage; copied: boolean; onCopy: () => void; onNavigate: (target: AIViewTarget) => void; onPrompt: (prompt: string) => void; onConfirm: (id: string) => void; onCancel: (id: string) => void }) {
   const payload = message.payload;
-  return <article className="ai-message assistant"><div className="ai-message-avatar"><Sparkles size={16} /></div><div className="ai-answer"><p className="ai-answer-summary">{payload?.summary ?? message.content}</p>{payload?.metrics?.length ? <div className="ai-response-metrics">{payload.metrics.map((metric) => <div key={metric.label}><small>{metric.label}</small><b className={metric.tone ?? "neutral"}>{metric.value}</b>{metric.trend && <span>{metric.trend}</span>}</div>)}</div> : null}{payload?.alerts?.length ? <div className="ai-response-alerts">{payload.alerts.map((alert, index) => <button key={`${alert.title}-${index}`} className={alert.severity} onClick={() => alert.entityType && onNavigate(alert.entityType === "order" ? "producao" : alert.entityType === "client" ? "clientes" : "financeiro")}><span>{alert.severity === "critical" || alert.severity === "warning" ? <AlertTriangle size={15} /> : <BarChart3 size={15} />}</span><span><b>{alert.title}</b><small>{alert.detail}</small></span>{alert.entityType && <ArrowRight size={14} />}</button>)}</div> : null}{payload?.recommendations?.length ? <div className="ai-recommendations"><header><BrainCircuit size={15} /><b>Recomendações</b></header>{payload.recommendations.map((item, index) => <div key={item}><span>{index + 1}</span><p>{item}</p></div>)}</div> : null}{payload?.confirmation && <div className="ai-confirmation"><header><ShieldCheck size={17} /><div><b>Confirmação necessária</b><small>Alteração financeira importante</small></div></header><dl><div><dt>Ação</dt><dd>{payload.confirmation.action}</dd></div>{payload.confirmation.currentValue && <div><dt>Valor atual</dt><dd>{payload.confirmation.currentValue}</dd></div>}{payload.confirmation.newValue && <div><dt>Novo valor</dt><dd>{payload.confirmation.newValue}</dd></div>}<div><dt>Motivo</dt><dd>{payload.confirmation.reason}</dd></div><div><dt>Impacto</dt><dd>{payload.confirmation.impact}</dd></div></dl><footer><button onClick={() => onCancel(payload.confirmation!.id)}>Cancelar</button><button onClick={() => onConfirm(payload.confirmation!.id)}><Check size={15} /> Confirmar alteração</button></footer></div>}{payload?.actions?.length ? <div className="ai-response-actions">{payload.actions.map((action) => <button key={`${action.label}-${action.target ?? action.prompt}`} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}</div> : null}<footer className="ai-answer-footer">{message.toolNames?.length ? <span><ShieldCheck size={12} /> {message.toolNames.length} fonte(s) consultada(s)</span> : <span>PSYZON AI</span>}{payload?.confidence && <span>Confiança {payload.confidence}</span>}<button onClick={onCopy}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copiado" : "Copiar"}</button></footer></div></article>;
+  return <article className="ai-message assistant"><div className="ai-message-avatar"><Sparkles size={16} /></div><div className="ai-answer"><div className="ai-answer-summary"><MarkdownText text={payload?.summary ?? message.content} /></div>{payload?.metrics?.length ? <div className="ai-response-metrics">{payload.metrics.map((metric) => <div key={metric.label}><small>{metric.label}</small><b className={metric.tone ?? "neutral"}>{metric.value}</b>{metric.trend && <span>{metric.trend}</span>}</div>)}</div> : null}{payload?.alerts?.length ? <div className="ai-response-alerts">{payload.alerts.map((alert, index) => <button key={`${alert.title}-${index}`} className={alert.severity} onClick={() => alert.entityType && onNavigate(alert.entityType === "order" ? "producao" : alert.entityType === "client" ? "clientes" : "financeiro")}><span>{alert.severity === "critical" || alert.severity === "warning" ? <AlertTriangle size={15} /> : <BarChart3 size={15} />}</span><span><b>{alert.title}</b><small>{alert.detail}</small></span>{alert.entityType && <ArrowRight size={14} />}</button>)}</div> : null}{payload?.recommendations?.length ? <div className="ai-recommendations"><header><BrainCircuit size={15} /><b>Recomendações</b></header>{payload.recommendations.map((item, index) => <div key={item}><span>{index + 1}</span><p>{item}</p></div>)}</div> : null}{payload?.confirmation && <div className="ai-confirmation"><header><ShieldCheck size={17} /><div><b>Confirmação necessária</b><small>Alteração financeira importante</small></div></header><dl><div><dt>Ação</dt><dd>{payload.confirmation.action}</dd></div>{payload.confirmation.currentValue && <div><dt>Valor atual</dt><dd>{payload.confirmation.currentValue}</dd></div>}{payload.confirmation.newValue && <div><dt>Novo valor</dt><dd>{payload.confirmation.newValue}</dd></div>}<div><dt>Motivo</dt><dd>{payload.confirmation.reason}</dd></div><div><dt>Impacto</dt><dd>{payload.confirmation.impact}</dd></div></dl><footer><button onClick={() => onCancel(payload.confirmation!.id)}>Cancelar</button><button onClick={() => onConfirm(payload.confirmation!.id)}><Check size={15} /> Confirmar alteração</button></footer></div>}{payload?.actions?.length ? <div className="ai-response-actions">{payload.actions.map((action) => <button key={`${action.label}-${action.target ?? action.prompt}`} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}</div> : null}<footer className="ai-answer-footer">{message.toolNames?.length ? <span><ShieldCheck size={12} /> {message.toolNames.length} fonte(s) consultada(s)</span> : <span>PSYZON AI</span>}{payload?.confidence && <span>Confiança {payload.confidence}</span>}<button onClick={onCopy}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copiado" : "Copiar"}</button></footer></div></article>;
 }

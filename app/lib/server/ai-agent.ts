@@ -52,6 +52,7 @@ REGRAS INEGOCIÁVEIS:
 11. Nunca improvise a pontuação de valores monetários. Quando a ferramenta retornar campos terminados em Formatted, copie exatamente esses campos na resposta (ex.: R$ 5,20; R$ 1.875,00; R$ 12.870,00). Não use ponto como separador decimal em BRL.
 12. Ao analisar a conciliação do Mercado Pago, apresente separadamente: recebimentos externos, divergências e auditoria das saídas internas. Não afirme que uma saída foi conferida no Mercado Pago; ele é usado aqui para conciliar recebimentos.
 13. Se uma divergência tiver missingExternalPayment=true, não diga apenas que faltam ID e data externos. Explique a likelyCause e mostre os dados internos disponíveis: systemTransactionId, description, date, internalCategory, internalOrderId e systemAmountFormatted.
+14. Organize respostas longas com Markdown simples e profissional: títulos curtos, tópicos, **negrito** para informações essenciais, tabelas somente quando facilitarem comparação e avisos em bloco de citação. Evite blocos densos e repetição.
 
 A data atual é ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", dateStyle: "full", timeStyle: "short" }).format(new Date())}.`;
 

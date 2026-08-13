@@ -24,6 +24,7 @@ export type FirebaseIdentity = {
 };
 
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
+export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits";
 
 const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
 const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
@@ -93,11 +94,11 @@ function decodeDocument(document: FirestoreDocument) {
   } as Record<string, unknown> & { id: string };
 }
 
-function collectionUrl(uid: string, collection: BusinessCollection) {
+function collectionUrl(uid: string, collection: UserCollection) {
   return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(uid)}/${collection}`;
 }
 
-export async function listUserCollection(identity: FirebaseIdentity, collection: BusinessCollection, pageSize = 300) {
+export async function listUserCollection(identity: FirebaseIdentity, collection: UserCollection, pageSize = 300) {
   const response = await safeFetch(`${collectionUrl(identity.uid, collection)}?pageSize=${Math.min(500, Math.max(1, pageSize))}`, {
     headers: { authorization: `Bearer ${identity.idToken}` },
   });
@@ -107,7 +108,7 @@ export async function listUserCollection(identity: FirebaseIdentity, collection:
   return (data.documents ?? []).map(decodeDocument);
 }
 
-export async function getUserDocument(identity: FirebaseIdentity, collection: BusinessCollection, id: string) {
+export async function getUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string) {
   const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
     headers: { authorization: `Bearer ${identity.idToken}` },
   });
@@ -116,7 +117,7 @@ export async function getUserDocument(identity: FirebaseIdentity, collection: Bu
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
-export async function patchUserDocument(identity: FirebaseIdentity, collection: BusinessCollection, id: string, values: Record<string, unknown>) {
+export async function patchUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string, values: Record<string, unknown>) {
   const mask = Object.keys(values).map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`).join("&");
   const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}?${mask}`, {
     method: "PATCH",
@@ -127,7 +128,17 @@ export async function patchUserDocument(identity: FirebaseIdentity, collection: 
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
-export async function createUserDocument(identity: FirebaseIdentity, collection: BusinessCollection, values: Record<string, unknown>) {
+export async function setUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string, values: Record<string, unknown>) {
+  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
+  });
+  if (!response.ok) throw new Error(`Não foi possível salvar ${collection}/${id}.`);
+  return decodeDocument(await response.json() as FirestoreDocument);
+}
+
+export async function createUserDocument(identity: FirebaseIdentity, collection: UserCollection, values: Record<string, unknown>) {
   const response = await safeFetch(collectionUrl(identity.uid, collection), {
     method: "POST",
     headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
@@ -137,7 +148,7 @@ export async function createUserDocument(identity: FirebaseIdentity, collection:
   return decodeDocument(await response.json() as FirestoreDocument);
 }
 
-export async function deleteUserDocument(identity: FirebaseIdentity, collection: BusinessCollection, id: string) {
+export async function deleteUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string) {
   const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { authorization: `Bearer ${identity.idToken}` },

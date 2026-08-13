@@ -255,7 +255,7 @@ const updateOrderStatus: ToolDefinition = {
     const previous = await getUserDocument(context.identity, "orders", orderId);
     if (!previous) throw new Error("Pedido não encontrado.");
     const updated = await patchUserDocument(context.identity, "orders", orderId, { status });
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: "update_order_status", action: "update", entity: "order", entityId: orderId, arguments: { status, reason: text(args.reason) }, previousValue: { status: previous.status }, newValue: { status }, status: "success", riskLevel: 2 });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "update_order_status", action: "update", entity: "order", entityId: orderId, arguments: { status, reason: text(args.reason) }, previousValue: { status: previous.status }, newValue: { status }, status: "success", riskLevel: 2 });
     return { success: true, orderId, previousStatus: previous.status, status: updated.status };
   },
 };
@@ -268,7 +268,7 @@ const updateTransactionCategory: ToolDefinition = {
     const previous = await getUserDocument(context.identity, "transactions", transactionId);
     if (!previous) throw new Error("Movimentação não encontrada.");
     await patchUserDocument(context.identity, "transactions", transactionId, { category });
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: "update_transaction_category", action: "update", entity: "transaction", entityId: transactionId, arguments: { category, reason: text(args.reason) }, previousValue: { category: previous.category }, newValue: { category }, status: "success", riskLevel: 2 });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "update_transaction_category", action: "update", entity: "transaction", entityId: transactionId, arguments: { category, reason: text(args.reason) }, previousValue: { category: previous.category }, newValue: { category }, status: "success", riskLevel: 2 });
     return { success: true, transactionId, previousCategory: previous.category, category };
   },
 };
@@ -281,7 +281,7 @@ const createFinancialAdjustment: ToolDefinition = {
     const amount = finiteAmount(args, "amount"); const description = requiredString(args, "description").slice(0, 160);
     const type = text(args.type) === "expense" ? "expense" : "income"; const account = text(args.account) === "personal" ? "personal" : "business";
     const created = await createUserDocument(context.identity, "transactions", { description, amount, type, account, category: requiredString(args, "category").slice(0, 80), transactionDate: /^\d{4}-\d{2}-\d{2}$/.test(text(args.date)) ? text(args.date) : today(), source: "ai_adjustment", createdAt: new Date().toISOString() });
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: "create_financial_adjustment", action: "create", entity: "transaction", entityId: created.id, arguments: { description, amount, type, account, category: text(args.category), reason: text(args.reason) }, newValue: created, status: "success", riskLevel: 3, requiresConfirmation: true, approvedBy: context.identity.uid });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "create_financial_adjustment", action: "create", entity: "transaction", entityId: created.id, arguments: { description, amount, type, account, category: text(args.category), reason: text(args.reason) }, newValue: created, status: "success", riskLevel: 3, requiresConfirmation: true, approvedBy: context.identity.uid });
     return { success: true, transactionId: created.id, description, amount, type, account };
   },
 };
@@ -299,7 +299,7 @@ const deleteTransaction: ToolDefinition = {
     const previous = await getUserDocument(context.identity, "transactions", transactionId);
     if (!previous) throw new Error("Movimentação não encontrada.");
     await deleteUserDocument(context.identity, "transactions", transactionId);
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: "delete_transaction", action: "delete", entity: "transaction", entityId: transactionId, arguments: { reason: text(args.reason) }, previousValue: previous, status: "success", riskLevel: 3, requiresConfirmation: true, approvedBy: context.identity.uid });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "delete_transaction", action: "delete", entity: "transaction", entityId: transactionId, arguments: { reason: text(args.reason) }, previousValue: previous, status: "success", riskLevel: 3, requiresConfirmation: true, approvedBy: context.identity.uid });
     return { success: true, transactionId, deleted: true };
   },
 };
@@ -315,14 +315,14 @@ export async function executeAITool(name: string, args: ToolArguments, context: 
   if (!access.allowed && !access.confirmationRequired) return { blocked: true, reason: access.reason };
   if (access.confirmationRequired) {
     const preview = await tool.preview?.(context, args) ?? { action: name, reason: text(args.reason), impact: "Alteração financeira importante." };
-    const confirmation = await createConfirmation({ userId: context.identity.uid, conversationId: context.conversationId, tool: name, arguments: args, preview });
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: name, action: "confirmation_requested", arguments: args, status: "pending", riskLevel: tool.riskLevel, requiresConfirmation: true });
+    const confirmation = await createConfirmation({ identity: context.identity, conversationId: context.conversationId, tool: name, arguments: args, preview });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: name, action: "confirmation_requested", arguments: args, status: "pending", riskLevel: tool.riskLevel, requiresConfirmation: true });
     return { confirmationRequired: true, confirmation: { id: confirmation.id, ...preview, expiresAt: confirmation.expiresAt } };
   }
   try {
     return await tool.execute(context, args);
   } catch (error) {
-    await logAIAudit({ userId: context.identity.uid, conversationId: context.conversationId, tool: name, action: "execute", arguments: args, status: "error", riskLevel: tool.riskLevel, requiresConfirmation: tool.requiresConfirmation });
+    await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: name, action: "execute", arguments: args, status: "error", riskLevel: tool.riskLevel, requiresConfirmation: tool.requiresConfirmation });
     throw error;
   }
 }

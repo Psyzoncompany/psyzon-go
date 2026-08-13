@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const identity = await authenticateFirebaseRequest(request);
     const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
     if (!ownerUserId || ownerUserId !== identity.uid) return Response.json({ error: "Configure o UID proprietário da integração Mercado Pago." }, { status: 403 });
-    const settings = await getAISettings(identity.uid);
+    const settings = await getAISettings(identity);
     if (!settings.mercadoPagoEnabled) return Response.json({ error: "Ative a conciliação Mercado Pago nas configurações da PSYZON AI." }, { status: 403 });
     const body = await request.json().catch(() => ({})) as { beginDate?: string; endDate?: string };
     const sync = await syncMercadoPagoPayments(identity.uid, body.beginDate, body.endDate);

@@ -44,7 +44,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
   const apiKey = process.env.GEMINI_API_KEY ?? "";
   const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
   if (!apiKey) throw new Error("GEMINI_NOT_CONFIGURED");
-  const settings = await getAISettings(input.identity.uid);
+  const settings = await getAISettings(input.identity);
   if (!settings.enabled) throw new Error("AI_DISABLED");
   const provider = new GeminiProvider(apiKey, model);
   const tools = geminiToolDeclarations as unknown as Array<Record<string, unknown>>;
@@ -62,7 +62,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
       if (result && typeof result === "object" && "confirmationRequired" in result && "confirmation" in result) {
         const confirmation = result.confirmation as AIResponsePayload["confirmation"];
         const payload: AIResponsePayload = { summary: "Preparei a alteração solicitada. Confira os detalhes antes de autorizar.", severity: "warning", metrics: [], alerts: [], recommendations: ["Confirme somente se os dados e o impacto estiverem corretos."], actions: [], confirmation };
-        await saveAIUsage({ userId: input.identity.uid, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
+        await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
         return { payload, toolNames, model };
       }
       results.push({ id: call.id, name: call.name, result });
@@ -75,6 +75,6 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
   let parsed: unknown;
   try { parsed = JSON.parse(interaction.outputText); } catch { parsed = { summary: interaction.outputText, severity: "normal", metrics: [], alerts: [], recommendations: [], actions: [] }; }
   const payload = cleanPayload(parsed);
-  await saveAIUsage({ userId: input.identity.uid, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
+  await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
   return { payload, toolNames: [...new Set(toolNames)], model };
 }

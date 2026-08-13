@@ -41,8 +41,8 @@ export async function GET(request: Request) {
     const identity = await authenticateFirebaseRequest(request);
     const url = new URL(request.url);
     const conversationId = url.searchParams.get("conversationId");
-    if (conversationId) return Response.json({ messages: await getConversationMessages(identity.uid, conversationId) });
-    const [settings, conversations, sync] = await Promise.all([getAISettings(identity.uid), listConversations(identity.uid), getIntegrationStatus(identity.uid)]);
+    if (conversationId) return Response.json({ messages: await getConversationMessages(identity, conversationId) });
+    const [settings, conversations, sync] = await Promise.all([getAISettings(identity), listConversations(identity), getIntegrationStatus(identity.uid)]);
     return Response.json({
       settings,
       conversations,
@@ -57,27 +57,27 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const identity = await authenticateFirebaseRequest(request);
-    const rate = await checkRateLimit(identity.uid);
+    const rate = await checkRateLimit(identity);
     if (!rate.allowed) return Response.json({ error: "Muitas solicitações em pouco tempo. Aguarde alguns segundos.", retryAfter: rate.retryAfter }, { status: 429, headers: { "retry-after": String(rate.retryAfter) } });
     const body = await request.json() as Record<string, unknown>;
     const action = typeof body.action === "string" ? body.action : "message";
-    const settings = await getAISettings(identity.uid);
+    const settings = await getAISettings(identity);
 
     if (action === "confirm") {
       const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
-      const pending = await getPendingConfirmation(identity.uid, confirmationId);
+      const pending = await getPendingConfirmation(identity, confirmationId);
       if (!pending) return Response.json({ error: "Esta confirmação expirou ou já foi resolvida." }, { status: 409 });
       if (settings.permissionMode !== "financial_confirm") return Response.json({ error: "A permissão atual não autoriza alterações financeiras." }, { status: 403 });
       const result = await executeConfirmedTool(pending.tool, pending.arguments, { identity, conversationId: pending.conversationId ?? undefined, permissionMode: settings.permissionMode, confirmed: true });
-      await resolveConfirmation(identity.uid, confirmationId, "confirmed");
+      await resolveConfirmation(identity, confirmationId, "confirmed");
       const payload: AIResponsePayload = { summary: "Alteração confirmada e concluída com sucesso.", severity: "info", metrics: [], alerts: [], recommendations: [], actions: [{ label: "Abrir financeiro", type: "navigate", target: "financeiro" }], confidence: "alta", sources: ["Ação autorizada pelo usuário", "Registro de auditoria da PSYZON AI"] };
-      const message = pending.conversationId && settings.saveHistory ? await saveMessage(identity.uid, pending.conversationId, "assistant", payload.summary, payload, [pending.tool]) : { id: crypto.randomUUID(), role: "assistant" as const, content: payload.summary, payload, toolNames: [pending.tool], createdAt: Math.floor(Date.now() / 1000) };
+      const message = pending.conversationId && settings.saveHistory ? await saveMessage(identity, pending.conversationId, "assistant", payload.summary, payload, [pending.tool]) : { id: crypto.randomUUID(), role: "assistant" as const, content: payload.summary, payload, toolNames: [pending.tool], createdAt: Math.floor(Date.now() / 1000) };
       return Response.json({ message, result });
     }
 
     if (action === "cancel_confirmation") {
       const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
-      await resolveConfirmation(identity.uid, confirmationId, "cancelled");
+      await resolveConfirmation(identity, confirmationId, "cancelled");
       return Response.json({ cancelled: true });
     }
 
@@ -85,13 +85,13 @@ export async function POST(request: Request) {
     if (!question) return Response.json({ error: "Escreva uma pergunta para a PSYZON AI." }, { status: 400 });
     const requestedConversationId = typeof body.conversationId === "string" ? body.conversationId : undefined;
     const conversation = settings.saveHistory
-      ? await ensureConversation(identity.uid, requestedConversationId, "Nova conversa")
+      ? await ensureConversation(identity, requestedConversationId, "Nova conversa")
       : { id: requestedConversationId || crypto.randomUUID(), title: "Conversa privada", createdAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) };
-    const history = settings.saveHistory ? await getConversationMessages(identity.uid, conversation.id) : [];
-    const userMessage = settings.saveHistory ? await saveMessage(identity.uid, conversation.id, "user", question) : { id: crypto.randomUUID(), role: "user" as const, content: question, createdAt: Math.floor(Date.now() / 1000) };
-    if (settings.saveHistory && conversation.title === "Nova conversa") await titleConversation(identity.uid, conversation.id, question.replace(/[?.!]+$/g, "").slice(0, 64));
+    const history = settings.saveHistory ? await getConversationMessages(identity, conversation.id) : [];
+    const userMessage = settings.saveHistory ? await saveMessage(identity, conversation.id, "user", question) : { id: crypto.randomUUID(), role: "user" as const, content: question, createdAt: Math.floor(Date.now() / 1000) };
+    if (settings.saveHistory && conversation.title === "Nova conversa") await titleConversation(identity, conversation.id, question.replace(/[?.!]+$/g, "").slice(0, 64));
     const result = await runPSYZONAgent({ identity, conversationId: conversation.id, question, history });
-    const assistantMessage = settings.saveHistory ? await saveMessage(identity.uid, conversation.id, "assistant", result.payload.summary, result.payload, result.toolNames) : { id: crypto.randomUUID(), role: "assistant" as const, content: result.payload.summary, payload: result.payload, toolNames: result.toolNames, createdAt: Math.floor(Date.now() / 1000) };
+    const assistantMessage = settings.saveHistory ? await saveMessage(identity, conversation.id, "assistant", result.payload.summary, result.payload, result.toolNames) : { id: crypto.randomUUID(), role: "assistant" as const, content: result.payload.summary, payload: result.payload, toolNames: result.toolNames, createdAt: Math.floor(Date.now() / 1000) };
     return Response.json({ conversation: { ...conversation, title: conversation.title === "Nova conversa" ? question.replace(/[?.!]+$/g, "").slice(0, 64) : conversation.title }, userMessage, message: assistantMessage, model: result.model, rateLimitRemaining: rate.remaining });
   } catch (error) { return errorResponse(error); }
 }
@@ -107,7 +107,7 @@ export async function PATCH(request: Request) {
     if (typeof body.showDashboardSummary === "boolean") allowed.showDashboardSummary = body.showDashboardSummary;
     if (typeof body.financialAnalysis === "boolean") allowed.financialAnalysis = body.financialAnalysis;
     if (typeof body.mercadoPagoEnabled === "boolean") allowed.mercadoPagoEnabled = body.mercadoPagoEnabled;
-    return Response.json({ settings: await saveAISettings(identity.uid, allowed) });
+    return Response.json({ settings: await saveAISettings(identity, allowed) });
   } catch (error) { return errorResponse(error); }
 }
 
@@ -116,7 +116,7 @@ export async function DELETE(request: Request) {
     const identity = await authenticateFirebaseRequest(request);
     const conversationId = new URL(request.url).searchParams.get("conversationId") ?? "";
     if (!conversationId) return Response.json({ error: "Conversa não informada." }, { status: 400 });
-    await deleteConversation(identity.uid, conversationId);
+    await deleteConversation(identity, conversationId);
     return Response.json({ deleted: true });
   } catch (error) { return errorResponse(error); }
 }

@@ -52,15 +52,20 @@ Depois de alterar `db/schema.ts`, gere e publique as migrações com
 `npm run db:generate`. Os testes críticos da IA podem ser executados isoladamente
 com `npm run test:ai`.
 
-### Banco da IA na Vercel
+### Armazenamento da IA na Vercel
 
-Na hospedagem Sites/Cloudflare, a IA usa o binding D1 `DB`. Na Vercel, o mesmo
-schema SQLite usa Turso/libSQL. Crie um banco Turso e configure na Vercel:
+Histórico, configurações, confirmações, auditoria e uso da PSYZON AI ficam no
+mesmo Cloud Firestore já utilizado por pedidos e finanças. Portanto, a IA básica
+na Vercel não exige Turso nem outro banco adicional.
+
+Turso/libSQL é opcional e necessário apenas se a conciliação avançada com o
+Mercado Pago também for executada na Vercel. Nesse caso, configure:
 
 - `TURSO_DATABASE_URL`
 - `TURSO_AUTH_TOKEN` (marque como segredo)
 
-Antes do primeiro uso na Vercel, aplique a estrutura das tabelas uma vez. No
+Antes do primeiro uso da conciliação na Vercel, aplique a estrutura das tabelas
+uma vez. No
 PowerShell, defina temporariamente as duas variáveis na sessão e execute:
 
 ```powershell

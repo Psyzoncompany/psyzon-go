@@ -22,6 +22,7 @@ function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
     GEMINI_NOT_CONFIGURED: ["A PSYZON AI está pronta, mas a chave GEMINI_API_KEY ainda precisa ser configurada.", 503],
+    AI_DATABASE_NOT_CONFIGURED: ["O banco da PSYZON AI ainda não foi configurado neste ambiente. Na Vercel, adicione TURSO_DATABASE_URL e TURSO_AUTH_TOKEN.", 503],
     AI_DISABLED: ["A PSYZON AI está desativada nas configurações.", 403],
     TOOL_LOOP_LIMIT: ["Interrompi uma sequência longa de consultas para manter a operação segura. Reformule o pedido em uma análise por vez.", 422],
   };

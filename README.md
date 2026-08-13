@@ -52,6 +52,26 @@ Depois de alterar `db/schema.ts`, gere e publique as migrações com
 `npm run db:generate`. Os testes críticos da IA podem ser executados isoladamente
 com `npm run test:ai`.
 
+### Banco da IA na Vercel
+
+Na hospedagem Sites/Cloudflare, a IA usa o binding D1 `DB`. Na Vercel, o mesmo
+schema SQLite usa Turso/libSQL. Crie um banco Turso e configure na Vercel:
+
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN` (marque como segredo)
+
+Antes do primeiro uso na Vercel, aplique a estrutura das tabelas uma vez. No
+PowerShell, defina temporariamente as duas variáveis na sessão e execute:
+
+```powershell
+$env:TURSO_DATABASE_URL="libsql://..."
+$env:TURSO_AUTH_TOKEN="..."
+npm run db:migrate:turso
+```
+
+O script registra a migração aplicada e pode ser executado novamente com
+segurança. Nunca salve o token no Git ou em uma variável `NEXT_PUBLIC_*`.
+
 ## Workspace Auth Headers
 
 Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.

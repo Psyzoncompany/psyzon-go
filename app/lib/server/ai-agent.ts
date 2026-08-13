@@ -1,6 +1,7 @@
 import type { AIMessage, AIResponsePayload } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
 import { GeminiProvider } from "./gemini-provider";
+import { GroqProvider } from "./groq-provider";
 import { executeAITool, geminiToolDeclarations } from "./ai-tools";
 import { getAISettings, saveAIUsage } from "./ai-store";
 
@@ -41,12 +42,15 @@ function historyContext(messages: AIMessage[]) {
 }
 
 export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conversationId: string; question: string; history: AIMessage[] }) {
-  const apiKey = process.env.GEMINI_API_KEY ?? "";
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash";
-  if (!apiKey) throw new Error("GEMINI_NOT_CONFIGURED");
+  const groqApiKey = process.env.GROQ_API_KEY?.trim() ?? "";
+  const geminiApiKey = process.env.GEMINI_API_KEY?.trim() ?? "";
+  if (!groqApiKey && !geminiApiKey) throw new Error("AI_PROVIDER_NOT_CONFIGURED");
   const settings = await getAISettings(input.identity);
   if (!settings.enabled) throw new Error("AI_DISABLED");
-  const provider = new GeminiProvider(apiKey, model);
+  const provider = groqApiKey
+    ? new GroqProvider(groqApiKey, process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b")
+    : new GeminiProvider(geminiApiKey, process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash");
+  const model = provider.model;
   const tools = geminiToolDeclarations as unknown as Array<Record<string, unknown>>;
   const prompt = `${historyContext(input.history)}SOLICITAÇÃO ATUAL DO USUÁRIO:\n${input.question.slice(0, 4000)}`;
   let interaction = await provider.create(prompt, SYSTEM_PROMPT, tools);

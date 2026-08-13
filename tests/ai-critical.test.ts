@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
+import { GroqProvider } from "../app/lib/server/groq-provider.ts";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
 import { buildMercadoPagoReconciliation, type ProviderPayment, type SystemTransaction } from "../app/lib/server/reconciliation-core.ts";
 
@@ -89,4 +90,34 @@ test("approximate matches stay pending and ambiguous matches are never auto-reco
   );
   assert.ok(duplicate.some((item) => item.status === "POSSIVEL_DUPLICIDADE"));
   assert.ok(!duplicate.some((item) => item.status === "CONCILIADO"));
+});
+
+test("Groq provider preserves the tool loop and formats the final answer", { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<Record<string, unknown>> = [];
+  const responses = [
+    { id: "groq-1", choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "get_financial_summary", arguments: '{"month":"2026-08"}' } }] } }], usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 } },
+    { id: "groq-2", choices: [{ message: { role: "assistant", content: "Entradas de R$ 1.000 e saídas de R$ 400." } }], usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } },
+    { id: "groq-3", choices: [{ message: { role: "assistant", content: '{"summary":"Resultado de R$ 600.","severity":"info","metrics":[],"alerts":[],"recommendations":[],"actions":[]}' } }], usage: { prompt_tokens: 12, completion_tokens: 9, total_tokens: 21 } },
+  ];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+    return Response.json(responses.shift());
+  };
+
+  try {
+    const provider = new GroqProvider("test-key");
+    const tools = [{ type: "function", name: "get_financial_summary", description: "Resumo", parameters: { type: "object", properties: {} } }];
+    const first = await provider.create("Como está meu financeiro?", "Use dados reais.", tools);
+    assert.equal(first.functionCalls[0]?.name, "get_financial_summary");
+    const final = await provider.continue(first.id, [{ id: "call-1", name: "get_financial_summary", result: { income: 1000, expenses: 400 } }], "Use dados reais.", tools);
+    assert.equal(JSON.parse(final.outputText).summary, "Resultado de R$ 600.");
+    assert.equal(final.usage.totalTokens, 49);
+    assert.equal(((requests[0].tools as Array<{ function: { name: string } }>)[0]).function.name, "get_financial_summary");
+    assert.ok((requests[1].messages as Array<{ role: string }>).some((message) => message.role === "tool"));
+    assert.equal((requests[2].response_format as { type: string }).type, "json_schema");
+    assert.equal(requests[2].tools, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

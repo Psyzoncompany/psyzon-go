@@ -24,6 +24,16 @@ async function errorResponse(error: unknown) {
   }
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
+    AI_PROVIDER_NOT_CONFIGURED: ["Configure GROQ_API_KEY para ativar a PSYZON AI.", 503],
+    GROQ_KEY_INVALID: ["A chave GROQ_API_KEY foi recusada. Gere uma nova chave no Groq Console.", 503],
+    GROQ_QUOTA_EXCEEDED: ["O limite gratuito da Groq foi atingido. Aguarde a renovação indicada no Groq Console.", 429],
+    GROQ_MODEL_NOT_FOUND: ["O modelo definido em GROQ_MODEL não está disponível para essa conta.", 503],
+    GROQ_REQUEST_INVALID: ["A Groq recusou a solicitação da PSYZON AI. Confira o modelo configurado.", 502],
+    GROQ_UNAVAILABLE: ["A Groq está temporariamente indisponível. Tente novamente em alguns instantes.", 503],
+    GROQ_REQUEST_FAILED: ["Não foi possível conectar à Groq. Confira a chave e tente novamente.", 502],
+    GROQ_INVALID_TOOL_CALL: ["A Groq retornou uma consulta inválida. Reformule sua pergunta e tente novamente.", 422],
+    GROQ_EMPTY_RESPONSE: ["A Groq não retornou uma resposta utilizável. Tente novamente.", 502],
+    GROQ_STATE_LOST: ["A consulta perdeu o contexto durante o processamento. Envie a pergunta novamente.", 502],
     GEMINI_NOT_CONFIGURED: ["A PSYZON AI está pronta, mas a chave GEMINI_API_KEY ainda precisa ser configurada.", 503],
     GEMINI_KEY_INVALID: ["A chave GEMINI_API_KEY foi recusada pelo Google. Confira a chave configurada na Vercel.", 503],
     GEMINI_QUOTA_EXCEEDED: ["A cota da API Gemini foi atingida. Confira faturamento e limites no Google AI Studio.", 429],
@@ -63,7 +73,11 @@ export async function GET(request: Request) {
       settings,
       conversations,
       integrations: {
-        gemini: { configured: Boolean(process.env.GEMINI_API_KEY), model: process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash" },
+        ai: process.env.GROQ_API_KEY?.trim()
+          ? { configured: true, provider: "Groq", model: process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b" }
+          : process.env.GEMINI_API_KEY
+            ? { configured: true, provider: "Gemini (fallback)", model: process.env.GEMINI_MODEL?.trim() || "gemini-3.6-flash" }
+            : { configured: false, provider: "Groq", model: process.env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b" },
         mercadoPago: { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN && process.env.MERCADO_PAGO_OWNER_FIREBASE_UID === identity.uid), enabled: settings.mercadoPagoEnabled, status: sync.status, lastSyncedAt: sync.lastSyncedAt, lastError: sync.lastError, recordsChecked: sync.recordsChecked },
       },
     });

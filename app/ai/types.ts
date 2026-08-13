@@ -71,7 +71,7 @@ export type AIConversation = {
 };
 
 export type AIIntegrationStatus = {
-  gemini: { configured: boolean; model: string };
+  ai: { configured: boolean; provider: string; model: string };
   mercadoPago: {
     configured: boolean;
     enabled: boolean;

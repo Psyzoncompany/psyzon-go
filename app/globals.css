@@ -171,6 +171,7 @@ kbd { padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2p
 .eyebrow { display: block; margin-bottom: 7px; color: var(--blue); font-size: 9px; letter-spacing: .16em; font-weight: 800; }
 .page-heading h1 { margin: 0; font-size: clamp(25px, 2.2vw, 31px); line-height: 1.15; letter-spacing: -.042em; font-weight: 740; }
 .page-heading p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.page-heading-actions { display: flex; align-items: center; gap: 8px; }
 .primary, .secondary { height: 39px; padding: 0 15px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 11px; font-weight: 680; cursor: pointer; }
 .primary { border: 1px solid var(--blue); background: var(--blue); color: white; box-shadow: 0 5px 14px rgba(37, 99, 235, .15); }
 .primary:hover { filter: brightness(.96); transform: translateY(-1px); }
@@ -525,6 +526,18 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .account-context small { font-size: 6.5px; font-weight: 750; letter-spacing: .08em; }
 .account-context b { font-size: 9px; }
 .form-help { margin: -5px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.mercado-pago-import-modal form { padding-top: 20px; }
+.mp-import-intro { margin: 0; padding: 12px 13px; border-radius: 9px; background: var(--blue-soft); color: var(--blue); font-size: 9px; line-height: 1.55; }
+.mp-lookup-row { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+.mp-lookup-row .secondary { height: 39px; margin-top: 6px; }
+.mp-payment-preview { padding: 14px; border: 1px solid color-mix(in srgb, var(--green) 25%, var(--border)); border-radius: 11px; background: var(--green-soft); display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.mp-payment-preview > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mp-payment-preview small { color: var(--green); font-size: 7px; font-weight: 800; letter-spacing: .1em; }
+.mp-payment-preview strong { color: var(--text); font-size: 20px; }
+.mp-payment-preview b { overflow: hidden; text-overflow: ellipsis; color: var(--text); font-size: 9px; white-space: nowrap; }
+.mp-payment-preview p { grid-column: 1 / -1; margin: 0; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--green) 20%, var(--border)); color: var(--muted); font-size: 8px; }
+.mp-import-error { padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--red) 28%, var(--border)); border-radius: 9px; background: var(--red-soft); color: var(--red); display: flex; align-items: flex-start; gap: 8px; font-size: 8.5px; line-height: 1.45; }
+.mp-import-error svg { flex: 0 0 auto; }
 .modal label { color: var(--muted); font-size: 8.5px; font-weight: 620; }
 .modal label > span { color: var(--faint); font-weight: 450; }
 .modal input, .modal textarea, .modal select { width: 100%; margin-top: 6px; padding: 0 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; font-size: 10px; }
@@ -580,6 +593,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .category-chart-body { padding-inline: 14px; }
   .page-heading { align-items: flex-start; }
   .page-heading .primary { display: none; }
+  .page-heading-actions { flex: 0 0 auto; }
+  .page-heading-actions .secondary { height: 36px; padding-inline: 10px; font-size: 9px; }
   .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .cost-highlights { grid-template-columns: 1fr; }
   .cost-breakdown { grid-template-columns: 1fr 1fr; }

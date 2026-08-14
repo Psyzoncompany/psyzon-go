@@ -25,6 +25,7 @@ import {
   getFirestore,
   onSnapshot,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -112,9 +113,27 @@ type Transaction = {
   source?: "bill" | "ai_adjustment" | "mercado_pago";
   provider?: "mercado_pago";
   providerTransactionId?: string;
+  externalReference?: string;
+  paymentMethod?: string;
+  providerStatus?: string;
+  feeAmount?: number;
+  netAmount?: number | null;
   billId?: string;
   orderId?: string;
   createdAt?: unknown;
+};
+type MercadoPagoImportPreview = {
+  paymentId: string;
+  externalReference: string | null;
+  description: string;
+  status: string;
+  statusDetail: string | null;
+  approved: boolean;
+  amount: number;
+  netAmount: number | null;
+  feeAmount: number;
+  paymentMethod: string | null;
+  transactionDate: string;
 };
 type Bill = {
   id: string;
@@ -236,6 +255,7 @@ export default function HomePage() {
   const [editingBill, setEditingBill] = useState<Bill | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [mercadoPagoImportOpen, setMercadoPagoImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [modalAccount, setModalAccount] = useState<AccountType>("business");
@@ -793,6 +813,34 @@ export default function HomePage() {
     showToast("Movimentação atualizada");
   };
 
+  const importMercadoPagoTransaction = async (payment: MercadoPagoImportPreview, description: string, category: string) => {
+    if (transactions.some((transaction) => transaction.providerTransactionId === payment.paymentId)) {
+      throw new Error("Esta transação já foi importada.");
+    }
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+
+    const documentId = `mercado-pago-${payment.paymentId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    await setDoc(userDocument(uid, "transactions", documentId), {
+      description: description.trim(),
+      amount: payment.amount,
+      type: "income",
+      account: "business",
+      category,
+      transactionDate: payment.transactionDate,
+      source: "mercado_pago",
+      provider: "mercado_pago",
+      providerTransactionId: payment.paymentId,
+      externalReference: payment.externalReference,
+      paymentMethod: payment.paymentMethod,
+      providerStatus: payment.status,
+      feeAmount: payment.feeAmount,
+      netAmount: payment.netAmount,
+      createdAt: serverTimestamp(),
+    });
+    setMercadoPagoImportOpen(false);
+    showToast("Pagamento do Mercado Pago importado");
+  };
+
   const deleteTransaction = async (transaction: Transaction) => {
     if (!window.confirm(`Excluir a movimentação “${transaction.description}”?`)) return;
     const db = getFirestore(getApps()[0]);
@@ -863,7 +911,7 @@ export default function HomePage() {
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
           {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
-          {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
+          {view === "financeiro" && <Finance transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} openMercadoPagoImport={() => setMercadoPagoImportOpen(true)} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
           {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
           {view === "ai" && <PSYZONAIWorkspace getIdToken={getAIIdToken} onNavigate={navigateFromAI} />}
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
@@ -883,6 +931,7 @@ export default function HomePage() {
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={saveOrder} />}
       {editingBill && <FinancialEditModal bill={editingBill} close={() => setEditingBill(null)} onSubmit={saveBill} />}
       {editingTransaction && <FinancialEditModal transaction={editingTransaction} close={() => setEditingTransaction(null)} onSubmit={saveTransaction} />}
+      {mercadoPagoImportOpen && <MercadoPagoImportModal getIdToken={getAIIdToken} close={() => setMercadoPagoImportOpen(false)} onImport={importMercadoPagoTransaction} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -1002,8 +1051,8 @@ function Customers({ customers, orders, displayMoney, setModal }: any) {
   return <><div className="page-heading compact"><div><span className="eyebrow">RELACIONAMENTO</span><h1>Clientes</h1><p>Cadastro simples e histórico em um só lugar.</p></div><button className="primary" onClick={() => setModal("cliente")}><Plus size={18} /> Novo cliente</button></div><div className="customer-grid">{customers.map((customer: Customer) => { const clientOrders = orders.filter((order: Order) => order.customer === customer.name); const total = clientOrders.reduce((sum: number, order: Order) => sum + order.total, 0); const pending = clientOrders.reduce((sum: number, order: Order) => sum + order.total - order.paid, 0); return <article className="customer-card" key={customer.id}><div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Cliente PSYZON"}</p></div><button><MoreHorizontal size={18} /></button></div><div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(total)}</b></span><span><small>Saldo pendente</small><b className={pending ? "negative" : "positive"}>{displayMoney(pending)}</b></span></div><footer><span>{clientOrders.length} {clientOrders.length === 1 ? "pedido" : "pedidos"}</span><a href={`https://wa.me/${customer.phone}`} target="_blank"><MessageCircle size={16} /> WhatsApp</a></footer></article>; })}</div></>;
 }
 
-function Finance({ transactions, bills, orders, businessBalance, businessIncome, businessExpense, pending, displayMoney, openCreate, payBill, deleteBill, editBill, editTransaction, deleteTransaction }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO EMPRESARIAL</span><h1>Dinheiro da empresa.</h1><p>Caixa, contas e compromissos da operação.</p></div><button className="primary" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação</button></div><div className="account-grid single"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article></div><CostPerPiece orders={orders} transactions={transactions} bills={bills} displayMoney={displayMoney} /><BillsPanel bills={bills} account="business" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} editBill={editBill} /><MonthlyHistory transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} onEdit={editTransaction} onDelete={deleteTransaction} /></>;
+function Finance({ transactions, bills, orders, businessBalance, businessIncome, businessExpense, pending, displayMoney, openCreate, openMercadoPagoImport, payBill, deleteBill, editBill, editTransaction, deleteTransaction }: any) {
+  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO EMPRESARIAL</span><h1>Dinheiro da empresa.</h1><p>Caixa, contas e compromissos da operação.</p></div><div className="page-heading-actions"><button className="secondary" onClick={openMercadoPagoImport}><Search size={16} /> Importar Pix/MP</button><button className="primary" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação</button></div></div><div className="account-grid single"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article></div><CostPerPiece orders={orders} transactions={transactions} bills={bills} displayMoney={displayMoney} /><BillsPanel bills={bills} account="business" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} editBill={editBill} /><MonthlyHistory transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} onEdit={editTransaction} onDelete={deleteTransaction} /></>;
 }
 
 function CostPerPiece({ orders, transactions, bills, displayMoney }: { orders: Order[]; transactions: Transaction[]; bills: Bill[]; displayMoney: (value: number) => string }) {
@@ -1120,6 +1169,62 @@ function CreateModalV2({ kind, account, setKind, close, onSubmit }: { kind: Crea
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></label><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+}
+
+function MercadoPagoImportModal({ getIdToken, close, onImport }: { getIdToken: () => Promise<string>; close: () => void; onImport: (payment: MercadoPagoImportPreview, description: string, category: string) => Promise<void> }) {
+  const [identifier, setIdentifier] = useState("");
+  const [payment, setPayment] = useState<MercadoPagoImportPreview | null>(null);
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState(businessIncomeCategories[0]);
+  const [customCategory, setCustomCategory] = useState("");
+  const [alreadyImported, setAlreadyImported] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const lookupPayment = async () => {
+    const value = identifier.trim();
+    if (!value) return setError("Informe o ID do pagamento ou a referência Pix.");
+    setLoading(true);
+    setError("");
+    setPayment(null);
+    setAlreadyImported(false);
+    try {
+      const token = await getIdToken();
+      const response = await fetch("/api/integrations/mercadopago/payment", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ identifier: value }),
+      });
+      const payload = await response.json().catch(() => ({})) as { error?: string; payment?: MercadoPagoImportPreview; alreadyImported?: boolean; existingTransaction?: { description?: string } | null };
+      if (!response.ok || !payload.payment) throw new Error(payload.error || "Pagamento não encontrado.");
+      setPayment(payload.payment);
+      setDescription(payload.payment.description);
+      setAlreadyImported(Boolean(payload.alreadyImported));
+      if (!payload.payment.approved) setError(`O pagamento está com status “${payload.payment.status}” e ainda não pode ser importado.`);
+      else if (payload.alreadyImported) setError(`Este pagamento já foi importado${payload.existingTransaction?.description ? ` como “${payload.existingTransaction.description}”` : ""}.`);
+    } catch (lookupError) {
+      setError(lookupError instanceof Error ? lookupError.message : "Não foi possível consultar o Mercado Pago.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitImport = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!payment) return void lookupPayment();
+    if (!payment.approved || alreadyImported) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onImport(payment, description, customCategory.trim() || category);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível importar a movimentação.");
+      setSaving(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal mercado-pago-import-modal"><header><div><span className="eyebrow">MERCADO PAGO</span><h2>Importar pagamento</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={submitImport}><p className="mp-import-intro">Cole o ID numérico do pagamento ou a referência exibida no Pix. Valor, data e meio de pagamento serão preenchidos automaticamente.</p><label className="full">ID do pagamento ou referência Pix<div className="mp-lookup-row"><input value={identifier} onChange={(event) => { setIdentifier(event.target.value); setPayment(null); setAlreadyImported(false); setError(""); }} autoFocus inputMode="text" placeholder="Ex.: 1234567890" disabled={loading || saving} /><button type="button" className="secondary" onClick={() => void lookupPayment()} disabled={loading || saving}>{loading ? "Buscando…" : "Buscar"}</button></div></label>{payment && <><section className="mp-payment-preview"><div><small>VALOR</small><strong>{money.format(payment.amount)}</strong></div><div><small>DATA</small><b>{new Intl.DateTimeFormat("pt-BR").format(new Date(`${payment.transactionDate}T12:00:00`))}</b></div><div><small>MEIO</small><b>{payment.paymentMethod || "Mercado Pago"}</b></div><div><small>ID</small><b>{payment.paymentId}</b></div>{payment.feeAmount > 0 && <p>Taxa informada: {money.format(payment.feeAmount)}{payment.netAmount !== null ? ` · líquido ${money.format(payment.netAmount)}` : ""}</p>}</section><label className="full">Descrição ou nome<input value={description} onChange={(event) => setDescription(event.target.value)} required placeholder="Ex.: Pagamento do cliente João" /></label><label className="full">Categoria<select value={category} onChange={(event) => setCategory(event.target.value)}>{businessIncomeCategories.map((option) => <option key={option}>{option}</option>)}</select></label><label className="full">Categoria personalizada <span>(opcional)</span><input value={customCategory} onChange={(event) => setCustomCategory(event.target.value)} placeholder="Ex.: Uniformes escolares" /></label></>}{error && <div className="mp-import-error" role="alert"><AlertTriangle size={15} /><span>{error}</span></div>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={loading || saving || Boolean(payment && (!payment.approved || alreadyImported))}><Check size={17} /> {payment ? saving ? "Importando…" : "Adicionar movimentação" : loading ? "Buscando…" : "Buscar pagamento"}</button></footer></form></aside></div>;
 }
 
 function FinancialEditModal({ bill, transaction, close, onSubmit }: { bill?: Bill; transaction?: Transaction; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

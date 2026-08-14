@@ -196,13 +196,15 @@ test("service worker clones a network response before its body is consumed", asy
 });
 
 test("ships the secured PSYZON AI page, floating assistant and server integrations", async () => {
-  const [page, workspace, schema, aiRoute, aiStore, webhook, exampleEnv] = await Promise.all([
+  const [page, workspace, schema, aiRoute, aiStore, webhook, paymentLookup, mercadoPago, exampleEnv] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/PSYZONAIWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/ai/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/server/ai-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/webhooks/mercadopago/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/integrations/mercadopago/payment/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/server/mercado-pago.ts", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
 
@@ -226,6 +228,13 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(aiStore, /setUserDocument\(identity, "aiSettings"/);
   assert.match(aiStore, /getUserDocument\(identity, "integrationSyncState", "mercado_pago"/);
   assert.match(webhook, /verifyMercadoPagoSignature/);
+  assert.match(paymentLookup, /authenticateFirebaseRequest/);
+  assert.match(paymentLookup, /MERCADO_PAGO_OWNER_FIREBASE_UID/);
+  assert.match(paymentLookup, /alreadyImported/);
+  assert.match(mercadoPago, /external_reference: value/);
+  assert.match(mercadoPago, /fetchMercadoPagoPayment\(value\)/);
+  assert.match(page, /Importar Pix\/MP/);
+  assert.match(page, /providerTransactionId: payment\.paymentId/);
   assert.match(exampleEnv, /^GROQ_API_KEY=/m);
   assert.match(exampleEnv, /^GROQ_MODEL=openai\/gpt-oss-120b$/m);
   assert.match(exampleEnv, /^GEMINI_API_KEY=/m);

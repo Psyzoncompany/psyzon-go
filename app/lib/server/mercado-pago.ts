@@ -40,6 +40,10 @@ function normalizePayment(payment: MercadoPagoPayment, ownerUserId: string) {
   };
 }
 
+function mercadoPagoPaymentTime(payment: MercadoPagoPayment) {
+  return Date.parse(payment.date_approved ?? payment.date_created ?? "") || 0;
+}
+
 async function mercadoPagoFetch(path: string) {
   const token = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
   if (!token) throw new Error("MERCADO_PAGO_NOT_CONFIGURED");
@@ -59,6 +63,48 @@ async function mercadoPagoFetch(path: string) {
 
 export async function fetchMercadoPagoPayment(paymentId: string) {
   return await mercadoPagoFetch(`/v1/payments/${encodeURIComponent(paymentId)}`) as MercadoPagoPayment;
+}
+
+export async function findMercadoPagoPayment(identifier: string) {
+  const value = identifier.trim();
+  if (!value || value.length > 160) throw new Error("MERCADO_PAGO_INVALID_IDENTIFIER");
+
+  if (/^\d+$/.test(value)) {
+    try {
+      return await fetchMercadoPagoPayment(value);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "MERCADO_PAGO_HTTP_404") throw error;
+    }
+  }
+
+  const params = new URLSearchParams({
+    sort: "date_created",
+    criteria: "desc",
+    external_reference: value,
+    limit: "20",
+    offset: "0",
+  });
+  const data = await mercadoPagoFetch(`/v1/payments/search?${params}`) as { results?: MercadoPagoPayment[] };
+  const results = (data.results ?? []).sort((left, right) => mercadoPagoPaymentTime(right) - mercadoPagoPaymentTime(left));
+  return results.find((payment) => payment.status === "approved") ?? results[0] ?? null;
+}
+
+export function mercadoPagoImportPreview(payment: MercadoPagoPayment) {
+  const normalized = normalizePayment(payment, "");
+  const paymentDate = payment.date_approved ?? payment.date_created ?? "";
+  return {
+    paymentId: normalized.paymentId,
+    externalReference: normalized.externalReference,
+    description: normalized.description || `Pagamento Mercado Pago #${normalized.paymentId}`,
+    status: normalized.status,
+    statusDetail: normalized.statusDetail,
+    approved: normalized.status === "approved",
+    amount: normalized.amountCents / 100,
+    netAmount: normalized.netAmountCents === null ? null : normalized.netAmountCents / 100,
+    feeAmount: normalized.feeCents / 100,
+    paymentMethod: normalized.paymentMethod,
+    transactionDate: /^\d{4}-\d{2}-\d{2}/.test(paymentDate) ? paymentDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+  };
 }
 
 export async function upsertMercadoPagoPayment(identity: FirebaseIdentity, payment: MercadoPagoPayment) {

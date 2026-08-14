@@ -5,6 +5,7 @@ import { GroqProvider } from "../app/lib/server/groq-provider.ts";
 import { configuredAIProviders, getAIProviderSummary } from "../app/lib/server/ai-agent.ts";
 import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
+import { mercadoPagoImportPreview } from "../app/lib/server/mercado-pago.ts";
 import { buildMercadoPagoReconciliation, type ProviderPayment, type SystemTransaction } from "../app/lib/server/reconciliation-core.ts";
 
 const local = (overrides: Partial<SystemTransaction> = {}): SystemTransaction => ({
@@ -55,6 +56,34 @@ test("Mercado Pago signature validation accepts valid HMAC and rejects tampering
   assert.equal(await verifyMercadoPagoSignature("secret", "MP-99", "req-1", signature, Number(timestamp) + 10), false);
   assert.equal(await verifyMercadoPagoSignature("secret", "MP-42", "req-1", signature, Number(timestamp) + 901), false);
   assert.equal(mercadoPagoEventKey("event-1", "req-1", "payment.updated"), mercadoPagoEventKey("event-1", "req-2", "payment.updated"));
+});
+
+test("Mercado Pago import preview normalizes fixed financial fields", () => {
+  const preview = mercadoPagoImportPreview({
+    id: 123456789,
+    description: "Pedido Ana",
+    status: "approved",
+    status_detail: "accredited",
+    transaction_amount: 125.5,
+    transaction_details: { net_received_amount: 120 },
+    fee_details: [{ amount: 5.5 }],
+    payment_method_id: "pix",
+    payment_type_id: "bank_transfer",
+    date_approved: "2026-08-13T14:05:00-03:00",
+  });
+  assert.deepEqual(preview, {
+    paymentId: "123456789",
+    externalReference: null,
+    description: "Pedido Ana",
+    status: "approved",
+    statusDetail: "accredited",
+    approved: true,
+    amount: 125.5,
+    netAmount: 120,
+    feeAmount: 5.5,
+    paymentMethod: "pix · bank_transfer",
+    transactionDate: "2026-08-13",
+  });
 });
 
 test("reconciliation classifies exact, divergent and unmatched records deterministically", () => {

@@ -246,7 +246,7 @@ export default function HomePage() {
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
-  const dailyRemindersInitialized = useRef(false);
+  const dailyRemindersSignature = useRef("");
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIntroComplete(true), 1900);
@@ -560,20 +560,25 @@ export default function HomePage() {
   }, [dataReady, notifications, notificationsEnabled]);
 
   useEffect(() => {
-    if (!dataReady || !notificationsEnabled || !Capacitor.isNativePlatform() || dailyRemindersInitialized.current) return;
-    dailyRemindersInitialized.current = true;
-    syncDailyReminders(true, true).then((status) => {
+    if (!dataReady || !notificationsEnabled || !Capacitor.isNativePlatform()) return;
+    const signature = JSON.stringify(notifications.map(({ title, detail, tone, view }) => ({ title, detail, tone, view })));
+    if (dailyRemindersSignature.current === signature) return;
+    dailyRemindersSignature.current = signature;
+    syncDailyReminders(true, true, notifications).then((status) => {
       if (status !== "denied") return;
       setNotificationsEnabled(false);
       localStorage.setItem("psy-notifications", "off");
       showToast("Permissão de notificações não concedida");
-    }).catch((error) => console.error("Não foi possível agendar os lembretes", error));
-  }, [dataReady, notificationsEnabled]);
+    }).catch((error) => {
+      dailyRemindersSignature.current = "";
+      console.error("Não foi possível agendar os lembretes", error);
+    });
+  }, [dataReady, notifications, notificationsEnabled]);
 
   const changeNotifications = async (enabled: boolean) => {
     if (Capacitor.isNativePlatform()) {
       try {
-        const status = await syncDailyReminders(enabled, enabled);
+        const status = await syncDailyReminders(enabled, enabled, notifications);
         const accepted = status !== "denied";
         setNotificationsEnabled(enabled && accepted);
         localStorage.setItem("psy-notifications", enabled && accepted ? "on" : "off");

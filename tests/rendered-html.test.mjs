@@ -45,10 +45,16 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /\["PV", "PP", "PIQUET"\]/);
   assert.match(notes, /calculatedOrderKg \* 0\.05/);
   assert.match(notes, /useState\("53\.00"\)/);
+  assert.match(notes, /useState\("2\.50"\)/);
   assert.match(notes, /useState\("43\.90"\)/);
   assert.match(notes, /ribanaKg \* numericRibanaPrice/);
   assert.match(notes, /Ribana/);
   assert.match(notes, /Gola polo/);
+  assert.match(notes, /Gola polo \+ punho/);
+  assert.match(notes, /Quantidade de conjuntos \(gola \+ punho\)/);
+  assert.match(notes, /poloQuantity \?\? String\(plannedPieces\)/);
+  assert.match(notes, /numericPoloUnits \* numericPoloPrice/);
+  assert.match(notes, /Valor total da gola \+ punho/);
   assert.match(notes, /useState\(true\)/);
   assert.match(notes, /A gola é da mesma cor da camisa\?/);
   assert.match(notes, /id="same-collar-color" type="checkbox" checked=\{sameCollarColor\}/);

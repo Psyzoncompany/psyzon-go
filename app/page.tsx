@@ -565,10 +565,10 @@ export default function HomePage() {
     if (dailyRemindersSignature.current === signature) return;
     dailyRemindersSignature.current = signature;
     syncDailyReminders(true, true, notifications).then((status) => {
-      if (status !== "denied") return;
+      if (status !== "denied" && status !== "unsupported") return;
       setNotificationsEnabled(false);
       localStorage.setItem("psy-notifications", "off");
-      showToast("Permissão de notificações não concedida");
+      showToast(status === "unsupported" ? "Atualize o aplicativo para ativar os lembretes" : "Permissão de notificações não concedida");
     }).catch((error) => {
       dailyRemindersSignature.current = "";
       console.error("Não foi possível agendar os lembretes", error);
@@ -579,10 +579,10 @@ export default function HomePage() {
     if (Capacitor.isNativePlatform()) {
       try {
         const status = await syncDailyReminders(enabled, enabled, notifications);
-        const accepted = status !== "denied";
+        const accepted = status !== "denied" && status !== "unsupported";
         setNotificationsEnabled(enabled && accepted);
         localStorage.setItem("psy-notifications", enabled && accepted ? "on" : "off");
-        showToast(enabled && accepted ? "Lembretes ativados para 08:00, 14:00 e 19:00" : enabled ? "Permissão de notificações não concedida" : "Lembretes desativados");
+        showToast(enabled && accepted ? "Lembretes ativados para 08:00, 14:00 e 19:00" : status === "unsupported" ? "Atualize o aplicativo para ativar os lembretes" : enabled ? "Permissão de notificações não concedida" : "Lembretes desativados");
       } catch (error) {
         console.error("Não foi possível alterar os lembretes", error);
         showToast("Não foi possível configurar as notificações");
@@ -590,9 +590,25 @@ export default function HomePage() {
       return;
     }
 
-    setNotificationsEnabled(enabled);
-    localStorage.setItem("psy-notifications", enabled ? "on" : "off");
-    if (enabled && typeof Notification !== "undefined" && Notification.permission === "default") await Notification.requestPermission();
+    if (!enabled) {
+      setNotificationsEnabled(false);
+      localStorage.setItem("psy-notifications", "off");
+      return;
+    }
+
+    try {
+      if (typeof Notification === "undefined") throw new Error("Notifications API unavailable");
+      const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+      const accepted = permission === "granted";
+      setNotificationsEnabled(accepted);
+      localStorage.setItem("psy-notifications", accepted ? "on" : "off");
+      showToast(accepted ? "Notificações ativadas" : "Notificações indisponíveis neste navegador");
+    } catch (error) {
+      console.error("Não foi possível solicitar notificações do navegador", error);
+      setNotificationsEnabled(false);
+      localStorage.setItem("psy-notifications", "off");
+      showToast("Notificações indisponíveis neste navegador");
+    }
   };
 
   const searchResults = useMemo(() => {

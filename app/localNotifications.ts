@@ -18,7 +18,7 @@ const DAILY_REMINDERS = [
   },
 ] as const;
 
-export type DailyReminderStatus = "scheduled" | "disabled" | "denied" | "web";
+export type DailyReminderStatus = "scheduled" | "disabled" | "denied" | "unsupported" | "web";
 export type ReminderAttentionItem = {
   title: string;
   detail: string;
@@ -48,6 +48,7 @@ export async function syncDailyReminders(
   attentionItems: ReminderAttentionItem[] = [],
 ): Promise<DailyReminderStatus> {
   if (!Capacitor.isNativePlatform()) return "web";
+  if (!Capacitor.isPluginAvailable("LocalNotifications")) return "unsupported";
 
   const { LocalNotifications } = await import("@capacitor/local-notifications");
   const descriptors = DAILY_REMINDERS.map(({ id }) => ({ id }));

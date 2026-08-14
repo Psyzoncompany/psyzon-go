@@ -44,13 +44,20 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /export type NoteMaterial/);
   assert.match(notes, /\["PV", "PP", "PIQUET"\]/);
   assert.match(notes, /calculatedOrderKg \* 0\.05/);
-  assert.match(notes, /useState\("90\.91"\)/);
+  assert.match(notes, /useState\("53\.00"\)/);
   assert.match(notes, /useState\("43\.90"\)/);
   assert.match(notes, /ribanaKg \* numericRibanaPrice/);
   assert.match(notes, /Ribana/);
   assert.match(notes, /Gola polo/);
+  assert.match(notes, /useState\(true\)/);
+  assert.match(notes, /A gola é da mesma cor da camisa\?/);
+  assert.match(notes, /id="same-collar-color" type="checkbox" checked=\{sameCollarColor\}/);
+  assert.match(notes, /!sameCollarColor && <label className="collar-color-field"/);
+  assert.match(notes, /collarColor: sameCollarColor \? color : titleCaseColor\(collarColor\)/);
   assert.match(notes, /Costa Rica/);
   assert.match(notes, /Atual Têxtil/);
+  assert.match(notes, /function organizeMaterialList/);
+  assert.match(notes, /Fornecedor: \$\{materialSupplier\(material\)\}/);
   assert.match(notes, /Custo total do pedido/);
   assert.match(notes, /totalFabricCost > 0/);
   assert.match(notes, /Configurar valores/);
@@ -77,7 +84,7 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /o cálculo entra aqui e pode ser editado como TXT/);
   assert.match(notes, /calculator-dismiss-layer/);
   assert.match(notes, /Adicionar como MATERIAL/);
-  assert.match(notes, /disabled=\{!numericFabricValue \|\| !selectedId \|\| !fabricColor\.trim\(\)\}/);
+  assert.match(notes, /disabled=\{!numericFabricValue \|\| !selectedId \|\| !fabricColor\.trim\(\) \|\| missingCollarColor\}/);
   assert.doesNotMatch(notes, /Tarefas interativas/);
   assert.match(notes, /Calcular material/);
   assert.match(notes, /notes-page-navigation/);
@@ -250,6 +257,15 @@ test("keeps the AI workspace stable with large global fonts", async () => {
   assert.match(css, /--ai-answer-text: 14\.5px/);
   assert.match(css, /overflow-x: hidden/);
   assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", view === "ai"\)/);
+});
+
+test("keeps notifications inside the viewport at every interface size", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /data-ui-size="extra-large"[^}]+--ui-viewport-width: 78\.125vw/);
+  assert.match(css, /\.notification-panel \{[^}]+var\(--ui-viewport-width\)/);
+  assert.match(css, /\.toast \{[^}]+max-width:[^}]+var\(--ui-viewport-width\)/);
+  assert.match(css, /\.toast \{ bottom: 84px; white-space: normal; \}/);
+  assert.match(css, /\.notification-item small \{[^}]+overflow-wrap: anywhere/);
 });
 
 test("uses readable typography in AI response cards and conversation sidebar", async () => {

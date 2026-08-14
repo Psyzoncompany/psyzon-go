@@ -44,6 +44,7 @@ export type NoteMaterial = {
   id: string;
   fabricType: FabricType;
   color: string;
+  collarColor?: string;
   fabricKg: number;
   fabricCost: number;
   collarType: CollarType;
@@ -59,9 +60,11 @@ type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & {
 type SaveState = "saved" | "saving" | "error";
 type FabricType = "PV" | "PP" | "PIQUET";
 type CollarType = "common" | "polo";
+type Supplier = NoteMaterial["supplier"];
 
 const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
 const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false, materials: [] };
+const materialSeparator = "\n\n────────────────────\n\n";
 
 function timestampValue(value: unknown) {
   if (value && typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
@@ -82,11 +85,46 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function materialSupplier(material: NoteMaterial): Supplier {
+  return material.supplier === "Atual Têxtil" ? "Atual Têxtil" : "Costa Rica";
+}
+
+function materialCollarColor(material: NoteMaterial) {
+  return material.collarColor?.trim() || material.color;
+}
+
 function materialNoteText(material: NoteMaterial, index: number) {
   const collarLines = material.collarType === "common"
-    ? `🟩 Ribana – ${material.color}\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
-    : `👕 Gola polo – ${material.color}\n🔢 Quantidade: ${material.poloUnits.toLocaleString("pt-BR")} unidades`;
-  return `🧵 MATERIAL ${index + 1}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
+    ? `🟩 Ribana – ${materialCollarColor(material)}\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
+    : `👕 Gola polo – ${materialCollarColor(material)}\n🔢 Quantidade: ${material.poloUnits.toLocaleString("pt-BR")} unidades`;
+  return `🧵 MATERIAL ${index + 1}\n🏭 Fornecedor: ${materialSupplier(material)}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
+}
+
+function organizeMaterialList(content: string, materials: NoteMaterial[]) {
+  const materialHeadings = [...content.matchAll(/🧵\s*\*?MATERIAL\s+\d+\*?/gi)];
+  if (!materials.length || materialHeadings.length !== materials.length) return { content, materials };
+
+  const prefix = content.slice(0, materialHeadings[0].index).trimEnd();
+  const entries = materialHeadings.map((heading, index) => {
+    const start = heading.index;
+    const end = materialHeadings[index + 1]?.index ?? content.length;
+    const block = content.slice(start, end).replace(/\s*─{5,}\s*$/, "").trim();
+    return { block, material: { ...materials[index], supplier: materialSupplier(materials[index]) }, originalIndex: index };
+  });
+
+  entries.sort((left, right) => {
+    const supplierDifference = Number(materialSupplier(left.material) === "Atual Têxtil") - Number(materialSupplier(right.material) === "Atual Têxtil");
+    return supplierDifference || left.originalIndex - right.originalIndex;
+  });
+
+  const organizedBlocks = entries.map(({ block, material }, index) => {
+    const numberedBlock = block.replace(/(🧵\s*\*?MATERIAL\s+)\d+(\*?)/i, `$1${index + 1}$2`);
+    const supplierLine = `🏭 Fornecedor: ${materialSupplier(material)}`;
+    if (/🏭\s*Fornecedor\s*:/i.test(numberedBlock)) return numberedBlock.replace(/🏭\s*Fornecedor\s*:[^\n]*/i, supplierLine);
+    return numberedBlock.replace(/(🧵\s*\*?MATERIAL\s+\d+\*?)/i, `$1\n${supplierLine}`);
+  });
+  const organizedContent = [prefix, organizedBlocks.join(materialSeparator)].filter(Boolean).join("\n\n");
+  return { content: organizedContent, materials: entries.map(({ material }) => material) };
 }
 
 function nextMaterialNumber(content: string) {
@@ -112,13 +150,14 @@ function includeMaterialCostLines(content: string, materials: NoteMaterial[]) {
 }
 
 function toDraft(note: BusinessNote): Draft {
-  const materials = Array.isArray(note.materials) ? note.materials : [];
+  const materials = Array.isArray(note.materials) ? note.materials.map((material) => ({ ...material, collarColor: materialCollarColor(material), supplier: materialSupplier(material) })) : [];
   const hasMaterialText = /🧵\s*\*?MATERIAL\s+\d+/i.test(note.content);
   const baseContent = materials.length && !hasMaterialText
-    ? [note.content.trim(), materials.map(materialNoteText).join("\n\n────────────────────\n\n")].filter(Boolean).join("\n\n")
+    ? [note.content.trim(), materials.map(materialNoteText).join(materialSeparator)].filter(Boolean).join("\n\n")
     : note.content;
   const content = materials.length ? includeMaterialCostLines(baseContent, materials) : baseContent;
-  return { title: note.title, content: normalizeKgInText(content), category: note.category, pinned: note.pinned, materials };
+  const organized = organizeMaterialList(normalizeKgInText(content), materials);
+  return { title: note.title, content: organized.content, category: note.category, pinned: note.pinned, materials: organized.materials };
 }
 
 function titleCaseColor(value: string) {
@@ -165,14 +204,16 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const [expression, setExpression] = useState("");
   const [calculatorError, setCalculatorError] = useState("");
   const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
-  const [supplier, setSupplier] = useState<"Costa Rica" | "Atual Têxtil">("Costa Rica");
+  const [supplier, setSupplier] = useState<Supplier>("Costa Rica");
   const [fabricType, setFabricType] = useState<FabricType>("PV");
   const [fabricColor, setFabricColor] = useState("");
   const [collarType, setCollarType] = useState<CollarType>("common");
+  const [sameCollarColor, setSameCollarColor] = useState(true);
+  const [collarColor, setCollarColor] = useState("");
   const [fabricValue, setFabricValue] = useState("100");
   const [waste, setWaste] = useState("0");
   const [pricePerKg, setPricePerKg] = useState("43.90");
-  const [ribanaPricePerKg, setRibanaPricePerKg] = useState("90.91");
+  const [ribanaPricePerKg, setRibanaPricePerKg] = useState("53.00");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const timerRef = useRef<number | undefined>(undefined);
   const lastSavedRef = useRef(JSON.stringify(initialDraft));
@@ -314,8 +355,9 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
     const duplicatedNumber = nextMaterialNumber(draft.content);
     setDraft((current) => {
       const duplicate = { ...material, id: crypto.randomUUID() };
-      const separator = current.content.trim() ? "\n\n────────────────────\n\n" : "";
-      return { ...current, content: `${current.content.trimEnd()}${separator}${materialNoteText(duplicate, duplicatedNumber - 1)}`, materials: [...current.materials, duplicate] };
+      const separator = current.content.trim() ? materialSeparator : "";
+      const organized = organizeMaterialList(`${current.content.trimEnd()}${separator}${materialNoteText(duplicate, duplicatedNumber - 1)}`, [...current.materials, duplicate]);
+      return { ...current, content: organized.content, materials: organized.materials };
     });
     showEditorNotice(`MATERIAL ${duplicatedNumber} duplicado`);
   };
@@ -325,9 +367,10 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       const blocks = [...content.matchAll(/🧵\s*\*?MATERIAL\s+(\d+)\*?([\s\S]*?)(?=🧵\s*\*?MATERIAL\s+\d+\*?|$)/gi)];
       const materials = blocks.map((match, index) => {
         const block = match[2];
-        const fallback: NoteMaterial = { id: crypto.randomUUID(), fabricType: "PV", color: "Sem cor", fabricKg: 0, fabricCost: 0, collarType: /Gola polo/i.test(block) ? "polo" : "common", ribanaKg: 0, ribanaCost: 0, ribanaPricePerKg: 90.91, poloUnits: 0, totalCost: 0, supplier: "Costa Rica" };
+        const fallback: NoteMaterial = { id: crypto.randomUUID(), fabricType: "PV", color: "Sem cor", collarColor: "Sem cor", fabricKg: 0, fabricCost: 0, collarType: /Gola polo/i.test(block) ? "polo" : "common", ribanaKg: 0, ribanaCost: 0, ribanaPricePerKg: 53, poloUnits: 0, totalCost: 0, supplier: /Atual Têxtil/i.test(block) ? "Atual Têxtil" : "Costa Rica" };
         const material = current.materials[index] ?? fallback;
         const fabric = block.match(/🟢\s*(?:\*)?Malha\s+(PV|PP|PIQUET)\s*[–-]\s*([^\n*]+)/i);
+        const collar = block.match(/(?:🟩\s*Ribana|👕\s*Gola polo)\s*[–-]\s*([^\n*]+)/i);
         const quantities = [...block.matchAll(/(?:⚖️|🔢)\s*Quantidade:\s*([\d.,]+)/gi)].map((match) => {
           const raw = match[1];
           return Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
@@ -338,7 +381,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
         const poloUnits = material.collarType === "polo" && Number.isFinite(quantities[1]) ? Math.max(0, Math.round(quantities[1])) : material.poloUnits;
         const fabricCost = fabricKg * fabricPrice;
         const ribanaCost = material.collarType === "common" ? ribanaKg * material.ribanaPricePerKg : 0;
-        return { ...material, fabricType: (fabric?.[1] as FabricType | undefined) ?? material.fabricType, color: fabric?.[2]?.trim() || material.color, fabricKg, ribanaKg, poloUnits, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
+        return { ...material, fabricType: (fabric?.[1] as FabricType | undefined) ?? material.fabricType, color: fabric?.[2]?.trim() || material.color, collarColor: collar?.[1]?.trim() || materialCollarColor(material), fabricKg, ribanaKg, poloUnits, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost };
       });
       return { ...current, content: includeMaterialCostLines(content, materials), materials };
     });
@@ -369,14 +412,16 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const ribanaCost = collarType === "common" ? ribanaKg * numericRibanaPrice : 0;
   const totalOrderCost = totalFabricCost + ribanaCost;
   const costPerPiece = plannedPieces > 0 ? totalOrderCost / plannedPieces : 0;
+  const missingCollarColor = !sameCollarColor && !collarColor.trim();
   const addMaterialToNote = () => {
     const color = titleCaseColor(fabricColor);
-    if (!numericFabricValue || !selectedId || !fabricColor.trim()) return;
+    if (!numericFabricValue || !selectedId || !fabricColor.trim() || missingCollarColor) return;
     const nextNumber = nextMaterialNumber(draft.content);
     const material: NoteMaterial = {
       id: crypto.randomUUID(),
       fabricType,
       color,
+      collarColor: sameCollarColor ? color : titleCaseColor(collarColor),
       fabricKg: calculatedOrderKg,
       fabricCost: totalFabricCost,
       collarType,
@@ -388,8 +433,9 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
       supplier,
     };
     setDraft((current) => {
-      const separator = current.content.trim() ? "\n\n────────────────────\n\n" : "";
-      return { ...current, content: `${current.content.trimEnd()}${separator}${materialNoteText(material, nextNumber - 1)}`, materials: [...current.materials, material] };
+      const separator = current.content.trim() ? materialSeparator : "";
+      const organized = organizeMaterialList(`${current.content.trimEnd()}${separator}${materialNoteText(material, nextNumber - 1)}`, [...current.materials, material]);
+      return { ...current, content: organized.content, materials: organized.materials };
     });
     setCalculatorOpen(false);
     showEditorNotice(`MATERIAL ${nextNumber} adicionado e calculado`);
@@ -469,12 +515,14 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
               <label>Cor da malha<input value={fabricColor} onChange={(event) => setFabricColor(event.target.value)} placeholder="Ex.: Azul royal" /></label>
             </div>
             <div className="option-selector collar-selector"><small>TIPO DE GOLA</small><div><button className={collarType === "common" ? "active" : ""} onClick={() => setCollarType("common")} aria-pressed={collarType === "common"}>Gola comum</button><button className={collarType === "polo" ? "active" : ""} onClick={() => setCollarType("polo")} aria-pressed={collarType === "polo"}>Gola polo</button></div></div>
+            <div className="same-collar-color"><input id="same-collar-color" type="checkbox" checked={sameCollarColor} onChange={(event) => setSameCollarColor(event.target.checked)} /><label htmlFor="same-collar-color"><b>A gola é da mesma cor da camisa?</b><small>Marcado por padrão</small></label></div>
+            {!sameCollarColor && <label className="collar-color-field">Cor da gola/ribana<input value={collarColor} onChange={(event) => setCollarColor(event.target.value)} placeholder="Ex.: Branco" /></label>}
             <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
             <div className="fabric-row single"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label></div>
             <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${formatKg(requiredKg)} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
             <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Golas polo necessárias"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${plannedPieces} unidades`}</b><small>{collarType === "common" ? `5% da malha · ${formatCurrency(numericRibanaPrice)}/kg · custo ${formatCurrency(ribanaCost)}` : "1 gola por camisa"}</small></div>
             {(collarType === "common" || totalFabricCost > 0) && <div className="cost-summary">{collarType === "common" && <div className="cost-result ribana"><span>Valor total da ribana</span><b>{formatCurrency(ribanaCost)}</b></div>}{totalFabricCost > 0 && <><div className="cost-result"><span>Valor total da malha</span><b>{formatCurrency(totalFabricCost)}</b></div><div className="cost-result"><span>Custo estimado por camisa</span><b>{formatCurrency(costPerPiece)}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{formatCurrency(totalOrderCost)}</b></div></>}</div>}
-            <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim()}><FilePlus2 size={16} /> Adicionar como MATERIAL {nextMaterialNumber(draft.content)}</button>
+            <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim() || missingCollarColor}><FilePlus2 size={16} /> Adicionar como MATERIAL {nextMaterialNumber(draft.content)}</button>
           </div> : <div className="general-calculator">
             <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
             <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>

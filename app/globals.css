@@ -2,6 +2,8 @@
 
 :root {
   --ui-zoom: 1;
+  --ui-viewport-width: 100vw;
+  --ui-notification-height: 72vh;
   --bg: #f6f7f9;
   --card: #ffffff;
   --card-subtle: #f8f9fb;
@@ -20,9 +22,9 @@
   --shadow: 0 1px 2px rgba(15, 23, 42, .025), 0 8px 24px rgba(15, 23, 42, .035);
 }
 
-:root[data-ui-size="compact"] { --ui-zoom: .9; }
-:root[data-ui-size="large"] { --ui-zoom: 1.14; }
-:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; }
+:root[data-ui-size="compact"] { --ui-zoom: .9; --ui-viewport-width: 111.111vw; --ui-notification-height: 80vh; }
+:root[data-ui-size="large"] { --ui-zoom: 1.14; --ui-viewport-width: 87.719vw; --ui-notification-height: 63.158vh; }
+:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; --ui-viewport-width: 78.125vw; --ui-notification-height: 56.25vh; }
 
 :root[data-theme="dark"] {
   --bg: #0f1115;
@@ -148,9 +150,9 @@ kbd { padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2p
 .floating-mode-action span { font-size: 9px; font-weight: 750; white-space: nowrap; }
 .top-actions .floating-mode-action.active { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); background: var(--green-soft); color: var(--green); }
 .notification > span { position: absolute; top: 2px; right: 1px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px; background: var(--red); color: white; border: 2px solid var(--card); display: grid; place-items: center; font-size: 7px; font-weight: 800; }
-.notification-panel { position: absolute; top: 46px; right: 0; width: min(370px, calc(100vw - 28px)); max-height: min(520px, 72vh); overflow: hidden auto; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: 0 20px 60px rgba(15,23,42,.2); z-index: 90; }
+.notification-panel { position: absolute; top: 46px; right: 0; width: min(370px, calc(var(--ui-viewport-width) - 28px)); max-height: min(520px, var(--ui-notification-height)); overflow: hidden auto; border: 1px solid var(--border); border-radius: 14px; background: var(--card); box-shadow: 0 20px 60px rgba(15,23,42,.2); z-index: 90; }
 .notification-panel header { min-height: 67px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-.notification-panel header > div { display: flex; flex-direction: column; }
+.notification-panel header > div { min-width: 0; display: flex; flex-direction: column; }
 .notification-panel header b { font-size: 11px; }
 .notification-panel header small { margin-top: 3px; color: var(--muted); font-size: 8px; }
 .notification-panel header button { width: 30px; height: 30px; }
@@ -159,7 +161,7 @@ kbd { padding: 2px 6px; border: 1px solid var(--border); border-bottom-width: 2p
 .notification-item > span:first-child.danger { background: var(--red-soft); color: var(--red); }
 .notification-item > span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
 .notification-item b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: 9px; }
-.notification-item small { margin-top: 4px; color: var(--muted); font-size: 8px; }
+.notification-item small { margin-top: 4px; overflow-wrap: anywhere; color: var(--muted); font-size: 8px; line-height: 1.4; }
 .notification-empty { min-height: 155px; padding: 24px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .notification-empty svg { margin-bottom: 9px; color: var(--green); }
 .notification-empty b { color: var(--text); font-size: 10px; }
@@ -547,7 +549,8 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .details-link { width: fit-content; padding: 0; border: 0; background: transparent; color: var(--blue); font-size: 9px; cursor: pointer; }
 .modal form footer { margin-top: 12px; padding: 18px 0 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
-.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); padding: 11px 15px; border: 1px solid color-mix(in srgb, var(--green) 25%, var(--border)); border-radius: 9px; background: var(--card); color: var(--green); display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 650; box-shadow: 0 12px 35px rgba(15, 23, 42, .16); z-index: 120; animation: toast .25s ease; }
+.toast { position: fixed; left: 50%; bottom: 26px; width: max-content; max-width: min(420px, calc(var(--ui-viewport-width) - 28px)); transform: translateX(-50%); padding: 11px 15px; border: 1px solid color-mix(in srgb, var(--green) 25%, var(--border)); border-radius: 9px; background: var(--card); color: var(--green); display: flex; align-items: center; justify-content: center; gap: 8px; overflow-wrap: anywhere; text-align: center; font-size: 10px; font-weight: 650; line-height: 1.4; box-shadow: 0 12px 35px rgba(15, 23, 42, .16); z-index: 120; animation: toast .25s ease; }
+.toast svg { flex: 0 0 auto; }
 
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide { from { transform: translateX(40px); opacity: .7; } }
@@ -615,7 +618,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
   .mobile-nav > button.active { color: var(--blue); font-weight: 700; }
   .mobile-nav .mobile-new { width: 47px; height: 47px; margin: -19px auto 0; border-radius: 50%; background: var(--blue); color: white; box-shadow: 0 7px 18px rgba(37, 99, 235, .3); }
   .mobile-nav .mobile-new span { display: none; }
-  .toast { bottom: 84px; white-space: nowrap; }
+  .toast { bottom: 84px; white-space: normal; }
   .kanban { grid-template-columns: repeat(4, 240px); }
   .customer-grid, .settings-grid { grid-template-columns: 1fr; }
   .account-grid { grid-template-columns: 1fr; }
@@ -781,7 +784,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .note-export-wrap { position: relative; }
 .note-export-menu { position: absolute; top: 38px; right: 0; width: 150px; padding: 5px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); box-shadow: 0 14px 35px rgba(15,23,42,.17); z-index: 12; }
 .note-export-menu button { width: 100%; border-color: transparent; justify-content: flex-start; }
-.editor-notice { position: absolute; top: 52px; right: 58px; z-index: 14; padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--green) 30%, var(--border)); border-radius: 8px; background: var(--green-soft); color: var(--green); font-size: 8px; font-weight: 750; box-shadow: var(--shadow); }
+.editor-notice { position: absolute; top: 52px; right: 58px; z-index: 14; max-width: min(320px, calc(var(--ui-viewport-width) - 36px)); padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--green) 30%, var(--border)); border-radius: 8px; background: var(--green-soft); color: var(--green); overflow-wrap: anywhere; font-size: 8px; font-weight: 750; line-height: 1.4; box-shadow: var(--shadow); }
 .note-writing-area { min-height: 410px; flex: 1; overflow-y: auto; background: var(--card); }
 .note-writing-area > textarea { min-height: 74px; max-height: 150px; padding: 14px 22px; border: 0; border-bottom: 1px dashed var(--border); resize: vertical; background: var(--card); font-size: 11px; line-height: 1.6; }
 .materials-document { padding: 18px 23px 25px; }
@@ -902,6 +905,12 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .option-selector button.active { background: var(--blue); color: white; box-shadow: 0 4px 10px rgba(37, 99, 235, .18); }
 .collar-selector { margin-bottom: 12px; }
 .collar-selector > div { grid-template-columns: 1fr 1fr; }
+.same-collar-color { min-height: 45px; margin-bottom: 11px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-subtle); display: flex !important; flex-direction: row !important; align-items: center; gap: 9px !important; cursor: pointer; }
+.same-collar-color input { width: 16px; height: 16px; margin: 0; padding: 0; flex: 0 0 auto; accent-color: var(--blue); box-shadow: none !important; }
+.same-collar-color > label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.same-collar-color b { color: var(--text); font-size: 9px; }
+.same-collar-color small { color: var(--muted); font-size: 7px; font-weight: 500; }
+.collar-color-field { margin-bottom: 11px; }
 .fabric-calculator label { color: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 9px; font-weight: 650; }
 .fabric-calculator input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 13px; }
 .fabric-calculator input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }

@@ -3,6 +3,7 @@
 :root {
   --ui-zoom: 1;
   --ui-viewport-width: 100vw;
+  --ui-viewport-height: 100vh;
   --ui-notification-height: 72vh;
   --bg: #f6f7f9;
   --card: #ffffff;
@@ -22,9 +23,9 @@
   --shadow: 0 1px 2px rgba(15, 23, 42, .025), 0 8px 24px rgba(15, 23, 42, .035);
 }
 
-:root[data-ui-size="compact"] { --ui-zoom: .9; --ui-viewport-width: 111.111vw; --ui-notification-height: 80vh; }
-:root[data-ui-size="large"] { --ui-zoom: 1.14; --ui-viewport-width: 87.719vw; --ui-notification-height: 63.158vh; }
-:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; --ui-viewport-width: 78.125vw; --ui-notification-height: 56.25vh; }
+:root[data-ui-size="compact"] { --ui-zoom: .9; --ui-viewport-width: 111.111vw; --ui-viewport-height: 111.111vh; --ui-notification-height: 80vh; }
+:root[data-ui-size="large"] { --ui-zoom: 1.14; --ui-viewport-width: 87.719vw; --ui-viewport-height: 87.719vh; --ui-notification-height: 63.158vh; }
+:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; --ui-viewport-width: 78.125vw; --ui-viewport-height: 78.125vh; --ui-notification-height: 56.25vh; }
 
 :root[data-theme="dark"] {
   --bg: #0f1115;
@@ -878,6 +879,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .calculator-tabs button { height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; font-weight: 700; cursor: pointer; }
 .calculator-tabs button.active { background: var(--card); color: var(--blue); box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .fabric-calculator, .general-calculator { padding: 0 17px 18px; }
+.calculator-input-group { display: contents; }
 .fabric-rate { padding: 13px; border: 1px solid color-mix(in srgb, var(--blue) 25%, var(--border)); border-radius: 12px; background: var(--blue-soft); color: var(--blue); display: flex; align-items: center; gap: 10px; }
 .fabric-rate span { display: flex; flex-direction: column; }
 .fabric-rate small { font-size: 7px; font-weight: 800; letter-spacing: .12em; }
@@ -905,14 +907,14 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .option-selector button.active { background: var(--blue); color: white; box-shadow: 0 4px 10px rgba(37, 99, 235, .18); }
 .collar-selector { margin-bottom: 12px; }
 .collar-selector > div { grid-template-columns: 1fr 1fr; }
-.same-collar-color { min-height: 45px; margin-bottom: 11px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-subtle); display: flex !important; flex-direction: row !important; align-items: center; gap: 9px !important; cursor: pointer; }
-.same-collar-color input { width: 16px; height: 16px; margin: 0; padding: 0; flex: 0 0 auto; accent-color: var(--blue); box-shadow: none !important; }
-.same-collar-color > label { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.same-collar-color { min-height: 28px; margin: -2px 0 9px; padding: 2px 1px; display: flex; align-items: center; gap: 7px; }
+.same-collar-color > label { display: flex; flex-direction: column; gap: 1px; cursor: pointer; }
 .same-collar-color b { color: var(--text); font-size: 9px; }
-.same-collar-color small { color: var(--muted); font-size: 7px; font-weight: 500; }
+.same-collar-color small { color: var(--muted); font-size: 6.5px; font-weight: 500; }
 .collar-color-field { margin-bottom: 11px; }
 .fabric-calculator label { color: var(--muted); display: flex; flex-direction: column; gap: 6px; font-size: 9px; font-weight: 650; }
 .fabric-calculator input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; outline: none; background: var(--bg); color: var(--text); font-size: 13px; }
+.fabric-calculator .same-collar-color input[type="checkbox"] { width: 15px; height: 15px; margin: 0; padding: 0; flex: 0 0 15px; border-radius: 4px; accent-color: var(--blue); box-shadow: none; cursor: pointer; }
 .fabric-calculator input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
 .fabric-row { margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .fabric-row.single { grid-template-columns: 1fr; }
@@ -946,6 +948,23 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .calculator-keys button:hover { border-color: var(--blue); }
 .calculator-keys button.operator { background: var(--blue-soft); color: var(--blue); }
 .calculator-keys button:nth-last-child(-n+2) { grid-column: span 2; }
+
+@media (min-width: 901px) {
+  .calculator-backdrop { width: var(--ui-viewport-width); height: var(--ui-viewport-height); padding: 0; align-items: stretch; }
+  .calculator-panel { width: 100%; height: 100%; max-height: none; border: 0; border-radius: 0; display: grid; grid-template-rows: 72px 54px minmax(0, 1fr); overflow: hidden; }
+  .calculator-panel > header { min-height: 72px; padding: 0 clamp(24px, 3vw, 46px); }
+  .calculator-panel > header > div > span { width: 40px; height: 40px; border-radius: 12px; }
+  .calculator-panel > header b { font-size: 14px; }
+  .calculator-panel > header small { font-size: 9px; }
+  .calculator-tabs { width: min(460px, calc(100% - 48px)); margin: 9px auto 7px; }
+  .fabric-calculator { min-height: 0; padding: clamp(18px, 2.5vw, 36px); overflow: auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(14px, 1.6vw, 24px); align-items: stretch; }
+  .calculator-input-group { min-width: 0; padding: clamp(16px, 1.8vw, 25px); border: 1px solid var(--border); border-radius: 16px; background: color-mix(in srgb, var(--card-subtle) 65%, var(--card)); display: flex; flex-direction: column; }
+  .calculator-input-group .supplier-selector { margin-top: auto; }
+  .calculator-material-group .fabric-row { margin-top: 11px; }
+  .calculator-results-group .fabric-result { margin-top: 0; }
+  .calculator-results-group .calculator-copy { margin-top: auto; }
+  .general-calculator { width: min(560px, 100%); min-height: 0; margin: auto; padding: clamp(24px, 4vw, 56px); overflow-y: auto; }
+}
 
 @media (max-width: 900px) {
   .notes-page-controls { flex-wrap: wrap; }

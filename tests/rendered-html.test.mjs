@@ -52,6 +52,8 @@ test("includes the realtime apparel notes workspace", async () => {
   assert.match(notes, /useState\(true\)/);
   assert.match(notes, /A gola é da mesma cor da camisa\?/);
   assert.match(notes, /id="same-collar-color" type="checkbox" checked=\{sameCollarColor\}/);
+  assert.match(notes, /calculator-input-group calculator-planning-group/);
+  assert.match(notes, /calculator-input-group calculator-results-group/);
   assert.match(notes, /!sameCollarColor && <label className="collar-color-field"/);
   assert.match(notes, /collarColor: sameCollarColor \? color : titleCaseColor\(collarColor\)/);
   assert.match(notes, /Costa Rica/);
@@ -266,6 +268,13 @@ test("keeps notifications inside the viewport at every interface size", async ()
   assert.match(css, /\.toast \{[^}]+max-width:[^}]+var\(--ui-viewport-width\)/);
   assert.match(css, /\.toast \{ bottom: 84px; white-space: normal; \}/);
   assert.match(css, /\.notification-item small \{[^}]+overflow-wrap: anywhere/);
+});
+
+test("uses the full desktop viewport for the fabric calculator", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(min-width: 901px\) \{[\s\S]+?\.calculator-panel \{[^}]+width: 100%; height: 100%; max-height: none/);
+  assert.match(css, /\.fabric-calculator \{[^}]+grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.fabric-calculator \.same-collar-color input\[type="checkbox"\] \{[^}]+width: 15px; height: 15px/);
 });
 
 test("uses readable typography in AI response cards and conversation sidebar", async () => {

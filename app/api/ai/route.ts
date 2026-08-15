@@ -16,6 +16,7 @@ import {
 } from "../../lib/server/ai-store";
 import { executeConfirmedTool } from "../../lib/server/ai-tools";
 import { authenticateFirebaseRequest } from "../../lib/server/firebase-rest";
+import { isAuthorizedMercadoPagoIdentity } from "../../lib/server/financial-security";
 
 async function errorResponse(error: unknown) {
   if (error instanceof Response) {
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
       conversations,
       integrations: {
         ai: getAIProviderSummary(),
-        mercadoPago: { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN && process.env.MERCADO_PAGO_OWNER_FIREBASE_UID === identity.uid), enabled: settings.mercadoPagoEnabled, status: sync.status, lastSyncedAt: sync.lastSyncedAt, lastError: sync.lastError, recordsChecked: sync.recordsChecked },
+        mercadoPago: { configured: Boolean(process.env.MERCADO_PAGO_ACCESS_TOKEN && isAuthorizedMercadoPagoIdentity(identity)), enabled: settings.mercadoPagoEnabled, status: sync.status, lastSyncedAt: sync.lastSyncedAt, lastError: sync.lastError, recordsChecked: sync.recordsChecked },
       },
     });
   } catch (error) { return await errorResponse(error); }

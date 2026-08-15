@@ -29,6 +29,11 @@ yarn-error.log*
 .pnpm-debug.log*
 dev.*.log
 google-services.json
+*service-account*.json
+serviceAccount*.json
+firebase-adminsdk*.json
+*service-account*.p12
+*.p12
 
 # env files (can opt-in for committing if needed)
 .env*

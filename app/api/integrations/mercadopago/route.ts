@@ -1,5 +1,6 @@
 import { getAISettings, getIntegrationStatus } from "../../../lib/server/ai-store";
 import { authenticateFirebaseRequest } from "../../../lib/server/firebase-rest";
+import { isAuthorizedMercadoPagoIdentity } from "../../../lib/server/financial-security";
 import { syncMercadoPagoPayments } from "../../../lib/server/mercado-pago";
 import { listReconciliation, reconcileMercadoPago } from "../../../lib/server/reconciliation";
 
@@ -18,8 +19,7 @@ function integrationError(error: unknown) {
 export async function GET(request: Request) {
   try {
     const identity = await authenticateFirebaseRequest(request);
-    const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
-    if (process.env.MERCADO_PAGO_ACCESS_TOKEN && (!ownerUserId || ownerUserId !== identity.uid)) {
+    if (process.env.MERCADO_PAGO_ACCESS_TOKEN && !isAuthorizedMercadoPagoIdentity(identity)) {
       return Response.json({ configured: false, restricted: true, sync: { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 }, problems: [] });
     }
     const [sync, reconciliation] = await Promise.all([getIntegrationStatus(identity), listReconciliation(identity)]);
@@ -33,8 +33,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const identity = await authenticateFirebaseRequest(request);
-    const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
-    if (!ownerUserId || ownerUserId !== identity.uid) return Response.json({ error: "Configure o UID proprietário da integração Mercado Pago." }, { status: 403 });
+    if (!isAuthorizedMercadoPagoIdentity(identity)) return Response.json({ error: "Esta conta não pode acessar a integração Mercado Pago." }, { status: 403 });
     const settings = await getAISettings(identity);
     if (!settings.mercadoPagoEnabled) return Response.json({ error: "Ative a conciliação Mercado Pago nas configurações da PSYZON AI." }, { status: 403 });
     const body = await request.json().catch(() => ({})) as { beginDate?: string; endDate?: string };

@@ -1,8 +1,175 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function owns(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function text(value, minimum, maximum) {
+      return value is string && value.size() >= minimum && value.size() <= maximum;
+    }
+
+    function optionalText(data, field, maximum) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maximum);
+    }
+
+    function optionalNullableText(data, field, maximum) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maximum);
+    }
+
+    function money(value, allowZero) {
+      return value is number && value == value && value >= (allowZero ? 0.0 : 0.01) && value <= 100000000;
+    }
+
+    function optionalMoney(data, field, nullable) {
+      return !(field in data) || (nullable && data[field] == null) || money(data[field], true);
+    }
+
+    function calendarDate(value) {
+      return value is string && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function validCreatedAt(data) {
+      return !("createdAt" in data)
+        || data.createdAt is timestamp
+        || (data.createdAt is string && data.createdAt.size() <= 40)
+        || data.createdAt is int;
+    }
+
+    function unchanged(field) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([field]);
+    }
+
+    function validOrder(data) {
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt"])
+        && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
+        && text(data.customer, 1, 120)
+        && optionalText(data, "phone", 40)
+        && text(data.product, 1, 160)
+        && data.quantity is int && data.quantity > 0 && data.quantity <= 1000000
+        && money(data.total, true)
+        && money(data.paid, true) && data.paid <= data.total
+        && calendarDate(data.dueDate)
+        && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
+        && optionalText(data, "notes", 4000)
+        && validCreatedAt(data);
+    }
+
+    function validCustomer(data) {
+      return data.keys().hasOnly(["name", "phone", "company"])
+        && data.keys().hasAll(["name", "phone"])
+        && text(data.name, 1, 120)
+        && text(data.phone, 0, 40)
+        && optionalText(data, "company", 160);
+    }
+
+    function validTransaction(data) {
+      return data.keys().hasOnly([
+          "description", "amount", "type", "account", "category", "transactionDate", "source",
+          "provider", "providerTransactionId", "externalReference", "paymentMethod", "providerStatus",
+          "feeAmount", "netAmount", "billId", "orderId", "createdAt"
+        ])
+        && data.keys().hasAll(["description", "amount", "type", "account"])
+        && text(data.description, 1, 240)
+        && money(data.amount, false)
+        && data.type in ["income", "expense", "transfer"]
+        && data.account in ["business", "personal"]
+        && optionalText(data, "category", 100)
+        && (!("transactionDate" in data) || calendarDate(data.transactionDate))
+        && (!("source" in data) || data.source in ["bill", "ai_adjustment", "mercado_pago"])
+        && optionalText(data, "billId", 160)
+        && optionalText(data, "orderId", 160)
+        && optionalNullableText(data, "externalReference", 160)
+        && optionalNullableText(data, "paymentMethod", 80)
+        && optionalText(data, "providerStatus", 60)
+        && optionalMoney(data, "feeAmount", false)
+        && optionalMoney(data, "netAmount", true)
+        && validCreatedAt(data)
+        && (
+          !("source" in data) || data.source != "mercado_pago"
+          || (
+            data.keys().hasAll(["provider", "providerTransactionId", "providerStatus"])
+            && data.provider == "mercado_pago"
+            && text(data.providerTransactionId, 1, 80)
+            && data.providerTransactionId.matches('^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$')
+          )
+        );
+    }
+
+    function validBill(data) {
+      return data.keys().hasOnly(["description", "amount", "account", "billingType", "dueDay", "category", "totalInstallments", "paidInstallments", "lastPaidMonth", "createdAt"])
+        && data.keys().hasAll(["description", "amount", "account", "billingType", "dueDay", "category"])
+        && text(data.description, 1, 200)
+        && money(data.amount, false)
+        && data.account in ["business", "personal"]
+        && data.billingType in ["fixed", "installment"]
+        && data.dueDay is int && data.dueDay >= 1 && data.dueDay <= 31
+        && text(data.category, 1, 100)
+        && (!("totalInstallments" in data) || (data.totalInstallments is int && data.totalInstallments >= 1 && data.totalInstallments <= 600))
+        && (!("paidInstallments" in data) || (data.paidInstallments is int && data.paidInstallments >= 0 && data.paidInstallments <= 600))
+        && (!("lastPaidMonth" in data) || (data.lastPaidMonth is string && data.lastPaidMonth.matches('^[0-9]{4}-[0-9]{2}$')))
+        && (data.billingType != "installment" || ("totalInstallments" in data && data.totalInstallments >= 1))
+        && (!("paidInstallments" in data) || !("totalInstallments" in data) || data.paidInstallments <= data.totalInstallments)
+        && validCreatedAt(data);
+    }
+
+    function validNote(data) {
+      return data.keys().hasOnly(["title", "content", "category", "pinned", "materials", "createdAt", "updatedAt"])
+        && data.keys().hasAll(["title", "content", "category", "pinned", "materials", "updatedAt"])
+        && text(data.title, 0, 200)
+        && text(data.content, 0, 100000)
+        && data.category in ["Geral", "Produção", "Clientes", "Compras", "Modelagem"]
+        && data.pinned is bool
+        && data.materials is list && data.materials.size() <= 100
+        && validCreatedAt(data)
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{uid}/orders/{documentId} {
+      allow get, list: if owns(uid);
+      allow create: if owns(uid) && validOrder(request.resource.data);
+      allow update: if owns(uid) && validOrder(request.resource.data) && unchanged("createdAt");
+      allow delete: if owns(uid);
+    }
+
+    match /users/{uid}/customers/{documentId} {
+      allow get, list: if owns(uid);
+      allow create, update: if owns(uid) && validCustomer(request.resource.data);
+      allow delete: if owns(uid);
+    }
+
+    match /users/{uid}/transactions/{documentId} {
+      allow get, list: if owns(uid);
+      allow create: if owns(uid) && validTransaction(request.resource.data);
+      allow update: if owns(uid)
+        && validTransaction(request.resource.data)
+        && unchanged("createdAt")
+        && unchanged("source")
+        && unchanged("provider")
+        && unchanged("providerTransactionId")
+        && unchanged("externalReference");
+      allow delete: if owns(uid);
+    }
+
+    match /users/{uid}/bills/{documentId} {
+      allow get, list: if owns(uid);
+      allow create: if owns(uid) && validBill(request.resource.data);
+      allow update: if owns(uid) && validBill(request.resource.data) && unchanged("createdAt");
+      allow delete: if owns(uid);
+    }
+
+    match /users/{uid}/notes/{documentId} {
+      allow get, list: if owns(uid);
+      allow create: if owns(uid) && validNote(request.resource.data);
+      allow update: if owns(uid) && validNote(request.resource.data) && unchanged("createdAt");
+      allow delete: if owns(uid);
+    }
+
+    // All undeclared user subcollections, collection-group access, root user listing,
+    // integration state and distributed rate-limit records are denied to client SDKs.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

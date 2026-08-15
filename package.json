@@ -10,28 +10,33 @@
     "build": "vinext build",
     "vercel-build": "next build",
     "start": "vinext start",
-    "test": "npm run build && npm run test:ai && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && npm run test:ai && npm run test:api && node --test tests/rendered-html.test.mjs",
     "test:ai": "tsx --test tests/ai-critical.test.ts",
+    "test:api": "tsx --test tests/mercado-pago-payment.test.ts",
+    "test:rules": "firebase emulators:exec --project psyzon-go-rules-test --only firestore \"tsx --test tests/firestore.rules.test.ts\"",
+    "typecheck": "tsc --noEmit -p tsconfig.vercel.json",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
-    "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/local-notifications": "^8.0.0",
     "@google/genai": "^2.17.0",
     "drizzle-orm": "0.45.2",
     "firebase": "^12.17.1",
+    "firebase-admin": "14.2.0",
     "lucide-react": "^1.31.0",
-    "next": "16.2.6",
+    "next": "16.3.1",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
     "@cloudflare/vite-plugin": "1.37.1",
     "@eslint/js": "9.39.4",
-    "@next/eslint-plugin-next": "16.2.6",
+    "@firebase/rules-unit-testing": "5.0.1",
+    "@next/eslint-plugin-next": "16.3.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
@@ -43,6 +48,7 @@
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
+    "firebase-tools": "15.27.0",
     "globals": "16.4.0",
     "react-server-dom-webpack": "19.2.6",
     "tailwindcss": "4.2.1",
@@ -52,6 +58,9 @@
     "vinext": "1.0.0-beta.2",
     "vite": "8.0.13",
     "wrangler": "4.92.0"
+  },
+  "overrides": {
+    "ws": "8.21.0"
   },
   "type": "module"
 }

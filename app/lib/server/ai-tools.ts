@@ -9,6 +9,7 @@ import {
   type FirebaseIdentity,
 } from "./firebase-rest";
 import { createConfirmation, logAIAudit } from "./ai-store";
+import { isAuthorizedMercadoPagoIdentity } from "./financial-security";
 import { listMercadoPagoPayments } from "./mercado-pago";
 import { listReconciliation } from "./reconciliation";
 
@@ -238,8 +239,7 @@ const getMercadoPagoSummary: ToolDefinition = {
   declaration: { type: "function", name: "get_mercado_pago_summary", description: "Consulta a conciliação do Mercado Pago, entrega valores já formatados em BRL e audita também as saídas empresariais internas.", parameters: { type: "object", properties: {} } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }) => {
-    const ownerUserId = process.env.MERCADO_PAGO_OWNER_FIREBASE_UID?.trim() ?? "";
-    if (!ownerUserId || ownerUserId !== identity.uid) return { configured: false, restricted: true, message: "A integração Mercado Pago ainda não foi vinculada a esta conta proprietária." };
+    if (!isAuthorizedMercadoPagoIdentity(identity)) return { configured: false, restricted: true, message: "A integração Mercado Pago ainda não foi vinculada a esta conta proprietária." };
     const [paymentsResult, reconciliationResult, transactions] = await Promise.all([
       listMercadoPagoPayments(identity),
       listReconciliation(identity),

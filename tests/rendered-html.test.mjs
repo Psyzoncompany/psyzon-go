@@ -131,6 +131,9 @@ test("service worker caches only safe same-origin app assets", async () => {
 
   assert.match(worker, /url\.origin !== self\.location\.origin/);
   assert.match(worker, /url\.pathname\.startsWith\("\/api\/"\)/);
+  assert.match(worker, /request\.headers\.has\("authorization"\)/);
+  assert.match(worker, /cacheControl\.includes\("no-store"\)/);
+  assert.doesNotMatch(worker, /PUBLIC_ASSETS = \[[\s\S]*?"\/"/);
   assert.match(worker, /self\.clients\.claim\(\)/);
   assert.match(worker, /Promise\.allSettled/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"/);
@@ -170,7 +173,7 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /Pedido e financeiro atualizados/);
 });
 
-test("service worker clones a network response before its body is consumed", async () => {
+test("service worker clones only a public static response before its body is consumed", async () => {
   const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
   const listeners = new Map();
   let releaseCache;
@@ -180,7 +183,7 @@ test("service worker clones a network response before its body is consumed", asy
   vm.runInNewContext(worker, {
     URL,
     Promise,
-    fetch: async () => new Response("fresh page"),
+    fetch: async () => new Response("fresh asset", { headers: { "cache-control": "public, max-age=31536000" } }),
     caches: {
       open: () => cacheReady,
       match: async () => undefined,
@@ -198,20 +201,20 @@ test("service worker clones a network response before its body is consumed", asy
   let responsePromise;
   let cachePromise;
   listeners.get("fetch")({
-    request: { method: "GET", url: "https://psyzon.test/", mode: "navigate" },
+    request: { method: "GET", url: "https://psyzon.test/_next/static/chunks/app.js", destination: "script", headers: new Headers() },
     respondWith: (promise) => { responsePromise = promise; },
     waitUntil: (promise) => { cachePromise = promise; },
   });
 
   const response = await responsePromise;
-  assert.equal(await response.text(), "fresh page");
+  assert.equal(await response.text(), "fresh asset");
   releaseCache({ put: async (_key, cachedResponse) => { cachedBody = await cachedResponse.text(); } });
   await cachePromise;
-  assert.equal(cachedBody, "fresh page");
+  assert.equal(cachedBody, "fresh asset");
 });
 
 test("ships the secured PSYZON AI page, floating assistant and server integrations", async () => {
-  const [page, workspace, schema, aiRoute, aiStore, webhook, paymentLookup, mercadoPago, exampleEnv] = await Promise.all([
+  const [page, workspace, schema, aiRoute, aiStore, webhook, paymentLookup, paymentHandler, mercadoPago, exampleEnv] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/PSYZONAIWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
@@ -219,6 +222,7 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
     readFile(new URL("../app/lib/server/ai-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/webhooks/mercadopago/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/integrations/mercadopago/payment/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/server/mercado-pago-payment-handler.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/server/mercado-pago.ts", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
@@ -244,8 +248,10 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(aiStore, /getUserDocument\(identity, "integrationSyncState", "mercado_pago"/);
   assert.match(webhook, /verifyMercadoPagoSignature/);
   assert.match(paymentLookup, /authenticateFirebaseRequest/);
-  assert.match(paymentLookup, /MERCADO_PAGO_OWNER_FIREBASE_UID/);
-  assert.match(paymentLookup, /alreadyImported/);
+  assert.match(paymentLookup, /isAuthorizedMercadoPagoIdentity/);
+  assert.match(paymentLookup, /enforceMercadoPagoRateLimit/);
+  assert.match(paymentHandler, /alreadyImported/);
+  assert.match(paymentHandler, /private, no-store/);
   assert.match(mercadoPago, /external_reference: value/);
   assert.match(mercadoPago, /fetchMercadoPagoPayment\(value\)/);
   assert.match(page, /Importar Pix\/MP/);
@@ -254,6 +260,8 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(exampleEnv, /^GROQ_MODEL=openai\/gpt-oss-120b$/m);
   assert.match(exampleEnv, /^GEMINI_API_KEY=/m);
   assert.match(exampleEnv, /^MERCADO_PAGO_ACCESS_TOKEN=/m);
+  assert.match(exampleEnv, /^AUTHORIZED_FIREBASE_UIDS=/m);
+  assert.match(exampleEnv, /^NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY=/m);
   assert.doesNotMatch(exampleEnv, /NEXT_PUBLIC_(GEMINI|MERCADO_PAGO)/);
 });
 
@@ -264,7 +272,7 @@ test("keeps the AI workspace stable with large global fonts", async () => {
   assert.match(css, /\.app-shell\.ai-page-active > \.sidebar/);
   assert.match(css, /--ai-answer-text: 14\.5px/);
   assert.match(css, /overflow-x: hidden/);
-  assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", view === "ai"\)/);
+  assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", aiWorkspaceActive\)/);
 });
 
 test("keeps notifications inside the viewport at every interface size", async () => {

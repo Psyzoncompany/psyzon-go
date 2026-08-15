@@ -1,166 +1,65 @@
-type FirestoreValue = {
-  nullValue?: null;
-  booleanValue?: boolean;
-  integerValue?: string;
-  doubleValue?: number;
-  timestampValue?: string;
-  stringValue?: string;
-  arrayValue?: { values?: FirestoreValue[] };
-  mapValue?: { fields?: Record<string, FirestoreValue> };
-};
+import { getAdminFirestore, verifyFirebaseIdToken, type FirebaseIdentity } from "./firebase-admin";
 
-type FirestoreDocument = {
-  name: string;
-  fields?: Record<string, FirestoreValue>;
-  createTime?: string;
-  updateTime?: string;
-};
-
-export type FirebaseIdentity = {
-  uid: string;
-  email: string;
-  displayName: string;
-  idToken: string;
-};
+export type { FirebaseIdentity } from "./firebase-admin";
 
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
 export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState";
 
-const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
-const firebaseApiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
-
-function firestoreError(status: number) {
-  if (status === 401) return new Error("FIREBASE_SESSION_EXPIRED");
-  if (status === 403) return new Error("FIRESTORE_PERMISSION_DENIED");
-  if (status === 404) return new Error("FIRESTORE_DATABASE_NOT_FOUND");
-  if (status === 429) return new Error("FIRESTORE_RATE_LIMITED");
-  return new Error(`FIRESTORE_HTTP_${status}`);
-}
-
-function withTimeout(ms = 12_000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return { signal: controller.signal, done: () => clearTimeout(timer) };
-}
-
-async function safeFetch(input: string, init: RequestInit, ms?: number) {
-  const timeout = withTimeout(ms);
+export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {
+  const authorization = request.headers.get("authorization") ?? "";
+  const match = authorization.match(/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
+  if (!match || match[1].length > 8_192) throw new Response("Sessão ausente ou inválida.", { status: 401 });
   try {
-    return await fetch(input, { ...init, signal: timeout.signal });
-  } finally {
-    timeout.done();
+    return await verifyFirebaseIdToken(match[1]);
+  } catch (error) {
+    if (error instanceof Error && error.name === "FirebaseAdminConfigurationError") {
+      throw new Response("Firebase Admin não configurado.", { status: 500 });
+    }
+    throw new Response("Sessão expirada ou inválida.", { status: 401 });
   }
 }
 
-export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {
-  const authorization = request.headers.get("authorization") ?? "";
-  const idToken = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  if (!idToken) throw new Response("Sessão ausente.", { status: 401 });
-  if (!firebaseApiKey || !projectId) throw new Response("Firebase não configurado no servidor.", { status: 503 });
-
-  const response = await safeFetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(firebaseApiKey)}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ idToken }),
-  });
-  if (!response.ok) throw new Response("Sua sessão expirou. Entre novamente.", { status: 401 });
-  const data = await response.json() as { users?: Array<{ localId?: string; email?: string; displayName?: string }> };
-  const user = data.users?.[0];
-  if (!user?.localId) throw new Response("Não foi possível validar a conta.", { status: 401 });
-  return { uid: user.localId, email: user.email ?? "", displayName: user.displayName ?? "", idToken };
+function collectionReference(uid: string, collection: UserCollection) {
+  return getAdminFirestore().collection("users").doc(uid).collection(collection);
 }
 
-function decodeValue(value?: FirestoreValue): unknown {
-  if (!value || value.nullValue === null) return null;
-  if (value.stringValue !== undefined) return value.stringValue;
-  if (value.booleanValue !== undefined) return value.booleanValue;
-  if (value.integerValue !== undefined) return Number(value.integerValue);
-  if (value.doubleValue !== undefined) return value.doubleValue;
-  if (value.timestampValue !== undefined) return value.timestampValue;
-  if (value.arrayValue) return (value.arrayValue.values ?? []).map(decodeValue);
-  if (value.mapValue) return Object.fromEntries(Object.entries(value.mapValue.fields ?? {}).map(([key, nested]) => [key, decodeValue(nested)]));
-  return null;
-}
-
-function encodeValue(value: unknown): FirestoreValue {
-  if (value === null || value === undefined) return { nullValue: null };
-  if (typeof value === "string") return { stringValue: value };
-  if (typeof value === "boolean") return { booleanValue: value };
-  if (typeof value === "number") return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
-  if (Array.isArray(value)) return { arrayValue: { values: value.map(encodeValue) } };
-  if (typeof value === "object") return { mapValue: { fields: Object.fromEntries(Object.entries(value).map(([key, nested]) => [key, encodeValue(nested)])) } };
-  return { stringValue: String(value) };
-}
-
-function decodeDocument(document: FirestoreDocument) {
-  const id = document.name.split("/").pop() ?? "";
+function decodeDocument(snapshot: FirebaseFirestore.DocumentSnapshot) {
   return {
-    ...Object.fromEntries(Object.entries(document.fields ?? {}).map(([key, value]) => [key, decodeValue(value)])),
-    id,
-    _createTime: document.createTime,
-    _updateTime: document.updateTime,
+    ...(snapshot.data() ?? {}),
+    id: snapshot.id,
+    _createTime: snapshot.createTime?.toDate().toISOString(),
+    _updateTime: snapshot.updateTime?.toDate().toISOString(),
   } as Record<string, unknown> & { id: string };
 }
 
-function collectionUrl(uid: string, collection: UserCollection) {
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(uid)}/${collection}`;
-}
-
 export async function listUserCollection(identity: FirebaseIdentity, collection: UserCollection, pageSize = 300) {
-  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}?pageSize=${Math.min(500, Math.max(1, pageSize))}`, {
-    headers: { authorization: `Bearer ${identity.idToken}` },
-  });
-  if (response.status === 404) return [];
-  if (!response.ok) throw firestoreError(response.status);
-  const data = await response.json() as { documents?: FirestoreDocument[] };
-  return (data.documents ?? []).map(decodeDocument);
+  const snapshot = await collectionReference(identity.uid, collection).limit(Math.min(500, Math.max(1, pageSize))).get();
+  return snapshot.docs.map(decodeDocument);
 }
 
 export async function getUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string) {
-  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
-    headers: { authorization: `Bearer ${identity.idToken}` },
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) throw firestoreError(response.status);
-  return decodeDocument(await response.json() as FirestoreDocument);
+  const snapshot = await collectionReference(identity.uid, collection).doc(id).get();
+  return snapshot.exists ? decodeDocument(snapshot) : null;
 }
 
 export async function patchUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string, values: Record<string, unknown>) {
-  const mask = Object.keys(values).map((field) => `updateMask.fieldPaths=${encodeURIComponent(field)}`).join("&");
-  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}?${mask}`, {
-    method: "PATCH",
-    headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
-  });
-  if (!response.ok) throw firestoreError(response.status);
-  return decodeDocument(await response.json() as FirestoreDocument);
+  const reference = collectionReference(identity.uid, collection).doc(id);
+  await reference.update(values);
+  return decodeDocument(await reference.get());
 }
 
 export async function setUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string, values: Record<string, unknown>) {
-  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
-  });
-  if (!response.ok) throw firestoreError(response.status);
-  return decodeDocument(await response.json() as FirestoreDocument);
+  const reference = collectionReference(identity.uid, collection).doc(id);
+  await reference.set(values);
+  return decodeDocument(await reference.get());
 }
 
 export async function createUserDocument(identity: FirebaseIdentity, collection: UserCollection, values: Record<string, unknown>) {
-  const response = await safeFetch(collectionUrl(identity.uid, collection), {
-    method: "POST",
-    headers: { authorization: `Bearer ${identity.idToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ fields: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, encodeValue(value)])) }),
-  });
-  if (!response.ok) throw firestoreError(response.status);
-  return decodeDocument(await response.json() as FirestoreDocument);
+  const reference = await collectionReference(identity.uid, collection).add(values);
+  return decodeDocument(await reference.get());
 }
 
 export async function deleteUserDocument(identity: FirebaseIdentity, collection: UserCollection, id: string) {
-  const response = await safeFetch(`${collectionUrl(identity.uid, collection)}/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: { authorization: `Bearer ${identity.idToken}` },
-  });
-  if (!response.ok && response.status !== 404) throw firestoreError(response.status);
+  await collectionReference(identity.uid, collection).doc(id).delete();
   return { deleted: true, id };
 }

@@ -15,7 +15,8 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getApps, initializeApp } from "firebase/app";
+import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from "firebase/app-check";
 import {
   addDoc,
   collection,
@@ -170,6 +171,23 @@ const firebaseConfig = {
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+let appCheckInitialized = false;
+
+function ensureAppCheck(app: FirebaseApp) {
+  const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
+  if (typeof window === "undefined" || !siteKey || appCheckInitialized) return;
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(siteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+    appCheckInitialized = true;
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+    if (code === "appCheck/already-initialized") appCheckInitialized = true;
+    else console.error("Firebase App Check initialization failed", { code: code || "UNKNOWN" });
+  }
+}
 
 function userCollection(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number]) {
   return collection(getFirestore(getApps()[0]), "users", uid, name);
@@ -289,6 +307,7 @@ export default function HomePage() {
     }
 
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
+    ensureAppCheck(app);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: () => unknown }> }) =>
@@ -370,16 +389,20 @@ export default function HomePage() {
     localStorage.setItem("psy-ui-size", uiSize);
   }, [uiSize]);
   useEffect(() => {
-    document.body.classList.toggle("ai-workspace-active", view === "ai");
+    const aiWorkspaceActive = view === "ai" || aiPanelOpen;
+    document.body.classList.toggle("ai-workspace-active", aiWorkspaceActive);
     return () => document.body.classList.remove("ai-workspace-active");
-  }, [view]);
+  }, [view, aiPanelOpen]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (target?.matches("input, textarea, select") || target?.isContentEditable) {
-        if (event.key === "Escape") setModal(null);
+        if (event.key === "Escape") {
+          setModal(null);
+          setAiPanelOpen(false);
+        }
         return;
       }
       if (event.key === "n") setModal("pedido");
@@ -389,7 +412,10 @@ export default function HomePage() {
         event.preventDefault();
         searchRef.current?.focus();
       }
-      if (event.key === "Escape") setModal(null);
+      if (event.key === "Escape") {
+        setModal(null);
+        setAiPanelOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -464,6 +490,7 @@ export default function HomePage() {
     setAuthError("");
     try {
       const app = getApps()[0] ?? initializeApp(firebaseConfig);
+      ensureAppCheck(app);
       const auth = getAuth(app);
       await setPersistence(auth, browserLocalPersistence);
       const provider = new GoogleAuthProvider();
@@ -970,6 +997,14 @@ function NavButton({ item, active, onClick }: { item: (typeof navItems)[number];
   return <button className={active ? "active" : ""} onClick={onClick} title={item.label} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>;
 }
 
+function whatsappUrl(phone: string | undefined, message?: string) {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!/^\d{8,15}$/.test(digits)) return null;
+  const url = new URL(`https://wa.me/${digits}`);
+  if (message) url.searchParams.set("text", message);
+  return url.href;
+}
+
 function localDateValue(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1044,11 +1079,12 @@ function Production({ orders, board, setBoard, displayMoney, updateStatus, editO
 }
 
 function OrderCard({ order, displayMoney, updateStatus, editOrder }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void; editOrder: (order: Order) => void }) {
-  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div><h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" ? <a href={`https://wa.me/${order.phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`)}`} target="_blank"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
+  const contactUrl = whatsappUrl(order.phone, `Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`);
+  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div><h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
 }
 
 function Customers({ customers, orders, displayMoney, setModal }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">RELACIONAMENTO</span><h1>Clientes</h1><p>Cadastro simples e histórico em um só lugar.</p></div><button className="primary" onClick={() => setModal("cliente")}><Plus size={18} /> Novo cliente</button></div><div className="customer-grid">{customers.map((customer: Customer) => { const clientOrders = orders.filter((order: Order) => order.customer === customer.name); const total = clientOrders.reduce((sum: number, order: Order) => sum + order.total, 0); const pending = clientOrders.reduce((sum: number, order: Order) => sum + order.total - order.paid, 0); return <article className="customer-card" key={customer.id}><div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Cliente PSYZON"}</p></div><button><MoreHorizontal size={18} /></button></div><div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(total)}</b></span><span><small>Saldo pendente</small><b className={pending ? "negative" : "positive"}>{displayMoney(pending)}</b></span></div><footer><span>{clientOrders.length} {clientOrders.length === 1 ? "pedido" : "pedidos"}</span><a href={`https://wa.me/${customer.phone}`} target="_blank"><MessageCircle size={16} /> WhatsApp</a></footer></article>; })}</div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">RELACIONAMENTO</span><h1>Clientes</h1><p>Cadastro simples e histórico em um só lugar.</p></div><button className="primary" onClick={() => setModal("cliente")}><Plus size={18} /> Novo cliente</button></div><div className="customer-grid">{customers.map((customer: Customer) => { const clientOrders = orders.filter((order: Order) => order.customer === customer.name); const total = clientOrders.reduce((sum: number, order: Order) => sum + order.total, 0); const pending = clientOrders.reduce((sum: number, order: Order) => sum + order.total - order.paid, 0); const contactUrl = whatsappUrl(customer.phone); return <article className="customer-card" key={customer.id}><div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Cliente PSYZON"}</p></div><button><MoreHorizontal size={18} /></button></div><div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(total)}</b></span><span><small>Saldo pendente</small><b className={pending ? "negative" : "positive"}>{displayMoney(pending)}</b></span></div><footer><span>{clientOrders.length} {clientOrders.length === 1 ? "pedido" : "pedidos"}</span>{contactUrl && <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> WhatsApp</a>}</footer></article>; })}</div></>;
 }
 
 function Finance({ transactions, bills, orders, businessBalance, businessIncome, businessExpense, pending, displayMoney, openCreate, openMercadoPagoImport, payBill, deleteBill, editBill, editTransaction, deleteTransaction }: any) {

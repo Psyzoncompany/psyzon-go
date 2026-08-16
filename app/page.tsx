@@ -7,12 +7,14 @@ import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider,
   getAuth,
+  initializeAuth,
   onAuthStateChanged,
-  setPersistence,
   signInWithPopup,
   signOut,
+  type Auth,
   type User,
 } from "firebase/auth";
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
@@ -172,6 +174,7 @@ const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
+let authInstance: Auth | null = null;
 
 function ensureAppCheck(app: FirebaseApp) {
   const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
@@ -187,6 +190,23 @@ function ensureAppCheck(app: FirebaseApp) {
     if (code === "appCheck/already-initialized") appCheckInitialized = true;
     else console.error("Firebase App Check initialization failed", { code: code || "UNKNOWN" });
   }
+}
+
+function clientAuth(app: FirebaseApp) {
+  if (authInstance) return authInstance;
+
+  try {
+    authInstance = initializeAuth(app, {
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+    if (code !== "auth/already-initialized") throw error;
+    authInstance = getAuth(app);
+  }
+
+  return authInstance;
 }
 
 function userCollection(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number]) {
@@ -308,13 +328,11 @@ export default function HomePage() {
 
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     ensureAppCheck(app);
-    const auth = getAuth(app);
+    const auth = clientAuth(app);
     const db = getFirestore(app);
     const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: () => unknown }> }) =>
       snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<T, "id">) } as T));
     let unsubscribers: Array<() => void> = [];
-    setPersistence(auth, browserLocalPersistence).catch(() => undefined);
-
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribers = [];
@@ -491,8 +509,7 @@ export default function HomePage() {
     try {
       const app = getApps()[0] ?? initializeApp(firebaseConfig);
       ensureAppCheck(app);
-      const auth = getAuth(app);
-      await setPersistence(auth, browserLocalPersistence);
+      const auth = clientAuth(app);
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: "select_account" });
       await signInWithPopup(auth, provider);
@@ -514,7 +531,7 @@ export default function HomePage() {
 
   const signOutGoogle = async () => {
     if (!isFirebaseConfigured) return;
-    await signOut(getAuth(getApps()[0]));
+    await signOut(clientAuth(getApps()[0]));
     setView("inicio");
   };
 

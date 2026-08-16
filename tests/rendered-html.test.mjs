@@ -256,6 +256,8 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(mercadoPago, /fetchMercadoPagoPayment\(value\)/);
   assert.match(page, /Importar Pix\/MP/);
   assert.match(page, /providerTransactionId: payment\.paymentId/);
+  assert.match(page, /initializeAuth\(app, \{[\s\S]*?persistence: browserLocalPersistence,[\s\S]*?popupRedirectResolver: browserPopupRedirectResolver/);
+  assert.doesNotMatch(page, /setPersistence\(/);
   assert.match(exampleEnv, /^GROQ_API_KEY=/m);
   assert.match(exampleEnv, /^GROQ_MODEL=openai\/gpt-oss-120b$/m);
   assert.match(exampleEnv, /^GEMINI_API_KEY=/m);

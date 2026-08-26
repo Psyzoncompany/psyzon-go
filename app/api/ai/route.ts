@@ -25,8 +25,17 @@ async function errorResponse(error: unknown) {
   }
   const code = error instanceof Error ? error.message : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
-    AI_PROVIDER_NOT_CONFIGURED: ["Configure GROQ_API_KEY para ativar a PSYZON AI.", 503],
+    AI_PROVIDER_NOT_CONFIGURED: ["Configure DEEPSEEK_API_KEY para ativar a PSYZON AI (Groq e Gemini podem ser usados como fallback).", 503],
     AI_PROVIDERS_UNAVAILABLE: ["Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em um minuto.", 503],
+    DEEPSEEK_KEY_INVALID: ["A chave DEEPSEEK_API_KEY foi recusada. Confira a chave no DeepSeek Platform.", 503],
+    DEEPSEEK_QUOTA_EXCEEDED: ["O saldo ou o limite da DeepSeek foi atingido. Confira a conta no DeepSeek Platform.", 429],
+    DEEPSEEK_MODEL_NOT_FOUND: ["O modelo definido em DEEPSEEK_MODEL não está disponível para essa conta.", 503],
+    DEEPSEEK_REQUEST_INVALID: ["A DeepSeek recusou a configuração da solicitação. Confira o modelo configurado.", 502],
+    DEEPSEEK_UNAVAILABLE: ["A DeepSeek está temporariamente indisponível. Um provedor de fallback será usado quando estiver configurado.", 503],
+    DEEPSEEK_REQUEST_FAILED: ["Não foi possível conectar à DeepSeek. Confira a chave e tente novamente.", 502],
+    DEEPSEEK_INVALID_TOOL_CALL: ["A DeepSeek retornou uma consulta inválida. Reformule sua pergunta e tente novamente.", 422],
+    DEEPSEEK_EMPTY_RESPONSE: ["A DeepSeek não retornou uma resposta utilizável. Tente novamente.", 502],
+    DEEPSEEK_STATE_LOST: ["A consulta perdeu o contexto durante o processamento. Envie a pergunta novamente.", 502],
     GROQ_KEY_INVALID: ["A chave GROQ_API_KEY foi recusada. Gere uma nova chave no Groq Console.", 503],
     GROQ_QUOTA_EXCEEDED: ["O limite gratuito da Groq foi atingido. Aguarde a renovação indicada no Groq Console.", 429],
     GROQ_MODEL_NOT_FOUND: ["O modelo definido em GROQ_MODEL não está disponível para essa conta.", 503],

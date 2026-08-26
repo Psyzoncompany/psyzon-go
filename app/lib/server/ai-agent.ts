@@ -1,13 +1,16 @@
 import type { AIMessage, AIResponsePayload } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
+import type { AIProvider } from "./ai-provider";
+import { DeepSeekProvider } from "./deepseek-provider";
 import { GeminiProvider } from "./gemini-provider";
 import { GroqProvider } from "./groq-provider";
 import { executeAITool, geminiToolDeclarations } from "./ai-tools";
 import { getAISettings, saveAIUsage } from "./ai-store";
 
-type ProviderCandidate = { id: string; label: string; provider: GroqProvider | GeminiProvider };
+type ProviderCandidate = { id: string; label: string; provider: AIProvider };
 const providerCooldowns = new Map<string, number>();
 const RETRYABLE_PROVIDER_ERRORS = new Set([
+  "DEEPSEEK_KEY_INVALID", "DEEPSEEK_QUOTA_EXCEEDED", "DEEPSEEK_MODEL_NOT_FOUND", "DEEPSEEK_REQUEST_INVALID", "DEEPSEEK_UNAVAILABLE", "DEEPSEEK_REQUEST_FAILED", "DEEPSEEK_INVALID_TOOL_CALL", "DEEPSEEK_EMPTY_RESPONSE",
   "GROQ_KEY_INVALID", "GROQ_QUOTA_EXCEEDED", "GROQ_MODEL_NOT_FOUND", "GROQ_UNAVAILABLE", "GROQ_REQUEST_FAILED",
   "GEMINI_KEY_INVALID", "GEMINI_QUOTA_EXCEEDED", "GEMINI_MODEL_NOT_FOUND", "GEMINI_UNAVAILABLE", "GEMINI_REQUEST_FAILED",
 ]);
@@ -17,9 +20,11 @@ function uniqueKeys(values: Array<string | undefined>) {
 }
 
 export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env): ProviderCandidate[] {
+  const deepSeekKeys = uniqueKeys([env.DEEPSEEK_API_KEY, env.DEEPSEEK_API_KEY_2, env.DEEPSEEK_API_KEY_3, env.DEEPSEEK_API_KEYS]);
   const groqKeys = uniqueKeys([env.GROQ_API_KEY, env.GROQ_API_KEY_2, env.GROQ_API_KEY_3, env.GROQ_API_KEYS]);
   const geminiKeys = uniqueKeys([env.GEMINI_API_KEY, env.GEMINI_API_KEY_2, env.GEMINI_API_KEY_3, env.GEMINI_API_KEY_4, env.GEMINI_API_KEY_5, env.GEMINI_API_KEYS]);
   return [
+    ...deepSeekKeys.map((key, index) => ({ id: `deepseek-${index + 1}`, label: `DeepSeek ${index + 1}`, provider: new DeepSeekProvider(key, env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-pro") })),
     ...groqKeys.map((key, index) => ({ id: `groq-${index + 1}`, label: `Groq ${index + 1}`, provider: new GroqProvider(key, env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b") })),
     ...geminiKeys.map((key, index) => ({ id: `gemini-${index + 1}`, label: `Gemini ${index + 1}`, provider: new GeminiProvider(key, env.GEMINI_MODEL?.trim() || "gemini-3.6-flash") })),
   ];
@@ -27,11 +32,12 @@ export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env): Pro
 
 export function getAIProviderSummary(env: NodeJS.ProcessEnv = process.env) {
   const providers = configuredAIProviders(env);
+  const deepSeekCount = providers.filter((item) => item.id.startsWith("deepseek-")).length;
   const groqCount = providers.filter((item) => item.id.startsWith("groq-")).length;
   const geminiCount = providers.filter((item) => item.id.startsWith("gemini-")).length;
-  const names = [groqCount ? `${groqCount} Groq` : "", geminiCount ? `${geminiCount} Gemini` : ""].filter(Boolean).join(" + ");
+  const names = [deepSeekCount ? `${deepSeekCount} DeepSeek` : "", groqCount ? `${groqCount} Groq` : "", geminiCount ? `${geminiCount} Gemini` : ""].filter(Boolean).join(" + ");
   const models = providers.map((item) => item.provider.model).filter((model, index, all) => all.indexOf(model) === index);
-  return { configured: providers.length > 0, provider: names || "Groq / Gemini", model: models.join(" / ") || "Nenhum" };
+  return { configured: providers.length > 0, provider: names || "DeepSeek / Groq / Gemini", model: models.join(" / ") || "Nenhum" };
 }
 
 const SYSTEM_PROMPT = `Você é a PSYZON AI, copiloto administrativo e financeiro da PSYZON Company, uma empresa de confecção de camisas e uniformes.

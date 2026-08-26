@@ -37,6 +37,9 @@ para consultar pedidos, clientes e financeiro. O modo inicial é somente leitura
 
 Configure os valores sensíveis apenas no ambiente do servidor:
 
+- `DEEPSEEK_API_KEY`: chave do provedor principal DeepSeek.
+- `DEEPSEEK_MODEL`: modelo principal; o padrão é `deepseek-v4-pro`.
+- `GROQ_API_KEY`: fallback opcional quando a DeepSeek estiver indisponível.
 - `GEMINI_API_KEY`: chave da Gemini API.
 - `GEMINI_MODEL`: modelo usado pelo provedor; o padrão está em `.env.example`.
 - `MERCADO_PAGO_ACCESS_TOKEN`: token privado para consultar pagamentos.

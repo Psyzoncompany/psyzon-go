@@ -258,13 +258,15 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(page, /providerTransactionId: payment\.paymentId/);
   assert.match(page, /initializeAuth\(app, \{[\s\S]*?persistence: browserLocalPersistence,[\s\S]*?popupRedirectResolver: browserPopupRedirectResolver/);
   assert.doesNotMatch(page, /setPersistence\(/);
+  assert.match(exampleEnv, /^DEEPSEEK_API_KEY=/m);
+  assert.match(exampleEnv, /^DEEPSEEK_MODEL=deepseek-v4-pro$/m);
   assert.match(exampleEnv, /^GROQ_API_KEY=/m);
   assert.match(exampleEnv, /^GROQ_MODEL=openai\/gpt-oss-120b$/m);
   assert.match(exampleEnv, /^GEMINI_API_KEY=/m);
   assert.match(exampleEnv, /^MERCADO_PAGO_ACCESS_TOKEN=/m);
   assert.match(exampleEnv, /^AUTHORIZED_FIREBASE_UIDS=/m);
   assert.match(exampleEnv, /^NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY=/m);
-  assert.doesNotMatch(exampleEnv, /NEXT_PUBLIC_(GEMINI|MERCADO_PAGO)/);
+  assert.doesNotMatch(exampleEnv, /NEXT_PUBLIC_(DEEPSEEK|GEMINI|MERCADO_PAGO)/);
 });
 
 test("keeps the AI workspace stable with large global fonts", async () => {

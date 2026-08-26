@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
+import { DeepSeekProvider } from "../app/lib/server/deepseek-provider.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
 import { configuredAIProviders, getAIProviderSummary } from "../app/lib/server/ai-agent.ts";
 import { readFile } from "node:fs/promises";
@@ -152,16 +153,48 @@ test("Groq provider preserves the tool loop and formats the final answer", { con
   }
 });
 
-test("AI provider pool accepts multiple Gemini projects and removes duplicate keys", () => {
+test("DeepSeek provider preserves the tool loop and formats the final answer", { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const responses = [
+    { id: "deepseek-1", choices: [{ message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "get_financial_summary", arguments: '{"month":"2026-08"}' } }] } }], usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 } },
+    { id: "deepseek-2", choices: [{ message: { role: "assistant", content: '{"summary":"Resultado de R$ 600.","severity":"info","metrics":[],"alerts":[],"recommendations":[],"actions":[]}' } }], usage: { prompt_tokens: 22, completion_tokens: 9, total_tokens: 31 } },
+  ];
+  globalThis.fetch = async (input, init) => {
+    requests.push({ url: String(input), body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+    return Response.json(responses.shift());
+  };
+
+  try {
+    const provider = new DeepSeekProvider("test-key");
+    const tools = [{ type: "function", name: "get_financial_summary", description: "Resumo", parameters: { type: "object", properties: {} } }];
+    const first = await provider.create("Como está meu financeiro?", "Use dados reais.", tools);
+    assert.equal(first.functionCalls[0]?.name, "get_financial_summary");
+    const final = await provider.continue(first.id, [{ id: "call-1", name: "get_financial_summary", result: { income: 1000, expenses: 400 } }], "Use dados reais.", tools);
+    assert.equal(JSON.parse(final.outputText).summary, "Resultado de R$ 600.");
+    assert.equal(final.usage.totalTokens, 31);
+    assert.equal(requests[0].url, "https://api.deepseek.com/chat/completions");
+    assert.equal(requests[0].body.model, "deepseek-v4-pro");
+    assert.equal(((requests[0].body.tools as Array<{ function: { name: string } }>)[0]).function.name, "get_financial_summary");
+    assert.ok((requests[1].body.messages as Array<{ role: string }>).some((message) => message.role === "tool"));
+    assert.equal((requests[1].body.response_format as { type: string }).type, "json_object");
+    assert.equal(requests[1].body.tools, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("AI provider pool prioritizes DeepSeek, accepts multiple Gemini projects and removes duplicate keys", () => {
   const env = {
+    DEEPSEEK_API_KEY: "deepseek-one",
     GROQ_API_KEY: "groq-one",
     GEMINI_API_KEY: "gemini-one",
     GEMINI_API_KEY_2: "gemini-two",
     GEMINI_API_KEYS: "gemini-two, gemini-three",
   } as NodeJS.ProcessEnv;
   const providers = configuredAIProviders(env);
-  assert.deepEqual(providers.map((item) => item.id), ["groq-1", "gemini-1", "gemini-2", "gemini-3"]);
-  assert.deepEqual(getAIProviderSummary(env), { configured: true, provider: "1 Groq + 3 Gemini", model: "openai/gpt-oss-120b / gemini-3.6-flash" });
+  assert.deepEqual(providers.map((item) => item.id), ["deepseek-1", "groq-1", "gemini-1", "gemini-2", "gemini-3"]);
+  assert.deepEqual(getAIProviderSummary(env), { configured: true, provider: "1 DeepSeek + 1 Groq + 3 Gemini", model: "deepseek-v4-pro / openai/gpt-oss-120b / gemini-3.6-flash" });
 });
 
 test("Mercado Pago AI tool exposes transaction values and observations for divergences", async () => {

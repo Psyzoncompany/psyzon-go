@@ -62,6 +62,8 @@ async function errorResponse(error: unknown) {
   const firestoreHttpStatus = code.startsWith("FIRESTORE_HTTP_") ? Number(code.slice("FIRESTORE_HTTP_".length)) : 0;
   const fallback: [string, number] = firestoreHttpStatus
     ? [`O Firestore respondeu com erro ${firestoreHttpStatus}. Confira a configuração do projeto Firebase.`, 502]
+    : /^(DEEPSEEK|GROQ|GEMINI)_/.test(code)
+      ? ["Todos os modelos de IA configurados falharam nesta solicitação. Tente novamente em alguns instantes.", 503]
     : ["A PSYZON AI não conseguiu concluir agora. Confira os logs da função /api/ai na Vercel.", 500];
   const [message, status] = messages[code] ?? fallback;
   console.error("PSYZON AI request failed", { code });
@@ -140,6 +142,7 @@ export async function PATCH(request: Request) {
     const allowed: Partial<AISettings> = {};
     if (typeof body.enabled === "boolean") allowed.enabled = body.enabled;
     if (["read_only", "administrative", "financial_confirm"].includes(String(body.permissionMode))) allowed.permissionMode = body.permissionMode;
+    if (["auto", "deepseek", "groq", "gemini"].includes(String(body.preferredProvider))) allowed.preferredProvider = body.preferredProvider;
     if (typeof body.saveHistory === "boolean") allowed.saveHistory = body.saveHistory;
     if (typeof body.showDashboardSummary === "boolean") allowed.showDashboardSummary = body.showDashboardSummary;
     if (typeof body.financialAnalysis === "boolean") allowed.financialAnalysis = body.financialAnalysis;

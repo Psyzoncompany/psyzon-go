@@ -29,7 +29,7 @@ Authentication, ative o Cloud Firestore e publique as regras presentes em
 O aplicativo não usa Realtime Database nem Cloud Storage nesta etapa. As regras
 do Firestore garantem que cada conta Google acesse somente os próprios dados.
 
-## PSYZON AI e Gemini
+## PSYZON AI e provedores
 
 A PSYZON AI possui página dedicada, painel flutuante, histórico por usuário,
 anexos de texto, ditado por voz, respostas estruturadas e ferramentas controladas
@@ -45,6 +45,8 @@ Configure os valores sensíveis apenas no ambiente do servidor:
 - `MERCADO_PAGO_ACCESS_TOKEN`: token privado para consultar pagamentos.
 - `MERCADO_PAGO_WEBHOOK_SECRET`: assinatura secreta configurada no webhook.
 - `MERCADO_PAGO_OWNER_FIREBASE_UID`: UID Firebase do proprietário autorizado.
+
+Na configuração da PSYZON AI, **Automático** usa a ordem DeepSeek → Groq → Gemini. Também é possível priorizar um modelo específico; se ele falhar, os demais provedores configurados são testados automaticamente.
 
 Não use o prefixo `NEXT_PUBLIC_` nessas variáveis. O endpoint de notificações do
 Mercado Pago é `/api/webhooks/mercadopago`. A integração valida a assinatura,

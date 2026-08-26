@@ -33,6 +33,7 @@ function normalizeInteraction(interaction: Awaited<ReturnType<GoogleGenAI["inter
 }
 
 function normalizeGeminiError(error: unknown) {
+  if (error instanceof Error && error.message.startsWith("GEMINI_")) return error;
   const details = error && typeof error === "object" ? error as Record<string, unknown> : {};
   const status = Number(details.status ?? details.statusCode ?? details.code ?? 0);
   const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -68,7 +69,9 @@ export class GeminiProvider implements AIProvider {
     const params = { ...this.common(systemInstruction, tools), input } as unknown as Parameters<typeof this.client.interactions.create>[0];
     try {
       const interaction = await this.client.interactions.create(params);
-      return normalizeInteraction(interaction);
+      const normalized = normalizeInteraction(interaction);
+      if (!normalized.outputText.trim() && !normalized.functionCalls.length) throw new Error("GEMINI_EMPTY_RESPONSE");
+      return normalized;
     } catch (error) {
       throw normalizeGeminiError(error);
     }
@@ -79,7 +82,9 @@ export class GeminiProvider implements AIProvider {
     const params = { ...this.common(systemInstruction, tools), previous_interaction_id: previousInteractionId, input } as unknown as Parameters<typeof this.client.interactions.create>[0];
     try {
       const interaction = await this.client.interactions.create(params);
-      return normalizeInteraction(interaction);
+      const normalized = normalizeInteraction(interaction);
+      if (!normalized.outputText.trim() && !normalized.functionCalls.length) throw new Error("GEMINI_EMPTY_RESPONSE");
+      return normalized;
     } catch (error) {
       throw normalizeGeminiError(error);
     }

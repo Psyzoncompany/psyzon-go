@@ -1,8 +1,10 @@
 export type AIPermissionMode = "read_only" | "administrative" | "financial_confirm";
+export type AIProviderPreference = "auto" | "deepseek" | "groq" | "gemini";
 
 export type AISettings = {
   enabled: boolean;
   permissionMode: AIPermissionMode;
+  preferredProvider: AIProviderPreference;
   saveHistory: boolean;
   showDashboardSummary: boolean;
   financialAnalysis: boolean;
@@ -71,7 +73,12 @@ export type AIConversation = {
 };
 
 export type AIIntegrationStatus = {
-  ai: { configured: boolean; provider: string; model: string };
+  ai: {
+    configured: boolean;
+    provider: string;
+    model: string;
+    options: Array<{ id: Exclude<AIProviderPreference, "auto">; label: string; model: string; configured: boolean }>;
+  };
   mercadoPago: {
     configured: boolean;
     enabled: boolean;

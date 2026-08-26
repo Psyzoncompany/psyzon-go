@@ -239,12 +239,17 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(workspace, /Salvar hist/);
   assert.match(workspace, /psyzon-ai-active-conversation/);
   assert.match(workspace, /financial_confirm/);
+  assert.match(workspace, /Modelo preferido/);
+  assert.match(workspace, /DeepSeek → Groq → Gemini/);
+  assert.match(workspace, /preferredProvider/);
   assert.match(schema, /ai_conversations/);
   assert.match(schema, /ai_audit_logs/);
   assert.match(schema, /financial_reconciliation/);
   assert.match(aiRoute, /authenticateFirebaseRequest/);
   assert.match(aiStore, /listUserCollection\(identity, "aiConversations"/);
   assert.match(aiStore, /setUserDocument\(identity, "aiSettings"/);
+  assert.match(aiStore, /preferredProvider: "auto"/);
+  assert.match(aiRoute, /allowed\.preferredProvider = body\.preferredProvider/);
   assert.match(aiStore, /getUserDocument\(identity, "integrationSyncState", "mercado_pago"/);
   assert.match(webhook, /verifyMercadoPagoSignature/);
   assert.match(paymentLookup, /authenticateFirebaseRequest/);

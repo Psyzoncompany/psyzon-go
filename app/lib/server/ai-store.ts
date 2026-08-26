@@ -5,6 +5,7 @@ import { deleteUserDocument, getUserDocument, listUserCollection, patchUserDocum
 export const DEFAULT_AI_SETTINGS: AISettings = {
   enabled: true,
   permissionMode: "read_only",
+  preferredProvider: "auto",
   saveHistory: true,
   showDashboardSummary: true,
   financialAnalysis: true,
@@ -22,6 +23,7 @@ export async function getAISettings(identity: FirebaseIdentity): Promise<AISetti
   return {
     enabled: typeof row.enabled === "boolean" ? row.enabled : DEFAULT_AI_SETTINGS.enabled,
     permissionMode: ["read_only", "administrative", "financial_confirm"].includes(String(row.permissionMode)) ? row.permissionMode as AISettings["permissionMode"] : DEFAULT_AI_SETTINGS.permissionMode,
+    preferredProvider: ["auto", "deepseek", "groq", "gemini"].includes(String(row.preferredProvider)) ? row.preferredProvider as AISettings["preferredProvider"] : DEFAULT_AI_SETTINGS.preferredProvider,
     saveHistory: typeof row.saveHistory === "boolean" ? row.saveHistory : DEFAULT_AI_SETTINGS.saveHistory,
     showDashboardSummary: typeof row.showDashboardSummary === "boolean" ? row.showDashboardSummary : DEFAULT_AI_SETTINGS.showDashboardSummary,
     financialAnalysis: typeof row.financialAnalysis === "boolean" ? row.financialAnalysis : DEFAULT_AI_SETTINGS.financialAnalysis,

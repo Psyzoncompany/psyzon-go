@@ -112,7 +112,10 @@ export class GroqProvider implements AIProvider {
     const message = completion.choices?.[0]?.message;
     if (!message) throw new Error("GROQ_EMPTY_RESPONSE");
     const calls = functionCalls(message);
-    if (!calls.length) return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content ?? "", functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
+    if (!calls.length) {
+      if (!message.content?.trim()) throw new Error("GROQ_EMPTY_RESPONSE");
+      return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content, functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
+    }
     const id = completion.id ?? crypto.randomUUID();
     this.histories.set(id, [...messages, message]);
     return { id, status: "requires_action", outputText: message.content ?? "", functionCalls: calls, usage: usage(completion) } satisfies ProviderInteraction;
@@ -122,7 +125,7 @@ export class GroqProvider implements AIProvider {
     return this.run([{ role: "system", content: systemInstruction }, { role: "user", content: input }], systemInstruction, tools);
   }
 
-  async continue(previousInteractionId: string, results: ProviderFunctionResult[], systemInstruction: string, tools: Array<Record<string, unknown>>) {
+  async continue(previousInteractionId: string, results: ProviderFunctionResult[]) {
     const history = this.histories.get(previousInteractionId);
     if (!history) throw new Error("GROQ_STATE_LOST");
     this.histories.delete(previousInteractionId);
@@ -133,7 +136,7 @@ export class GroqProvider implements AIProvider {
     ];
     const completion = await this.request(messages, undefined, true);
     const message = completion.choices?.[0]?.message;
-    if (!message) throw new Error("GROQ_EMPTY_RESPONSE");
-    return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content ?? "", functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
+    if (!message?.content?.trim()) throw new Error("GROQ_EMPTY_RESPONSE");
+    return { id: completion.id ?? crypto.randomUUID(), status: "completed", outputText: message.content, functionCalls: [], usage: usage(completion) } satisfies ProviderInteraction;
   }
 }

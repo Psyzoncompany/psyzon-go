@@ -3,7 +3,7 @@ import test from "node:test";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
 import { DeepSeekProvider } from "../app/lib/server/deepseek-provider.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
-import { configuredAIProviders, getAIProviderSummary } from "../app/lib/server/ai-agent.ts";
+import { configuredAIProviders, getAIProviderSummary, orderedAIProviders, tryAIProviderCandidates, type ProviderCandidate } from "../app/lib/server/ai-agent.ts";
 import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
 import { mercadoPagoImportPreview } from "../app/lib/server/mercado-pago.ts";
@@ -194,7 +194,50 @@ test("AI provider pool prioritizes DeepSeek, accepts multiple Gemini projects an
   } as NodeJS.ProcessEnv;
   const providers = configuredAIProviders(env);
   assert.deepEqual(providers.map((item) => item.id), ["deepseek-1", "groq-1", "gemini-1", "gemini-2", "gemini-3"]);
-  assert.deepEqual(getAIProviderSummary(env), { configured: true, provider: "1 DeepSeek + 1 Groq + 3 Gemini", model: "deepseek-v4-pro / openai/gpt-oss-120b / gemini-3.6-flash" });
+  assert.deepEqual(orderedAIProviders(env, "gemini").map((item) => item.id), ["gemini-1", "gemini-2", "gemini-3", "deepseek-1", "groq-1"]);
+  assert.deepEqual(getAIProviderSummary(env), {
+    configured: true,
+    provider: "1 DeepSeek + 1 Groq + 3 Gemini",
+    model: "deepseek-v4-pro / openai/gpt-oss-120b / gemini-3.6-flash",
+    options: [
+      { id: "deepseek", label: "DeepSeek", model: "deepseek-v4-pro", configured: true },
+      { id: "groq", label: "Groq", model: "openai/gpt-oss-120b", configured: true },
+      { id: "gemini", label: "Gemini", model: "gemini-3.6-flash", configured: true },
+    ],
+  });
+});
+
+test("AI fallback tests DeepSeek, Groq and Gemini until one succeeds", async () => {
+  const attempts: string[] = [];
+  const interaction = { id: "ok", status: "completed", outputText: "{}", functionCalls: [], usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+  const candidate = (family: ProviderCandidate["family"], failure?: string): ProviderCandidate => ({
+    id: `${family}-fallback-test`,
+    family,
+    label: family,
+    provider: {
+      model: `${family}-model`,
+      async create() {
+        attempts.push(family);
+        if (failure) throw new Error(failure);
+        return interaction;
+      },
+      async continue() { return interaction; },
+    },
+  });
+  const originalWarn = console.warn;
+  console.warn = () => undefined;
+  try {
+    const selected = await tryAIProviderCandidates([
+      candidate("deepseek", "DEEPSEEK_REQUEST_INVALID"),
+      candidate("groq", "GROQ_EMPTY_RESPONSE"),
+      candidate("gemini"),
+    ], "pergunta", []);
+    assert.deepEqual(attempts, ["deepseek", "groq", "gemini"]);
+    assert.equal(selected.family, "gemini");
+    assert.deepEqual([...selected.attemptedIds], ["deepseek-fallback-test", "groq-fallback-test", "gemini-fallback-test"]);
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test("Mercado Pago AI tool exposes transaction values and observations for divergences", async () => {

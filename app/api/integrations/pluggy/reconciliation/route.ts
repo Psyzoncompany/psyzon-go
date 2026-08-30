@@ -33,9 +33,14 @@ export async function POST(request: Request) {
     if (error instanceof Response) return error;
     const code = error instanceof Error ? error.message : "UNKNOWN";
     const notFound = code.includes("NOT_FOUND");
-    const conflict = code === "PLUGGY_TRANSACTION_PENDING" || code === "PLUGGY_SYSTEM_TRANSACTION_ALREADY_MATCHED";
+    const conflict = ["PLUGGY_TRANSACTION_PENDING", "PLUGGY_SYSTEM_TRANSACTION_ALREADY_MATCHED", "PLUGGY_RECONCILIATION_BUSINESS_ONLY", "PLUGGY_INTERNAL_TRANSFER_NOT_RECONCILABLE"].includes(code);
     console.error("Pluggy reconciliation error", { code });
     const message = notFound ? "Movimentação não encontrada." : code === "PLUGGY_TRANSACTION_PENDING" ? "A movimentação ainda está pendente no banco." : code === "PLUGGY_SYSTEM_TRANSACTION_ALREADY_MATCHED" ? "Esse registro financeiro já está conciliado com outra movimentação." : "Não foi possível concluir a conciliação.";
-    return Response.json({ error: message, code }, { status: notFound ? 404 : conflict ? 409 : 502, headers: PRIVATE_HEADERS });
+    const contextualMessage = code === "PLUGGY_RECONCILIATION_BUSINESS_ONLY"
+      ? "A conciliação com os registros do sistema está disponível apenas para contas da empresa."
+      : code === "PLUGGY_INTERNAL_TRANSFER_NOT_RECONCILABLE"
+        ? "Transferências entre contas próprias não entram como receita ou despesa."
+        : message;
+    return Response.json({ error: contextualMessage, code }, { status: notFound ? 404 : conflict ? 409 : 502, headers: PRIVATE_HEADERS });
   }
 }

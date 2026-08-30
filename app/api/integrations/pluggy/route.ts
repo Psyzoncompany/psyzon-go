@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   try {
     const identity = await identityFor(request);
     if (!isPluggyConfigured()) {
-      return Response.json({ configured: false, webhookConfigured: false, paymentsPrepared: true, paymentsEnabled: false, sync: { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 }, items: [], accounts: [], transactions: [], reconciliation: { pending: 0, matched: 0 } }, { headers: PRIVATE_HEADERS });
+      return Response.json({ configured: false, webhookConfigured: false, paymentsPrepared: true, paymentsEnabled: false, sync: { status: "not_configured", lastSyncedAt: null, lastError: null, recordsChecked: 0 }, items: [], accounts: [], transactions: [], ledgerTransactions: [], categories: [], rules: [], reconciliation: { pending: 0, matched: 0 } }, { headers: PRIVATE_HEADERS });
     }
     return Response.json(await getPluggyDashboard(identity), { headers: PRIVATE_HEADERS });
   } catch (error) {

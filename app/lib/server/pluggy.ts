@@ -2,6 +2,16 @@ import { FieldValue } from "firebase-admin/firestore";
 import { PluggyClient, type Account, type Item, type Transaction } from "pluggy-sdk";
 import type { FirebaseIdentity } from "./firebase-admin";
 import { getAdminFirestore } from "./firebase-admin";
+import {
+  DEFAULT_FINANCIAL_CATEGORIES,
+  findInternalTransferSuggestions,
+  isValidInternalTransferPair,
+  matchingFinancialRule,
+  normalizeFinancialText,
+  type FinancialCategoryKind,
+  type FinancialScope,
+  type TransferCandidate,
+} from "./financial-center";
 
 const PLUGGY_PROVIDER = "pluggy";
 const MAX_LOOKBACK_DAYS = 365;
@@ -41,7 +51,9 @@ export function pluggyPaymentsClient() {
   return pluggyClient().payments;
 }
 
-function userCollection(uid: string, name: "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "transactions" | "integrationSyncState") {
+type PluggyUserCollection = "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "transactions" | "integrationSyncState" | "financialCategories" | "financialRules";
+
+function userCollection(uid: string, name: PluggyUserCollection) {
   return getAdminFirestore().collection("users").doc(uid).collection(name);
 }
 
@@ -100,7 +112,7 @@ function normalizeItem(item: Item, ownerUserId: string) {
   };
 }
 
-function normalizeAccount(account: Account, ownerUserId: string) {
+function normalizeAccount(account: Account, ownerUserId: string, scope: FinancialScope, scopeSource: "connector" | "manual" = "connector") {
   return {
     ownerUserId,
     accountId: account.id,
@@ -116,6 +128,8 @@ function normalizeAccount(account: Account, ownerUserId: string) {
     creditLimit: account.creditData?.creditLimit ?? null,
     availableCreditLimit: account.creditData?.availableCreditLimit ?? null,
     creditStatus: account.creditData?.status ?? null,
+    scope,
+    scopeSource,
     cachedAt: Date.now(),
   };
 }
@@ -123,6 +137,9 @@ function normalizeAccount(account: Account, ownerUserId: string) {
 export function classifyPluggyTransaction(transaction: Pick<Transaction, "type" | "description" | "operationType" | "paymentData">) {
   const method = `${transaction.paymentData?.paymentMethod ?? ""} ${transaction.paymentData?.referenceNumber ?? ""} ${transaction.paymentData?.reason ?? ""} ${transaction.operationType ?? ""} ${transaction.description ?? ""}`.toLocaleUpperCase("pt-BR");
   if (method.includes("PIX")) return "pix";
+  if (/\b(BOLETO|CONVENIO_ARRECADACAO)\b/.test(method)) return "boleto";
+  if (/\b(CARTAO|CARD)\b/.test(method)) return "card";
+  if (/\b(PAGAMENTO|PAYMENT)\b/.test(method)) return "payment";
   if (/\b(TED|DOC|TRANSFER)/.test(method)) return "transfer";
   return transaction.type === "CREDIT" ? "income" : "expense";
 }
@@ -143,11 +160,17 @@ function normalizeTransaction(transaction: Transaction, itemId: string, ownerUse
     date: iso(transaction.date),
     currencyCode: transaction.currencyCode,
     category: shortText(transaction.category, 120) || null,
+    providerCategoryId: shortText(transaction.categoryId, 40) || null,
     status: transaction.status ?? "POSTED",
     paymentMethod: shortText(transaction.paymentData?.paymentMethod, 80) || (kind === "pix" ? "PIX" : null),
     referenceNumber: shortText(transaction.paymentData?.referenceNumber, 160) || null,
     receiverReferenceId: shortText(transaction.paymentData?.receiverReferenceId, 160) || null,
     counterpartName: shortText(counterpart?.name, 160) || null,
+    merchantName: shortText(transaction.merchant?.name, 160) || null,
+    merchantBusinessName: shortText(transaction.merchant?.businessName, 200) || null,
+    operationType: shortText(transaction.operationType, 100) || null,
+    installmentNumber: transaction.creditCardMetadata?.installmentNumber ?? null,
+    totalInstallments: transaction.creditCardMetadata?.totalInstallments ?? null,
     providerId: shortText(transaction.providerId, 160) || null,
     createdAt: iso(transaction.createdAt),
     updatedAt: iso(transaction.updatedAt),
@@ -219,10 +242,24 @@ export async function syncPluggyItem(uid: string, itemId: string) {
 
   const accounts = (await client.fetchAccounts(item.id)).results;
   const storedAccounts = await userCollection(uid, "pluggyAccounts").where("itemId", "==", item.id).get();
+  const storedAccountData = new Map(storedAccounts.docs.map((snapshot) => [snapshot.id, snapshot.data()]));
+  const connectorScope: FinancialScope = String(item.connector.type).includes("BUSINESS") ? "business" : "personal";
   const accountIds = new Set(accounts.map((account) => account.id));
   const removedAccounts = storedAccounts.docs.filter((snapshot) => !accountIds.has(snapshot.id));
   await Promise.all([
-    writeRows(userCollection(uid, "pluggyAccounts"), accounts.map((account) => ({ id: account.id, value: normalizeAccount(account, uid) }))),
+    writeRows(userCollection(uid, "pluggyAccounts"), accounts.map((account) => {
+      const stored = storedAccountData.get(account.id);
+      const manuallyClassified = stored?.scopeSource === "manual" && ["personal", "business"].includes(String(stored.scope));
+      return {
+        id: account.id,
+        value: normalizeAccount(
+          account,
+          uid,
+          manuallyClassified ? stored?.scope as FinancialScope : connectorScope,
+          manuallyClassified ? "manual" : "connector",
+        ),
+      };
+    })),
     deleteCachedAccounts(uid, removedAccounts),
   ]);
 
@@ -272,6 +309,211 @@ export async function registerPluggyItem(identity: FirebaseIdentity, itemId: str
   return syncPluggyItem(identity.uid, itemId);
 }
 
+async function ensureDefaultFinancialCategories(uid: string) {
+  const marker = userCollection(uid, "integrationSyncState").doc("financial_center");
+  const markerSnapshot = await marker.get();
+  if (Number(markerSnapshot.data()?.categorySeedVersion) >= 1) return;
+
+  const now = Date.now();
+  const writer = getAdminFirestore().bulkWriter();
+  for (const category of DEFAULT_FINANCIAL_CATEGORIES) {
+    writer.set(userCollection(uid, "financialCategories").doc(category.id), {
+      ...category,
+      ownerUserId: uid,
+      systemDefault: true,
+      createdAt: now,
+      updatedAt: now,
+    }, { merge: true });
+  }
+  await writer.close();
+  await marker.set({ categorySeedVersion: 1, updatedAt: now }, { merge: true });
+}
+
+async function ownedCategory(uid: string, categoryId: string, scope?: FinancialScope) {
+  const snapshot = await userCollection(uid, "financialCategories").doc(categoryId).get();
+  if (!snapshot.exists) throw new Error("FINANCIAL_CATEGORY_NOT_FOUND");
+  const data = snapshot.data()!;
+  if (scope && data.scope !== scope) throw new Error("FINANCIAL_CATEGORY_SCOPE_MISMATCH");
+  return { snapshot, data };
+}
+
+const CATEGORY_COLORS = new Set(["#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#64748b", "#d97706", "#db2777", "#9333ea", "#0891b2", "#475569", "#ea580c", "#0f766e", "#b45309", "#dc2626"]);
+
+export async function updatePluggyAccountScope(identity: FirebaseIdentity, accountId: string, scope: FinancialScope) {
+  const reference = userCollection(identity.uid, "pluggyAccounts").doc(accountId);
+  if (!(await reference.get()).exists) throw new Error("PLUGGY_ACCOUNT_NOT_FOUND");
+  await reference.update({ scope, scopeSource: "manual", updatedAt: Date.now() });
+  return { accountId, scope };
+}
+
+export async function saveFinancialCategory(identity: FirebaseIdentity, input: {
+  id?: string;
+  name: string;
+  scope: FinancialScope;
+  kind: FinancialCategoryKind;
+  icon: string;
+  color: string;
+  parentId?: string | null;
+}) {
+  await ensureDefaultFinancialCategories(identity.uid);
+  if (input.parentId) {
+    const parent = await ownedCategory(identity.uid, input.parentId, input.scope);
+    if (parent.data.parentId) throw new Error("FINANCIAL_CATEGORY_DEPTH_INVALID");
+  }
+  const reference = input.id
+    ? userCollection(identity.uid, "financialCategories").doc(input.id)
+    : userCollection(identity.uid, "financialCategories").doc();
+  if (input.id && !(await reference.get()).exists) throw new Error("FINANCIAL_CATEGORY_NOT_FOUND");
+  if (input.parentId === reference.id) throw new Error("FINANCIAL_CATEGORY_PARENT_INVALID");
+  const now = Date.now();
+  const values = {
+    ownerUserId: identity.uid,
+    name: shortText(input.name.trim(), 80),
+    scope: input.scope,
+    kind: input.kind,
+    icon: /^[a-z0-9-]{2,40}$/.test(input.icon) ? input.icon : "circle-dot",
+    color: CATEGORY_COLORS.has(input.color.toLocaleLowerCase()) ? input.color.toLocaleLowerCase() : "#64748b",
+    parentId: input.parentId || null,
+    updatedAt: now,
+    ...(input.id ? {} : { createdAt: now, systemDefault: false, sortOrder: now }),
+  };
+  await reference.set(values, { merge: true });
+  return publicDocument(await reference.get());
+}
+
+export async function deleteFinancialCategory(identity: FirebaseIdentity, categoryId: string) {
+  await ownedCategory(identity.uid, categoryId);
+  const children = await userCollection(identity.uid, "financialCategories").where("parentId", "==", categoryId).get();
+  const ids = [categoryId, ...children.docs.map((snapshot) => snapshot.id)];
+  const [transactions, rules] = await Promise.all([
+    userCollection(identity.uid, "pluggyTransactions").get(),
+    userCollection(identity.uid, "financialRules").get(),
+  ]);
+  const writer = getAdminFirestore().bulkWriter();
+  ids.forEach((id) => writer.delete(userCollection(identity.uid, "financialCategories").doc(id)));
+  transactions.docs
+    .filter((snapshot) => ids.includes(String(snapshot.data().customCategoryId ?? "")))
+    .forEach((snapshot) => writer.update(snapshot.ref, {
+      customCategoryId: FieldValue.delete(),
+      categorySource: FieldValue.delete(),
+      matchedRuleId: FieldValue.delete(),
+    }));
+  rules.docs
+    .filter((snapshot) => ids.includes(String(snapshot.data().categoryId ?? "")))
+    .forEach((snapshot) => writer.delete(snapshot.ref));
+  await writer.close();
+  return { deleted: ids };
+}
+
+export async function saveFinancialRule(identity: FirebaseIdentity, input: {
+  id?: string;
+  scope: FinancialScope;
+  pattern: string;
+  categoryId: string;
+  enabled?: boolean;
+}) {
+  await ownedCategory(identity.uid, input.categoryId, input.scope);
+  const pattern = normalizeFinancialText(input.pattern).slice(0, 100);
+  if (pattern.length < 2) throw new Error("FINANCIAL_RULE_PATTERN_INVALID");
+  const reference = input.id
+    ? userCollection(identity.uid, "financialRules").doc(input.id)
+    : userCollection(identity.uid, "financialRules").doc();
+  if (input.id && !(await reference.get()).exists) throw new Error("FINANCIAL_RULE_NOT_FOUND");
+  const now = Date.now();
+  await reference.set({
+    ownerUserId: identity.uid,
+    scope: input.scope,
+    pattern,
+    categoryId: input.categoryId,
+    matchMode: "contains",
+    enabled: input.enabled !== false,
+    updatedAt: now,
+    ...(input.id ? {} : { createdAt: now }),
+  }, { merge: true });
+  return publicDocument(await reference.get());
+}
+
+export async function deleteFinancialRule(identity: FirebaseIdentity, ruleId: string) {
+  const reference = userCollection(identity.uid, "financialRules").doc(ruleId);
+  if (!(await reference.get()).exists) throw new Error("FINANCIAL_RULE_NOT_FOUND");
+  await reference.delete();
+  return { deleted: ruleId };
+}
+
+export async function categorizePluggyTransaction(identity: FirebaseIdentity, input: {
+  transactionId: string;
+  categoryId?: string | null;
+  applyRule?: boolean;
+  rulePattern?: string;
+}) {
+  const reference = userCollection(identity.uid, "pluggyTransactions").doc(input.transactionId);
+  const snapshot = await reference.get();
+  if (!snapshot.exists) throw new Error("PLUGGY_TRANSACTION_NOT_FOUND");
+  const transaction = snapshot.data()!;
+  const account = await userCollection(identity.uid, "pluggyAccounts").doc(String(transaction.accountId)).get();
+  const scope: FinancialScope = account.data()?.scope === "business" ? "business" : "personal";
+  if (!input.categoryId) {
+    await reference.update({
+      customCategoryId: FieldValue.delete(),
+      categorySource: FieldValue.delete(),
+      matchedRuleId: FieldValue.delete(),
+    });
+    return { transactionId: input.transactionId, categoryId: null };
+  }
+  await ownedCategory(identity.uid, input.categoryId, scope);
+  await reference.update({ customCategoryId: input.categoryId, categorySource: "manual", matchedRuleId: FieldValue.delete(), updatedByUserAt: Date.now() });
+  let rule = null;
+  if (input.applyRule) {
+    const pattern = input.rulePattern
+      || shortText(transaction.counterpartName, 100)
+      || shortText(transaction.merchantName, 100)
+      || shortText(transaction.description, 100);
+    rule = await saveFinancialRule(identity, { scope, pattern, categoryId: input.categoryId });
+  }
+  return { transactionId: input.transactionId, categoryId: input.categoryId, rule };
+}
+
+function transferData(id: string, data: Record<string, unknown>): TransferCandidate {
+  return {
+    id,
+    accountId: String(data.accountId ?? ""),
+    amount: Number(data.amount ?? 0),
+    direction: data.direction === "CREDIT" ? "CREDIT" : "DEBIT",
+    date: String(data.date ?? ""),
+    currencyCode: String(data.currencyCode ?? "BRL"),
+    status: String(data.status ?? "POSTED"),
+    internalTransfer: data.internalTransfer === true,
+  };
+}
+
+export async function setInternalTransfer(identity: FirebaseIdentity, transactionId: string, pairId?: string, internal = true) {
+  const leftReference = userCollection(identity.uid, "pluggyTransactions").doc(transactionId);
+  const leftSnapshot = await leftReference.get();
+  if (!leftSnapshot.exists) throw new Error("PLUGGY_TRANSACTION_NOT_FOUND");
+  const existingPair = String(leftSnapshot.data()?.internalTransferPairId ?? "");
+  const resolvedPairId = pairId || existingPair;
+  if (!resolvedPairId) throw new Error("PLUGGY_TRANSFER_PAIR_REQUIRED");
+  const rightReference = userCollection(identity.uid, "pluggyTransactions").doc(resolvedPairId);
+  const rightSnapshot = await rightReference.get();
+  if (!rightSnapshot.exists) throw new Error("PLUGGY_TRANSFER_PAIR_NOT_FOUND");
+  if (internal && !isValidInternalTransferPair(
+    transferData(leftSnapshot.id, leftSnapshot.data()!),
+    transferData(rightSnapshot.id, rightSnapshot.data()!),
+  )) throw new Error("PLUGGY_TRANSFER_PAIR_INVALID");
+
+  const batch = getAdminFirestore().batch();
+  if (internal) {
+    batch.update(leftReference, { internalTransfer: true, internalTransferPairId: resolvedPairId, internalTransferConfirmedAt: Date.now() });
+    batch.update(rightReference, { internalTransfer: true, internalTransferPairId: transactionId, internalTransferConfirmedAt: Date.now() });
+  } else {
+    const cleared = { internalTransfer: FieldValue.delete(), internalTransferPairId: FieldValue.delete(), internalTransferConfirmedAt: FieldValue.delete() };
+    batch.update(leftReference, cleared);
+    batch.update(rightReference, cleared);
+  }
+  await batch.commit();
+  return { transactionId, pairId: resolvedPairId, internal };
+}
+
 function publicDocument(snapshot: FirebaseFirestore.QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot): Record<string, unknown> & { id: string } {
   const publicData = { ...(snapshot.data() ?? {}) };
   ["ownerUserId", "clientUserId", "descriptionRaw", "providerId"].forEach((field) => delete publicData[field]);
@@ -291,22 +533,47 @@ function dayDistance(left: string, right: string) {
 }
 
 export async function getPluggyDashboard(identity: FirebaseIdentity) {
-  const [items, accounts, bankTransactions, systemTransactions, syncState] = await Promise.all([
+  await ensureDefaultFinancialCategories(identity.uid);
+  const [items, accounts, bankTransactions, systemTransactions, syncState, categories, rules] = await Promise.all([
     userCollection(identity.uid, "pluggyItems").get(),
     userCollection(identity.uid, "pluggyAccounts").get(),
     userCollection(identity.uid, "pluggyTransactions").limit(MAX_PUBLIC_TRANSACTIONS).get(),
     userCollection(identity.uid, "transactions").limit(500).get(),
     userCollection(identity.uid, "integrationSyncState").doc(PLUGGY_PROVIDER).get(),
+    userCollection(identity.uid, "financialCategories").get(),
+    userCollection(identity.uid, "financialRules").get(),
   ]);
   const systems: Array<Record<string, unknown> & { id: string }> = systemTransactions.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }));
+  const publicAccounts = accounts.docs.map(publicDocument);
+  const accountScope = new Map(publicAccounts.map((account) => [account.id, account.scope === "business" ? "business" as const : "personal" as const]));
+  const publicRules = rules.docs.map(publicDocument).map((rule) => ({
+    ...rule,
+    scope: rule.scope === "business" ? "business" as const : "personal" as const,
+    pattern: String(rule.pattern ?? ""),
+    categoryId: String(rule.categoryId ?? ""),
+    enabled: rule.enabled !== false,
+  }));
+  const bankRows: Array<Record<string, unknown> & { id: string }> = bankTransactions.docs.map((snapshot) => ({ id: snapshot.id, ...snapshot.data() }));
+  const transferSuggestions = findInternalTransferSuggestions(bankRows.map((transaction) => transferData(transaction.id, transaction)));
+  const bankById = new Map(bankRows.map((transaction) => [transaction.id, transaction]));
   const usedSystemIds = new Set(bankTransactions.docs.map((snapshot) => snapshot.data().matchedSystemTransactionId).filter((value): value is string => typeof value === "string"));
   const transactions: Array<Record<string, unknown> & { id: string; suggestion: { id: string; description: string; transactionDate: string } | null }> = bankTransactions.docs.map((snapshot) => {
     const data = snapshot.data();
+    const scope = accountScope.get(String(data.accountId ?? "")) ?? "personal";
+    const automaticRule = data.customCategoryId ? null : matchingFinancialRule(publicRules, scope, [
+      data.description,
+      data.descriptionRaw,
+      data.counterpartName,
+      data.merchantName,
+      data.merchantBusinessName,
+    ]);
+    const effectiveCategoryId = String(data.customCategoryId ?? automaticRule?.categoryId ?? "") || null;
     let suggestion: { id: string; description: string; transactionDate: string } | null = null;
-    if (!data.reconciliationStatus) {
-      const expectedType = data.direction === "CREDIT" ? "income" : data.kind === "transfer" ? "transfer" : "expense";
+    if (scope === "business" && !data.reconciliationStatus && data.internalTransfer !== true) {
+      const expectedType = data.direction === "CREDIT" ? "income" : "expense";
       const candidates = systems.filter((system) =>
         !usedSystemIds.has(system.id)
+        && system.account === "business"
         &&
         String(system.type) === expectedType
         && Math.round(Number(system.amount) * 100) === Math.round(Number(data.amount) * 100)
@@ -314,8 +581,35 @@ export async function getPluggyDashboard(identity: FirebaseIdentity) {
       );
       if (candidates.length === 1) suggestion = { id: candidates[0].id, description: shortText(candidates[0].description, 240), transactionDate: systemDate(candidates[0]) };
     }
-    return { ...publicDocument(snapshot), suggestion } as Record<string, unknown> & { id: string; suggestion: { id: string; description: string; transactionDate: string } | null };
+    const transferPairId = transferSuggestions.get(snapshot.id);
+    const transferPair = transferPairId ? bankById.get(transferPairId) : null;
+    return {
+      ...publicDocument(snapshot),
+      scope,
+      effectiveCategoryId,
+      categorySource: data.customCategoryId ? "manual" : automaticRule ? "rule" : "provider",
+      matchedRuleId: automaticRule?.id ?? data.matchedRuleId ?? null,
+      internalTransferSuggestion: transferPair ? {
+        id: transferPair.id,
+        accountId: transferPair.accountId,
+        description: shortText(transferPair.description, 240, "Transferência entre contas"),
+      } : null,
+      suggestion,
+    } as Record<string, unknown> & { id: string; suggestion: { id: string; description: string; transactionDate: string } | null };
   }).sort((left, right) => String(right["date"] ?? "").localeCompare(String(left["date"] ?? "")));
+
+  const ledgerTransactions = systems.map((transaction) => ({
+    id: transaction.id,
+    description: shortText(transaction.description, 240, "Movimentação financeira"),
+    amount: Math.abs(Number(transaction.amount ?? 0)),
+    type: String(transaction.type ?? "expense"),
+    scope: transaction.account === "personal" ? "personal" : "business",
+    category: shortText(transaction.category, 100) || "Outros",
+    date: systemDate(transaction),
+    source: shortText(transaction.source, 40) || "manual",
+    provider: shortText(transaction.provider, 40) || null,
+    providerTransactionId: shortText(transaction.providerTransactionId, 100) || null,
+  })).sort((left, right) => right.date.localeCompare(left.date));
 
   return {
     configured: isPluggyConfigured(),
@@ -324,10 +618,13 @@ export async function getPluggyDashboard(identity: FirebaseIdentity) {
     paymentsEnabled: process.env.PLUGGY_PAYMENTS_ENABLED === "true",
     sync: syncState.exists ? publicDocument(syncState) : { status: items.empty ? "disconnected" : "unknown", lastSyncedAt: null, lastError: null, recordsChecked: 0 },
     items: items.docs.map(publicDocument).sort((left, right) => String(right.updatedAt ?? "").localeCompare(String(left.updatedAt ?? ""))),
-    accounts: accounts.docs.map(publicDocument),
+    accounts: publicAccounts,
     transactions,
+    ledgerTransactions,
+    categories: categories.docs.map(publicDocument).sort((left, right) => Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0)),
+    rules: publicRules.sort((left, right) => String(left.pattern).localeCompare(String(right.pattern))),
     reconciliation: {
-      pending: transactions.filter((transaction) => !transaction["reconciliationStatus"]).length,
+      pending: transactions.filter((transaction) => transaction["scope"] === "business" && !transaction["reconciliationStatus"] && transaction["internalTransfer"] !== true).length,
       matched: transactions.filter((transaction) => ["matched", "imported"].includes(String(transaction["reconciliationStatus"]))).length,
     },
   };
@@ -344,6 +641,8 @@ export async function reconcilePluggyTransaction(identity: FirebaseIdentity, inp
   const bankSnapshot = await bankReference.get();
   if (!bankSnapshot.exists) throw new Error("PLUGGY_TRANSACTION_NOT_FOUND");
   const bank = bankSnapshot.data()!;
+  const bankAccount = await userCollection(identity.uid, "pluggyAccounts").doc(String(bank.accountId ?? "")).get();
+  const account: FinancialScope = bankAccount.data()?.scope === "business" ? "business" : "personal";
 
   if (input.action === "unlink") {
     await bankReference.update({ reconciliationStatus: FieldValue.delete(), matchedSystemTransactionId: FieldValue.delete(), reconciledAt: FieldValue.delete() });
@@ -354,21 +653,25 @@ export async function reconcilePluggyTransaction(identity: FirebaseIdentity, inp
     return { status: "ignored" };
   }
   if (input.action === "match") {
+    if (account !== "business") throw new Error("PLUGGY_RECONCILIATION_BUSINESS_ONLY");
+    if (bank.internalTransfer === true) throw new Error("PLUGGY_INTERNAL_TRANSFER_NOT_RECONCILABLE");
     if (!input.systemTransactionId) throw new Error("PLUGGY_SYSTEM_TRANSACTION_REQUIRED");
     const systemReference = userCollection(identity.uid, "transactions").doc(input.systemTransactionId);
-    if (!(await systemReference.get()).exists) throw new Error("PLUGGY_SYSTEM_TRANSACTION_NOT_FOUND");
+    const systemSnapshot = await systemReference.get();
+    if (!systemSnapshot.exists) throw new Error("PLUGGY_SYSTEM_TRANSACTION_NOT_FOUND");
+    if (systemSnapshot.data()?.account !== "business") throw new Error("PLUGGY_RECONCILIATION_BUSINESS_ONLY");
     const existingMatch = await userCollection(identity.uid, "pluggyTransactions").where("matchedSystemTransactionId", "==", input.systemTransactionId).limit(1).get();
     if (existingMatch.docs.some((snapshot) => snapshot.id !== input.bankTransactionId)) throw new Error("PLUGGY_SYSTEM_TRANSACTION_ALREADY_MATCHED");
     await bankReference.update({ reconciliationStatus: "matched", matchedSystemTransactionId: input.systemTransactionId, reconciledAt: Date.now() });
     return { status: "matched", systemTransactionId: input.systemTransactionId };
   }
 
-  const account = input.account === "personal" ? "personal" : "business";
+  if (bank.internalTransfer === true) throw new Error("PLUGGY_INTERNAL_TRANSFER_NOT_RECONCILABLE");
   if (bank.status === "PENDING") throw new Error("PLUGGY_TRANSACTION_PENDING");
   if (!(Number(bank.amount) > 0) || !/^\d{4}-\d{2}-\d{2}/.test(String(bank.date ?? ""))) throw new Error("PLUGGY_TRANSACTION_INVALID");
   const systemReference = userCollection(identity.uid, "transactions").doc(`pluggy_${input.bankTransactionId}`);
   const existing = await systemReference.get();
-  const type = bank.direction === "CREDIT" ? "income" : bank.kind === "transfer" ? "transfer" : "expense";
+  const type = bank.direction === "CREDIT" ? "income" : "expense";
   if (!existing.exists) {
     await systemReference.set({
       description: shortText(bank.description, 240, "Movimentação bancária"),

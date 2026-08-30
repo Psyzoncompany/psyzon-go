@@ -1,92 +1,35 @@
 "use client";
+/* eslint-disable jsx-a11y/no-static-element-interactions */
 
 import type { User } from "firebase/auth";
-import { AlertTriangle, ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Building2, Check, Link2, LoaderCircle, RefreshCw, Unlink, WalletCards } from "lucide-react";
+import { AlertTriangle, ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Building2, Check, CircleDollarSign, Clock3, CreditCard, Filter, Landmark, Link2, ListFilter, LoaderCircle, Pencil, Plus, Receipt, RefreshCw, Search, Settings2, Sparkles, Tag, Trash2, TrendingDown, TrendingUp, Unlink, WalletCards, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 const PluggyConnect = dynamic(() => import("react-pluggy-connect").then((module) => module.PluggyConnect), { ssr: false });
 
-type PluggyItem = {
-  id: string;
-  connectorName?: string;
-  status?: string;
-  executionStatus?: string;
-  needsReconnect?: boolean;
-  errorMessage?: string | null;
-  userActionInstructions?: string | null;
-  lastUpdatedAt?: string | null;
-  supportsPaymentInitiation?: boolean;
-  supportsAutomaticPix?: boolean;
-};
+type Scope = "business" | "personal";
+type ScopeFilter = "all" | Scope;
+type Period = "today" | "7d" | "30d" | "month" | "previous" | "year" | "custom";
+type Origin = "all" | "pluggy" | "manual" | "mercado_pago" | "bill";
+type Kind = "pix" | "transfer" | "boleto" | "payment" | "card" | "income" | "expense";
+type PluggyItem = { id: string; connectorName?: string; status?: string; executionStatus?: string; needsReconnect?: boolean; errorMessage?: string | null; userActionInstructions?: string | null; lastUpdatedAt?: string | null; supportsPaymentInitiation?: boolean; supportsAutomaticPix?: boolean };
+type PluggyAccount = { id: string; itemId?: string; name?: string; marketingName?: string | null; number?: string; type?: "BANK" | "CREDIT"; balance?: number; availableBalance?: number | null; scope?: Scope };
+type PluggyTransaction = { id: string; accountId?: string; description?: string; amount?: number; direction?: "CREDIT" | "DEBIT"; kind?: Kind; date?: string; category?: string | null; effectiveCategoryId?: string | null; categorySource?: "manual" | "rule" | "provider"; counterpartName?: string | null; merchantName?: string | null; status?: string; scope?: Scope; internalTransfer?: boolean; internalTransferPairId?: string; internalTransferSuggestion?: { id: string; accountId: string; description: string } | null; reconciliationStatus?: "matched" | "imported" | "ignored"; matchedSystemTransactionId?: string; suggestion?: { id: string; description: string; transactionDate: string } | null };
+type LedgerTransaction = { id: string; description: string; amount: number; type: "income" | "expense" | "transfer"; scope: Scope; category: string; date: string; source: string; providerTransactionId?: string | null };
+type Category = { id: string; name: string; scope: Scope; kind: "income" | "expense" | "both"; icon: string; color: string; parentId?: string | null; sortOrder?: number };
+type Rule = { id: string; scope: Scope; pattern: string; categoryId: string; enabled: boolean };
+type Data = { configured: boolean; webhookConfigured: boolean; paymentsPrepared: boolean; paymentsEnabled: boolean; sync: { status?: string; lastSyncedAt?: number | null; lastError?: string | null; recordsChecked?: number }; items: PluggyItem[]; accounts: PluggyAccount[]; transactions: PluggyTransaction[]; ledgerTransactions: LedgerTransaction[]; categories: Category[]; rules: Rule[]; reconciliation: { pending: number; matched: number } };
+type Widget = { accessToken: string; itemId?: string; includeSandbox: boolean } | null;
+type DisplayRow = { source: "bank"; date: string; bank: PluggyTransaction } | { source: "ledger"; date: string; ledger: LedgerTransaction };
 
-type PluggyAccount = {
-  id: string;
-  itemId?: string;
-  name?: string;
-  marketingName?: string | null;
-  number?: string;
-  type?: "BANK" | "CREDIT";
-  subtype?: string;
-  balance?: number;
-  availableBalance?: number | null;
-  currencyCode?: string;
-};
+const headers = { Accept: "application/json", "Content-Type": "application/json" };
+const colors = ["#16a34a", "#0d9488", "#2563eb", "#7c3aed", "#64748b", "#d97706", "#db2777", "#9333ea", "#0891b2", "#475569", "#ea580c", "#0f766e", "#b45309", "#dc2626"];
+const icons = ["circle-dot", "trending-up", "receipt", "shirt", "palette", "printer", "factory", "package", "scissors", "zap", "wifi", "truck", "wrench", "monitor", "megaphone", "landmark", "wallet", "utensils", "car", "house", "heart-pulse", "graduation-cap", "shopping-bag"];
 
-type PluggyTransaction = {
-  id: string;
-  accountId?: string;
-  description?: string;
-  amount?: number;
-  direction?: "CREDIT" | "DEBIT";
-  kind?: "pix" | "transfer" | "income" | "expense";
-  date?: string;
-  category?: string | null;
-  paymentMethod?: string | null;
-  counterpartName?: string | null;
-  status?: string;
-  reconciliationStatus?: "matched" | "imported" | "ignored";
-  matchedSystemTransactionId?: string;
-  suggestion?: { id: string; description: string; transactionDate: string } | null;
-};
-
-type PluggyData = {
-  configured: boolean;
-  webhookConfigured: boolean;
-  paymentsPrepared: boolean;
-  paymentsEnabled: boolean;
-  sync: { status?: string; lastSyncedAt?: number | null; lastError?: string | null; recordsChecked?: number };
-  items: PluggyItem[];
-  accounts: PluggyAccount[];
-  transactions: PluggyTransaction[];
-  reconciliation: { pending: number; matched: number };
-};
-
-type WidgetState = { accessToken: string; itemId?: string; includeSandbox: boolean } | null;
-type Filter = "all" | "pending" | "pix" | "matched";
-
-const privateHeaders = { Accept: "application/json", "Content-Type": "application/json" };
-
-function dateLabel(value?: string | null) {
-  if (!value) return "Ainda não sincronizada";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Data indisponível";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
-}
-
-function itemState(item: PluggyItem) {
-  if (item.needsReconnect) return { label: "Reconexão necessária", tone: "danger" };
-  if (["UPDATING", "WAITING_USER_INPUT", "WAITING_USER_ACTION"].includes(String(item.status)) || String(item.executionStatus).includes("IN_PROGRESS")) return { label: "Sincronizando", tone: "pending" };
-  if (item.status === "DELETED") return { label: "Conta desconectada", tone: "danger" };
-  return { label: "Conectada", tone: "connected" };
-}
-
-async function authenticatedFetch(user: User, path: string, init?: RequestInit) {
-  const request = async (forceRefresh: boolean) => fetch(path, {
-    ...init,
-    headers: { ...privateHeaders, ...init?.headers, Authorization: `Bearer ${await user.getIdToken(forceRefresh)}` },
-  });
+async function api(user: User, path: string, init?: RequestInit) {
+  const request = async (refresh: boolean) => fetch(path, { ...init, headers: { ...headers, ...init?.headers, Authorization: `Bearer ${await user.getIdToken(refresh)}` } });
   let response = await request(false);
   if (response.status === 401) response = await request(true);
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
@@ -94,168 +37,96 @@ async function authenticatedFetch(user: User, path: string, init?: RequestInit) 
   return body;
 }
 
+function localDay(date: Date) { return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); }
+function rangeFor(period: Period, from: string, to: string) {
+  const now = new Date(); const today = localDay(now);
+  if (period === "custom") return { from: from || "0000-01-01", to: to || "9999-12-31" };
+  if (period === "today") return { from: today, to: today };
+  if (period === "7d" || period === "30d") { const start = new Date(now); start.setDate(start.getDate() - (period === "7d" ? 6 : 29)); return { from: localDay(start), to: today }; }
+  if (period === "year") return { from: `${now.getFullYear()}-01-01`, to: `${now.getFullYear()}-12-31` };
+  const start = new Date(now.getFullYear(), now.getMonth() + (period === "previous" ? -1 : 0), 1);
+  return { from: localDay(start), to: localDay(new Date(start.getFullYear(), start.getMonth() + 1, 0)) };
+}
+function inside(date: string | undefined, range: { from: string; to: string }) { const day = String(date ?? "").slice(0, 10); return Boolean(day) && day >= range.from && day <= range.to; }
+function when(value?: string | null, time = true) { if (!value) return "Ainda não sincronizada"; const date = new Date(value); return Number.isNaN(date.getTime()) ? "Data indisponível" : new Intl.DateTimeFormat("pt-BR", time ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "short", year: "numeric" }).format(date); }
+function stateOf(item: PluggyItem) { if (item.needsReconnect || item.status === "DELETED") return { label: item.status === "DELETED" ? "Conta desconectada" : "Reconexão necessária", tone: "danger" }; if (["UPDATING", "WAITING_USER_INPUT", "WAITING_USER_ACTION"].includes(String(item.status)) || String(item.executionStatus).includes("IN_PROGRESS")) return { label: "Sincronizando", tone: "pending" }; return { label: "Conectada", tone: "connected" }; }
+function kindName(item: PluggyTransaction) { return ({ pix: "Pix", transfer: "Transferência", boleto: "Boleto", payment: "Pagamento", card: "Cartão", income: "Entrada", expense: "Saída" } as Record<Kind, string>)[item.kind ?? (item.direction === "CREDIT" ? "income" : "expense")]; }
+function sourceName(source: string) { return source === "mercado_pago" ? "Mercado Pago" : source === "bill" ? "Conta/parcelamento" : source === "pluggy" ? "Banco conectado" : source === "ai_adjustment" ? "PSYZON AI" : "Lançamento manual"; }
+
 export default function PluggyFinance({ user, displayMoney, notify }: { user: User; displayMoney: (value: number) => string; notify: (message: string) => void }) {
-  const [data, setData] = useState<PluggyData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState("");
-  const [error, setError] = useState("");
-  const [widget, setWidget] = useState<WidgetState>(null);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [importAccount, setImportAccount] = useState<"business" | "personal">("business");
+  const [data, setData] = useState<Data | null>(null); const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(""); const [error, setError] = useState(""); const [widget, setWidget] = useState<Widget>(null);
+  const [scope, setScope] = useState<ScopeFilter>("all"); const [period, setPeriod] = useState<Period>("month"); const [customFrom, setCustomFrom] = useState(""); const [customTo, setCustomTo] = useState("");
+  const [search, setSearch] = useState(""); const [accountFilter, setAccountFilter] = useState("all"); const [categoryFilter, setCategoryFilter] = useState("all"); const [kindFilter, setKindFilter] = useState("all"); const [origin, setOrigin] = useState<Origin>("all");
+  const [manager, setManager] = useState(false); const [managerScope, setManagerScope] = useState<Scope>("business"); const [editing, setEditing] = useState<Category | null>(null);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const response = await authenticatedFetch(user, "/api/integrations/pluggy");
-      setData(response as unknown as PluggyData);
-      setError("");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Não foi possível carregar suas contas bancárias.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [user]);
+  const load = useCallback(async (silent = false) => { if (!silent) setLoading(true); try { setData(await api(user, "/api/integrations/pluggy") as unknown as Data); setError(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível carregar suas contas bancárias."); } finally { if (!silent) setLoading(false); } }, [user]);
+  useEffect(() => { const timer = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(timer); }, [load]);
+  useEffect(() => { if (!data?.items.some((item) => stateOf(item).tone === "pending")) return; const timer = window.setInterval(() => void load(true), 15_000); return () => window.clearInterval(timer); }, [data?.items, load]);
+  useEffect(() => { if (!widget) return; document.documentElement.classList.add("pluggy-connect-visible"); return () => document.documentElement.classList.remove("pluggy-connect-visible"); }, [widget]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-  useEffect(() => {
-    if (!data?.items.some((item) => itemState(item).tone === "pending")) return;
-    const timer = window.setInterval(() => void load(true), 15_000);
-    return () => window.clearInterval(timer);
-  }, [data?.items, load]);
-  useEffect(() => {
-    if (!widget) return;
-    document.documentElement.classList.add("pluggy-connect-visible");
-    return () => document.documentElement.classList.remove("pluggy-connect-visible");
-  }, [widget]);
+  const manage = async (action: string, values: Record<string, unknown>, message: string) => { setBusy(`${action}-${String(values.transactionId ?? values.accountId ?? values.categoryId ?? values.ruleId ?? values.id ?? "new")}`); setError(""); try { await api(user, "/api/integrations/pluggy/management", { method: "POST", body: JSON.stringify({ action, ...values }) }); await load(true); notify(message); return true; } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar a alteração."); return false; } finally { setBusy(""); } };
+  const openWidget = async (itemId?: string) => { setBusy(itemId ? `reconnect-${itemId}` : "connect"); setError(""); try { const response = await api(user, "/api/integrations/pluggy/connect-token", { method: "POST", body: JSON.stringify(itemId ? { itemId } : {}) }); setWidget({ accessToken: String(response.accessToken), itemId, includeSandbox: response.includeSandbox === true }); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível abrir a conexão bancária."); } finally { setBusy(""); } };
+  const register = async (itemId: string) => { setWidget(null); setBusy("register"); try { await api(user, "/api/integrations/pluggy", { method: "POST", body: JSON.stringify({ action: "register", itemId }) }); await load(true); notify("Conta bancária conectada e movimentações sincronizadas"); } catch (cause) { setError(cause instanceof Error ? cause.message : "A conta foi conectada, mas a sincronização ainda não terminou."); await load(true); } finally { setBusy(""); } };
+  const sync = async (itemId?: string) => { setBusy(itemId ? `sync-${itemId}` : "sync"); setError(""); try { await api(user, "/api/integrations/pluggy", { method: "POST", body: JSON.stringify({ action: "sync", ...(itemId ? { itemId } : {}) }) }); await load(true); notify("Dados bancários atualizados"); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível sincronizar agora."); } finally { setBusy(""); } };
+  const reconcile = async (item: PluggyTransaction, action: "match" | "import" | "ignore" | "unlink") => { setBusy(`${action}-${item.id}`); try { const category = data?.categories.find((value) => value.id === item.effectiveCategoryId)?.name; await api(user, "/api/integrations/pluggy/reconciliation", { method: "POST", body: JSON.stringify({ action, bankTransactionId: item.id, systemTransactionId: action === "match" ? item.suggestion?.id : undefined, category: category ?? item.category ?? undefined }) }); await load(true); notify(action === "import" ? "Movimentação adicionada ao financeiro" : action === "match" ? "Movimentações conciliadas" : action === "ignore" ? "Movimentação ignorada" : "Conciliação desfeita"); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível concluir a conciliação."); } finally { setBusy(""); } };
 
-  const openWidget = async (itemId?: string) => {
-    setBusy(itemId ? `reconnect-${itemId}` : "connect");
-    setError("");
-    try {
-      const response = await authenticatedFetch(user, "/api/integrations/pluggy/connect-token", { method: "POST", body: JSON.stringify(itemId ? { itemId } : {}) });
-      setWidget({ accessToken: String(response.accessToken), itemId, includeSandbox: response.includeSandbox === true });
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Não foi possível abrir a conexão bancária.");
-    } finally {
-      setBusy("");
-    }
-  };
+  const accountMap = useMemo(() => new Map((data?.accounts ?? []).map((item) => [item.id, item])), [data?.accounts]);
+  const categoryMap = useMemo(() => new Map((data?.categories ?? []).map((item) => [item.id, item])), [data?.categories]);
+  const range = useMemo(() => rangeFor(period, customFrom, customTo), [period, customFrom, customTo]);
+  const accounts = (data?.accounts ?? []).filter((item) => scope === "all" || item.scope === scope);
+  const categories = (data?.categories ?? []).filter((item) => scope === "all" || item.scope === scope);
+  const bankPeriod = (data?.transactions ?? []).filter((item) => (scope === "all" || item.scope === scope) && inside(item.date, range));
+  const cashflow = bankPeriod.filter((item) => item.status !== "PENDING" && !item.internalTransfer);
+  const inflow = cashflow.filter((item) => item.direction === "CREDIT").reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+  const outflow = cashflow.filter((item) => item.direction === "DEBIT").reduce((sum, item) => sum + Number(item.amount ?? 0), 0);
+  const balance = accounts.filter((item) => item.type === "BANK").reduce((sum, item) => sum + Number(item.availableBalance ?? item.balance ?? 0), 0);
+  const usedLedger = useMemo(() => new Set((data?.transactions ?? []).map((item) => item.matchedSystemTransactionId).filter(Boolean)), [data?.transactions]);
+  const bankIds = useMemo(() => new Set((data?.transactions ?? []).map((item) => item.id)), [data?.transactions]);
 
-  const registerItem = async (itemId: string) => {
-    setWidget(null);
-    setBusy("register");
-    try {
-      await authenticatedFetch(user, "/api/integrations/pluggy", { method: "POST", body: JSON.stringify({ action: "register", itemId }) });
-      await load(true);
-      notify("Conta bancária conectada e movimentações sincronizadas");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "A conta foi conectada, mas a sincronização ainda não terminou.");
-      await load(true);
-    } finally {
-      setBusy("");
-    }
-  };
+  const rows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    const bank: DisplayRow[] = origin === "all" || origin === "pluggy" ? (data?.transactions ?? []).filter((item) => { const account = accountMap.get(item.accountId ?? ""); const text = `${item.description ?? ""} ${item.counterpartName ?? ""} ${item.merchantName ?? ""} ${account?.name ?? ""}`.toLocaleLowerCase("pt-BR"); return (scope === "all" || item.scope === scope) && inside(item.date, range) && (accountFilter === "all" || item.accountId === accountFilter) && (categoryFilter === "all" || item.effectiveCategoryId === categoryFilter) && (kindFilter === "all" || item.kind === kindFilter || (kindFilter === "income" && item.direction === "CREDIT") || (kindFilter === "expense" && item.direction === "DEBIT")) && (!query || text.includes(query)); }).map((item) => ({ source: "bank", date: item.date ?? "", bank: item })) : [];
+    const ledger: DisplayRow[] = origin !== "pluggy" && accountFilter === "all" ? (data?.ledgerTransactions ?? []).filter((item) => { if (usedLedger.has(item.id) || (item.providerTransactionId && bankIds.has(item.providerTransactionId))) return false; const originOk = origin === "all" || origin === item.source || (origin === "manual" && !["mercado_pago", "bill", "pluggy"].includes(item.source)); const selected = categoryMap.get(categoryFilter); return originOk && (scope === "all" || item.scope === scope) && inside(item.date, range) && (kindFilter === "all" || item.type === kindFilter) && (categoryFilter === "all" || selected?.name === item.category) && (!query || `${item.description} ${item.category}`.toLocaleLowerCase("pt-BR").includes(query)); }).map((item) => ({ source: "ledger", date: item.date, ledger: item })) : [];
+    return [...bank, ...ledger].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 200);
+  }, [accountFilter, accountMap, bankIds, categoryFilter, categoryMap, data?.ledgerTransactions, data?.transactions, kindFilter, origin, range, scope, search, usedLedger]);
 
-  const synchronize = async (itemId?: string) => {
-    setBusy(itemId ? `sync-${itemId}` : "sync");
-    setError("");
-    try {
-      await authenticatedFetch(user, "/api/integrations/pluggy", { method: "POST", body: JSON.stringify({ action: "sync", ...(itemId ? { itemId } : {}) }) });
-      await load(true);
-      notify("Dados bancários atualizados");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Não foi possível sincronizar agora.");
-    } finally {
-      setBusy("");
-    }
-  };
+  const expenseGroups = grouped(cashflow.filter((item) => item.direction === "DEBIT"), categoryMap);
+  const incomeGroups = grouped(cashflow.filter((item) => item.direction === "CREDIT"), categoryMap);
+  const months = useMemo(() => { const map = new Map<string, { income: number; expense: number }>(); (data?.transactions ?? []).filter((item) => scope === "all" || item.scope === scope).forEach((item) => { if (item.internalTransfer || item.status === "PENDING") return; const month = String(item.date ?? "").slice(0, 7); if (!month) return; const value = map.get(month) ?? { income: 0, expense: 0 }; if (item.direction === "CREDIT") value.income += Number(item.amount ?? 0); else value.expense += Number(item.amount ?? 0); map.set(month, value); }); return [...map.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-6); }, [data?.transactions, scope]);
+  const managerCategories = (data?.categories ?? []).filter((item) => item.scope === managerScope); const roots = managerCategories.filter((item) => !item.parentId);
 
-  const reconcile = async (transaction: PluggyTransaction, action: "match" | "import" | "ignore" | "unlink") => {
-    setBusy(`${action}-${transaction.id}`);
-    setError("");
-    try {
-      await authenticatedFetch(user, "/api/integrations/pluggy/reconciliation", {
-        method: "POST",
-        body: JSON.stringify({
-          action,
-          bankTransactionId: transaction.id,
-          systemTransactionId: action === "match" ? transaction.suggestion?.id : undefined,
-          account: importAccount,
-          category: transaction.kind === "pix" ? "Pix" : transaction.category ?? undefined,
-        }),
-      });
-      await load(true);
-      notify(action === "import" ? "Movimentação adicionada ao financeiro" : action === "match" ? "Movimentações conciliadas" : action === "ignore" ? "Movimentação ignorada na conciliação" : "Conciliação desfeita");
-    } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Não foi possível concluir a conciliação.");
-    } finally {
-      setBusy("");
-    }
-  };
+  const saveCategory = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); if (await manage("category_save", { id: editing?.id, name: String(form.get("name") ?? ""), scope: managerScope, kind: String(form.get("kind") ?? "expense"), icon: String(form.get("icon") ?? "circle-dot"), color: String(form.get("color") ?? "#64748b"), parentId: String(form.get("parentId") ?? "") }, editing ? "Categoria atualizada" : "Categoria criada")) setEditing(null); };
 
-  const accountById = useMemo(() => new Map((data?.accounts ?? []).map((account) => [account.id, account])), [data?.accounts]);
-  const transactions = useMemo(() => (data?.transactions ?? []).filter((transaction) => {
-    if (filter === "pending") return !transaction.reconciliationStatus;
-    if (filter === "pix") return transaction.kind === "pix";
-    if (filter === "matched") return ["matched", "imported"].includes(String(transaction.reconciliationStatus));
-    return true;
-  }).slice(0, 120), [data?.transactions, filter]);
-  const bankBalance = (data?.accounts ?? []).filter((account) => account.type === "BANK").reduce((sum, account) => sum + Number(account.balance ?? 0), 0);
-
-  return <section className="panel pluggy-panel">
-    <div className="pluggy-heading">
-      <div className="pluggy-title"><span className="pluggy-logo"><Link2 size={18} /></span><div><span className="eyebrow">OPEN FINANCE · PLUGGY</span><h2>Contas e movimentações bancárias</h2><p>Saldo bancário separado do caixa contábil até a conciliação.</p></div></div>
-      <div className="pluggy-heading-actions">
-        {data?.items.length ? <button className="secondary" onClick={() => void synchronize()} disabled={Boolean(busy)}><RefreshCw size={15} className={busy === "sync" ? "spin" : ""} /> Sincronizar</button> : null}
-        <button className="primary" onClick={() => void openWidget()} disabled={Boolean(busy) || data?.configured === false}><Building2 size={16} /> {busy === "connect" ? "Abrindo…" : "Conectar banco"}</button>
-      </div>
-    </div>
-
-    {widget ? createPortal(<div className="pluggy-widget-portal">
-      <PluggyConnect
-        connectToken={widget.accessToken}
-        updateItem={widget.itemId}
-        includeSandbox={widget.includeSandbox}
-        language="pt"
-        theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
-        products={["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS", "PAYMENT_DATA"]}
-        allowFullscreen
-        allowConnectInBackground
-        onSuccess={({ item }) => void registerItem(item.id)}
-        onError={({ message, data: errorData }) => {
-          setWidget(null);
-          setError(message || "A instituição não concluiu a conexão. Tente novamente.");
-          if (errorData?.item?.id) void registerItem(errorData.item.id);
-        }}
-        onClose={() => setWidget(null)}
-        onLoadError={() => { setWidget(null); setError("Não foi possível carregar o ambiente seguro da Pluggy."); }}
-      />
-    </div>, document.body) : null}
-
-    {loading ? <div className="pluggy-state"><LoaderCircle className="spin" size={24} /><b>Carregando dados bancários</b><small>Consultando apenas o cache seguro do servidor.</small></div>
-      : data?.configured === false ? <div className="pluggy-state warning"><AlertTriangle size={24} /><b>Pluggy ainda não configurada</b><small>Adicione PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET somente no ambiente do servidor.</small></div>
-        : error && !data ? <div className="pluggy-state error"><AlertTriangle size={24} /><b>Não foi possível carregar a integração</b><small>{error}</small><button onClick={() => void load()}>Tentar novamente</button></div>
-          : <>
-            {error && <div className="pluggy-alert" role="alert"><AlertTriangle size={15} /><span>{error}</span><button onClick={() => setError("")} aria-label="Fechar aviso">×</button></div>}
-            {busy === "register" && <div className="pluggy-alert info"><LoaderCircle className="spin" size={15} /><span>A instituição foi conectada. Estamos carregando contas, saldos e transações.</span></div>}
-            {!data?.webhookConfigured && <div className="pluggy-alert info"><AlertTriangle size={15} /><span>Sincronização manual ativa. Configure PLUGGY_WEBHOOK_URL e PLUGGY_WEBHOOK_SECRET para atualizações automáticas.</span></div>}
-
-            {(data?.items ?? []).map((item) => { const state = itemState(item); return <div className={`pluggy-item ${state.tone}`} key={item.id}><span className="pluggy-bank-icon"><Building2 size={18} /></span><div><b>{item.connectorName || "Instituição financeira"}</b><small>{state.label} · Última atualização: {dateLabel(item.lastUpdatedAt)}</small>{(item.errorMessage || item.userActionInstructions) && <em>{item.userActionInstructions || item.errorMessage}</em>}</div><span className={`pluggy-status ${state.tone}`}>{state.label}</span>{state.tone === "danger" ? <button className="secondary" onClick={() => void openWidget(item.id)} disabled={Boolean(busy)}>{busy === `reconnect-${item.id}` ? "Abrindo…" : "Reconectar"}</button> : <button className="icon-button" onClick={() => void synchronize(item.id)} disabled={Boolean(busy)} aria-label={`Sincronizar ${item.connectorName}`}><RefreshCw size={15} className={busy === `sync-${item.id}` ? "spin" : ""} /></button>}</div>; })}
-
-            {!data?.items.length ? <div className="pluggy-state empty"><WalletCards size={25} /><b>Nenhuma conta bancária conectada</b><small>Use o ambiente seguro da Pluggy para autorizar sua instituição.</small><button onClick={() => void openWidget()}>Conectar primeira conta</button></div> : <>
-              <div className="pluggy-account-summary"><div><small>Saldo em contas bancárias</small><strong>{displayMoney(bankBalance)}</strong><span>{data.accounts.filter((account) => account.type === "BANK").length} conta(s) bancária(s)</span></div><div><small>Conciliação</small><strong>{data.reconciliation.pending}</strong><span>movimentações aguardando análise</span></div><div><small>Pix e pagamentos</small><strong>{data.items.some((item) => item.supportsPaymentInitiation || item.supportsAutomaticPix) ? "Compatível" : "Preparado"}</strong><span>{data.paymentsEnabled ? "Recursos habilitados" : "Ativação server-side necessária"}</span></div></div>
-              <div className="pluggy-accounts">{data.accounts.map((account) => <article key={account.id}><span><Building2 size={15} /></span><div><b>{account.marketingName || account.name || "Conta"}</b><small>{account.type === "CREDIT" ? "Cartão de crédito" : "Conta bancária"}{account.number ? ` · ${account.number}` : ""}</small></div><strong>{displayMoney(Number(account.balance ?? 0))}</strong></article>)}</div>
-              <div className="pluggy-transactions-head"><div><span className="eyebrow">CONCILIAÇÃO</span><h3>Movimentações bancárias</h3></div><div className="pluggy-controls"><label>Importar em <select value={importAccount} onChange={(event) => setImportAccount(event.target.value as "business" | "personal")}><option value="business">Empresa</option><option value="personal">Pessoal</option></select></label><select value={filter} onChange={(event) => setFilter(event.target.value as Filter)} aria-label="Filtrar movimentações bancárias"><option value="all">Todas</option><option value="pending">Pendentes</option><option value="pix">Pix</option><option value="matched">Conciliadas</option></select></div></div>
-              <div className="pluggy-transaction-list">{transactions.length ? transactions.map((transaction) => {
-                const incoming = transaction.direction === "CREDIT";
-                const account = accountById.get(transaction.accountId ?? "");
-                const transactionBusy = busy.endsWith(transaction.id);
-                return <article className="pluggy-transaction" key={transaction.id}><span className={incoming ? "incoming" : "outgoing"}>{transaction.kind === "transfer" ? <ArrowRightLeft size={15} /> : incoming ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><div className="pluggy-transaction-info"><b>{transaction.description || "Movimentação bancária"}</b><small>{dateLabel(transaction.date)} · {transaction.kind === "pix" ? "Pix" : transaction.kind === "transfer" ? "Transferência" : incoming ? "Entrada" : "Saída"} · {account?.marketingName || account?.name || "Conta"}</small>{transaction.counterpartName && <em>{incoming ? "De" : "Para"}: {transaction.counterpartName}</em>}{transaction.status === "PENDING" && <em>Movimentação pendente na instituição</em>}{transaction.suggestion && !transaction.reconciliationStatus && <em className="suggestion">Possível correspondência: {transaction.suggestion.description}</em>}</div><strong className={incoming ? "positive" : "negative"}>{incoming ? "+ " : "− "}{displayMoney(Number(transaction.amount ?? 0))}</strong><div className="pluggy-reconcile-actions">{transaction.reconciliationStatus ? <><span className={`reconciliation-badge ${transaction.reconciliationStatus}`}><Check size={12} /> {transaction.reconciliationStatus === "imported" ? "Importada" : transaction.reconciliationStatus === "matched" ? "Conciliada" : "Ignorada"}</span><button className="icon-button" onClick={() => void reconcile(transaction, "unlink")} disabled={transactionBusy} aria-label="Desfazer conciliação"><Unlink size={14} /></button></> : <>{transaction.suggestion && <button className="secondary compact-button" onClick={() => void reconcile(transaction, "match")} disabled={transactionBusy}><Link2 size={13} /> Conciliar</button>}<button className="secondary compact-button" onClick={() => void reconcile(transaction, "import")} disabled={transactionBusy || transaction.status === "PENDING"}>{transactionBusy ? <LoaderCircle className="spin" size={13} /> : <Check size={13} />} {transaction.status === "PENDING" ? "Pendente" : "Importar"}</button><button className="text-button" onClick={() => void reconcile(transaction, "ignore")} disabled={transactionBusy}>Ignorar</button></>}</div></article>;
-              }) : <div className="pluggy-state empty compact"><ArrowRightLeft size={23} /><b>Nenhuma movimentação neste filtro</b><small>Novos dados aparecerão depois da sincronização bancária.</small></div>}</div>
-            </>}
-          </>}
+  return <section className="panel pluggy-panel financial-center">
+    <div className="pluggy-heading financial-center-heading"><div className="pluggy-title"><span className="pluggy-logo"><Link2 size={18} /></span><div><span className="eyebrow">CENTRAL FINANCEIRA · OPEN FINANCE</span><h2>Bancos, movimentações e conciliação</h2><p>Visão bancária e registros do sistema em um só lugar.</p></div></div><div className="pluggy-heading-actions"><button className="secondary" onClick={() => setManager(true)} disabled={!data?.configured}><Settings2 size={15} /> Categorias e regras</button>{data?.items.length ? <button className="secondary" onClick={() => void sync()} disabled={Boolean(busy)}><RefreshCw size={15} className={busy === "sync" ? "spin" : ""} /> Sincronizar</button> : null}<button className="primary" onClick={() => void openWidget()} disabled={Boolean(busy) || data?.configured === false}><Building2 size={16} /> {busy === "connect" ? "Abrindo…" : "Conectar banco"}</button></div></div>
+    {widget ? createPortal(<div className="pluggy-widget-portal"><PluggyConnect connectToken={widget.accessToken} updateItem={widget.itemId} includeSandbox={widget.includeSandbox} language="pt" theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"} products={["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS", "PAYMENT_DATA"]} allowFullscreen allowConnectInBackground onSuccess={({ item }) => void register(item.id)} onError={({ message, data: failure }) => { setWidget(null); setError(message || "A instituição não concluiu a conexão. Tente novamente."); if (failure?.item?.id) void register(failure.item.id); }} onClose={() => setWidget(null)} onLoadError={() => { setWidget(null); setError("Não foi possível carregar o ambiente seguro da Pluggy."); }} /></div>, document.body) : null}
+    {loading ? <div className="pluggy-state"><LoaderCircle className="spin" size={24} /><b>Carregando central financeira</b><small>Consultando apenas os dados seguros do servidor.</small></div> : data?.configured === false ? <div className="pluggy-state warning"><AlertTriangle size={24} /><b>Pluggy ainda não configurada</b><small>Adicione as credenciais somente no servidor.</small></div> : error && !data ? <div className="pluggy-state error"><AlertTriangle size={24} /><b>Não foi possível carregar a integração</b><small>{error}</small><button onClick={() => void load()}>Tentar novamente</button></div> : <>
+      {error && <div className="pluggy-alert" role="alert"><AlertTriangle size={15} /><span>{error}</span><button onClick={() => setError("")} aria-label="Fechar aviso">×</button></div>}{busy === "register" && <div className="pluggy-alert info"><LoaderCircle className="spin" size={15} /><span>Conta conectada. Carregando saldos e transações.</span></div>}
+      <div className="financial-view-toolbar"><div className="financial-scope-tabs">{(["all", "personal", "business"] as ScopeFilter[]).map((value) => <button key={value} className={scope === value ? "active" : ""} onClick={() => setScope(value)}>{value === "all" ? "Visão Geral" : value === "personal" ? "Pessoal" : "Empresa"}</button>)}</div><div className="financial-periods"><Clock3 size={14} /><select value={period} onChange={(event) => setPeriod(event.target.value as Period)}><option value="today">Hoje</option><option value="7d">7 dias</option><option value="30d">30 dias</option><option value="month">Este mês</option><option value="previous">Mês anterior</option><option value="year">Ano</option><option value="custom">Personalizado</option></select>{period === "custom" && <><input type="date" value={customFrom} onChange={(event) => setCustomFrom(event.target.value)} /><span>até</span><input type="date" value={customTo} onChange={(event) => setCustomTo(event.target.value)} /></>}</div></div>
+      <div className="financial-metrics"><Metric icon={WalletCards} label="Saldo disponível" value={displayMoney(balance)} detail={`${accounts.filter((item) => item.type === "BANK").length} conta(s)`} tone="blue" /><Metric icon={TrendingUp} label="Entradas" value={displayMoney(inflow)} detail={`${cashflow.filter((item) => item.direction === "CREDIT").length} movimentações`} tone="green" /><Metric icon={TrendingDown} label="Saídas" value={displayMoney(outflow)} detail={`${cashflow.filter((item) => item.direction === "DEBIT").length} movimentações`} tone="red" /><Metric icon={CircleDollarSign} label="Resultado" value={displayMoney(inflow - outflow)} detail="no período selecionado" tone={inflow >= outflow ? "green" : "red"} /><Metric icon={Building2} label="Contas conectadas" value={String(accounts.length)} detail={`${data?.items.length ?? 0} instituição(ões)`} tone="violet" /></div>
+      {(data?.items ?? []).map((item) => { const state = stateOf(item); return <div className={`pluggy-item ${state.tone}`} key={item.id}><span className="pluggy-bank-icon"><Landmark size={18} /></span><div><b>{item.connectorName || "Instituição financeira"}</b><small>{state.label} · Última atualização: {when(item.lastUpdatedAt)}</small>{(item.errorMessage || item.userActionInstructions) && <em>{item.userActionInstructions || item.errorMessage}</em>}</div><span className={`pluggy-status ${state.tone}`}>{state.label}</span>{state.tone === "danger" ? <button className="secondary" onClick={() => void openWidget(item.id)}>Reconectar</button> : <button className="icon-button" onClick={() => void sync(item.id)} aria-label="Sincronizar"><RefreshCw size={15} /></button>}</div>; })}
+      {!data?.items.length ? <div className="pluggy-state empty"><WalletCards size={25} /><b>Nenhuma conta bancária conectada</b><small>Use o ambiente seguro da Pluggy para autorizar sua instituição.</small><button onClick={() => void openWidget()}>Conectar primeira conta</button></div> : <>
+        <div className="financial-section-heading"><div><span className="eyebrow">CONTAS CONECTADAS</span><h3>Pessoal e empresa separados</h3></div><small>Altere o perfil de cada conta quando precisar.</small></div><div className="pluggy-accounts financial-account-grid">{accounts.map((account) => <article key={account.id}><span>{account.type === "CREDIT" ? <CreditCard size={15} /> : <Building2 size={15} />}</span><div><b>{account.marketingName || account.name || "Conta"}</b><small>{account.type === "CREDIT" ? "Cartão" : "Conta bancária"}{account.number ? ` · ${account.number}` : ""}</small></div><strong>{displayMoney(Number(account.availableBalance ?? account.balance ?? 0))}</strong><select value={account.scope ?? "personal"} onChange={(event) => void manage("account_scope", { accountId: account.id, scope: event.target.value }, "Classificação da conta atualizada")}><option value="personal">Pessoal</option><option value="business">Empresa</option></select></article>)}</div>
+        <div className="financial-insights-grid"><Insight title="Gastos por categoria" icon={TrendingDown} groups={expenseGroups} displayMoney={displayMoney} /><Insight title="Receitas por categoria" icon={TrendingUp} groups={incomeGroups} displayMoney={displayMoney} /><Evolution rows={months} displayMoney={displayMoney} /></div>
+        <div className="financial-highlights"><Highlights title="Maiores despesas" rows={cashflow.filter((item) => item.direction === "DEBIT").sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 3)} displayMoney={displayMoney} /><Highlights title="Maiores fontes de receita" rows={cashflow.filter((item) => item.direction === "CREDIT").sort((a, b) => Number(b.amount) - Number(a.amount)).slice(0, 3)} displayMoney={displayMoney} income /></div>
+        <div className="pluggy-transactions-head financial-transactions-head"><div><span className="eyebrow">MOVIMENTAÇÕES</span><h3>Histórico bancário e financeiro</h3><small>{rows.length} resultado(s) · {data?.reconciliation.pending ?? 0} pendente(s) de conciliação</small></div><button className="secondary" onClick={() => setManager(true)}><Tag size={14} /> Categorias</button></div>
+        <div className="financial-transaction-filters"><label className="financial-search"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar descrição, pessoa ou estabelecimento" /></label><label><Building2 size={13} /><select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)}><option value="all">Todas as contas</option>{accounts.map((item) => <option value={item.id} key={item.id}>{item.marketingName || item.name}</option>)}</select></label><label><Tag size={13} /><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">Todas as categorias</option>{categories.map((item) => <option value={item.id} key={item.id}>{item.parentId ? "↳ " : ""}{item.name}</option>)}</select></label><label><ListFilter size={13} /><select value={kindFilter} onChange={(event) => setKindFilter(event.target.value)}><option value="all">Todos os tipos</option><option value="pix">Pix</option><option value="transfer">Transferências</option><option value="boleto">Boletos</option><option value="payment">Pagamentos</option><option value="card">Cartão</option><option value="income">Entradas</option><option value="expense">Saídas</option></select></label><label><Filter size={13} /><select value={origin} onChange={(event) => setOrigin(event.target.value as Origin)}><option value="all">Todas as origens</option><option value="pluggy">Banco conectado</option><option value="manual">Manual</option><option value="mercado_pago">Mercado Pago</option><option value="bill">Contas/parcelas</option></select></label></div>
+        <div className="pluggy-transaction-list financial-transaction-list">{rows.length ? rows.map((row) => row.source === "bank" ? <BankRow key={`bank-${row.bank.id}`} item={row.bank} account={accountMap.get(row.bank.accountId ?? "")} categories={(data?.categories ?? []).filter((value) => value.scope === row.bank.scope)} categoryMap={categoryMap} displayMoney={displayMoney} busy={busy} categorize={(item, categoryId, automatic = false) => manage("transaction_category", { transactionId: item.id, categoryId, applyRule: automatic, rulePattern: item.counterpartName || item.merchantName || item.description }, automatic ? "Regra automática criada" : "Categoria atualizada")} transfer={(item, internal) => manage("internal_transfer", { transactionId: item.id, pairId: item.internalTransferSuggestion?.id || item.internalTransferPairId, internal }, internal ? "Transferência própria confirmada" : "Marcação removida")} reconcile={reconcile} /> : <LedgerRow key={`ledger-${row.ledger.id}`} item={row.ledger} displayMoney={displayMoney} />) : <div className="pluggy-state empty compact"><ArrowRightLeft size={23} /><b>Nenhuma movimentação neste filtro</b><small>Ajuste os filtros ou sincronize as contas.</small></div>}</div>
+      </>}
+    </>}
+    {manager && createPortal(<div className="modal-backdrop financial-category-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setManager(false)}><aside className="modal financial-category-modal"><header><div><span className="eyebrow">ORGANIZAÇÃO FINANCEIRA</span><h2>Categorias e regras automáticas</h2></div><button onClick={() => setManager(false)} aria-label="Fechar"><X size={20} /></button></header><div className="financial-category-scope"><button className={managerScope === "business" ? "active" : ""} onClick={() => { setManagerScope("business"); setEditing(null); }}>Empresa</button><button className={managerScope === "personal" ? "active" : ""} onClick={() => { setManagerScope("personal"); setEditing(null); }}>Pessoal</button></div><div className="financial-category-layout"><section><div className="financial-manager-heading"><div><h3>Categorias</h3><p>Crie categorias e subcategorias independentes.</p></div><button className="secondary compact-button" onClick={() => setEditing(null)}><Plus size={13} /> Nova</button></div><div className="financial-category-tree">{roots.map((root) => <div key={root.id}><CategoryRow item={root} edit={setEditing} remove={() => window.confirm(`Excluir “${root.name}” e suas subcategorias?`) && void manage("category_delete", { categoryId: root.id }, "Categoria excluída")} />{managerCategories.filter((item) => item.parentId === root.id).map((child) => <CategoryRow key={child.id} item={child} child edit={setEditing} remove={() => window.confirm(`Excluir “${child.name}”?`) && void manage("category_delete", { categoryId: child.id }, "Subcategoria excluída")} />)}</div>)}</div></section><section><div className="financial-manager-heading"><div><h3>{editing ? "Editar categoria" : "Nova categoria"}</h3><p>Defina nome, tipo, ícone, cor e nível.</p></div></div><form className="financial-category-form" key={editing?.id ?? `new-${managerScope}`} onSubmit={saveCategory}><label>Nome<input name="name" required maxLength={80} defaultValue={editing?.name ?? ""} /></label><div className="form-row"><label>Tipo<select name="kind" defaultValue={editing?.kind ?? "expense"}><option value="income">Receita</option><option value="expense">Despesa</option><option value="both">Ambos</option></select></label><label>Categoria principal<select name="parentId" defaultValue={editing?.parentId ?? ""}><option value="">Nenhuma</option>{roots.filter((item) => item.id !== editing?.id).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label></div><div className="form-row"><label>Ícone<select name="icon" defaultValue={editing?.icon ?? "circle-dot"}>{icons.map((icon) => <option key={icon}>{icon}</option>)}</select></label><label>Cor<select name="color" defaultValue={editing?.color ?? "#64748b"}>{colors.map((color) => <option key={color}>{color}</option>)}</select></label></div><footer><button type="button" className="secondary" onClick={() => setEditing(null)}>Limpar</button><button type="submit" className="primary"><Check size={15} /> {editing ? "Salvar" : "Criar"}</button></footer></form><div className="financial-rules"><div className="financial-manager-heading"><div><h3>Regras automáticas</h3><p>Criadas pelo botão Automatizar nas transações.</p></div></div>{(data?.rules ?? []).filter((rule) => rule.scope === managerScope).map((rule) => <article key={rule.id}><Sparkles size={14} /><span><b>Contém “{rule.pattern}”</b><small>{categoryMap.get(rule.categoryId)?.name ?? "Categoria removida"}</small></span><button className="icon-button" onClick={() => void manage("rule_save", { id: rule.id, scope: rule.scope, pattern: rule.pattern, categoryId: rule.categoryId, enabled: !rule.enabled }, rule.enabled ? "Regra pausada" : "Regra ativada")}><Check size={13} /></button><button className="icon-button danger" onClick={() => void manage("rule_delete", { ruleId: rule.id }, "Regra excluída")}><Trash2 size={13} /></button></article>)}</div></section></div></aside></div>, document.body)}
   </section>;
 }
+
+function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof WalletCards; label: string; value: string; detail: string; tone: string }) { return <article className={`financial-metric ${tone}`}><span><Icon size={17} /></span><div><small>{label}</small><strong>{value}</strong><em>{detail}</em></div></article>; }
+function grouped(items: PluggyTransaction[], categories: Map<string, Category>) { const map = new Map<string, { name: string; color: string; value: number }>(); items.forEach((item) => { const category = item.effectiveCategoryId ? categories.get(item.effectiveCategoryId) : null; const name = category?.name || item.category || "Outros"; const value = map.get(name) ?? { name, color: category?.color || "#64748b", value: 0 }; value.value += Number(item.amount ?? 0); map.set(name, value); }); return [...map.values()].sort((a, b) => b.value - a.value).slice(0, 6); }
+function Insight({ title, icon: Icon, groups, displayMoney }: { title: string; icon: typeof TrendingDown; groups: Array<{ name: string; color: string; value: number }>; displayMoney: (value: number) => string }) { const max = Math.max(...groups.map((item) => item.value), 1); return <section className="financial-insight"><header><span><Icon size={15} /></span><h3>{title}</h3></header>{groups.length ? <div>{groups.map((item) => <article key={item.name}><div><b>{item.name}</b><strong>{displayMoney(item.value)}</strong></div><span><i style={{ width: `${Math.max(4, item.value / max * 100)}%`, background: item.color }} /></span></article>)}</div> : <div className="financial-insight-empty">Sem movimentações no período</div>}</section>; }
+function Evolution({ rows, displayMoney }: { rows: Array<[string, { income: number; expense: number }]>; displayMoney: (value: number) => string }) { const max = Math.max(...rows.flatMap(([, value]) => [value.income, value.expense]), 1); return <section className="financial-insight monthly-evolution"><header><span><CircleDollarSign size={15} /></span><h3>Evolução mensal</h3></header><div className="monthly-bars">{rows.map(([month, value]) => <article key={month}><small>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(`${month}-15T12:00:00`))}</small><div><i className="income" style={{ height: `${Math.max(5, value.income / max * 72)}px` }} title={displayMoney(value.income)} /><i className="expense" style={{ height: `${Math.max(5, value.expense / max * 72)}px` }} title={displayMoney(value.expense)} /></div></article>)}</div></section>; }
+function Highlights({ title, rows, displayMoney, income = false }: { title: string; rows: PluggyTransaction[]; displayMoney: (value: number) => string; income?: boolean }) { return <section><h3>{title}</h3>{rows.length ? rows.map((item, index) => <article key={item.id}><span>{index + 1}</span><div><b>{item.counterpartName || item.merchantName || item.description}</b><small>{when(item.date, false)}</small></div><strong className={income ? "positive" : "negative"}>{displayMoney(Number(item.amount ?? 0))}</strong></article>) : <small>Sem movimentações no período.</small>}</section>; }
+
+function BankRow({ item, account, categories, categoryMap, displayMoney, busy, categorize, transfer, reconcile }: { item: PluggyTransaction; account?: PluggyAccount; categories: Category[]; categoryMap: Map<string, Category>; displayMoney: (value: number) => string; busy: string; categorize: (item: PluggyTransaction, category: string, automatic?: boolean) => unknown; transfer: (item: PluggyTransaction, internal: boolean) => unknown; reconcile: (item: PluggyTransaction, action: "match" | "import" | "ignore" | "unlink") => unknown }) {
+  const incoming = item.direction === "CREDIT"; const waiting = busy.endsWith(item.id); const selected = item.effectiveCategoryId ? categoryMap.get(item.effectiveCategoryId) : null; const options = categories.filter((category) => category.kind === "both" || category.kind === (incoming ? "income" : "expense"));
+  return <article className={`pluggy-transaction financial-transaction ${item.internalTransfer ? "internal" : ""}`}><span className={incoming ? "incoming" : "outgoing"}>{item.kind === "transfer" || item.internalTransfer ? <ArrowRightLeft size={15} /> : incoming ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><div className="pluggy-transaction-info"><b>{item.description || "Movimentação bancária"}</b><small>{when(item.date)} · {kindName(item)} · {account?.marketingName || account?.name || "Conta"}</small>{(item.counterpartName || item.merchantName) && <em>{incoming ? "De" : "Para"}: {item.counterpartName || item.merchantName}</em>}{item.status === "PENDING" && <em>Movimentação pendente</em>}{item.suggestion && !item.reconciliationStatus && <em className="suggestion">Possível conciliação: {item.suggestion.description}</em>}{item.internalTransferSuggestion && !item.internalTransfer && <em className="suggestion">Possível transferência própria</em>}</div><div className="financial-transaction-category"><select value={item.effectiveCategoryId ?? ""} onChange={(event) => void categorize(item, event.target.value)} disabled={waiting}><option value="">{item.category || "Sem categoria"}</option>{options.map((category) => <option value={category.id} key={category.id}>{category.parentId ? "↳ " : ""}{category.name}</option>)}</select><small>{item.categorySource === "rule" ? "Regra automática" : item.categorySource === "manual" ? "Manual" : "Categoria bancária"}</small>{selected && <button className="text-button" onClick={() => void categorize(item, selected.id, true)}><Sparkles size={11} /> Automatizar</button>}</div><strong className={incoming ? "positive" : "negative"}>{incoming ? "+ " : "− "}{displayMoney(Number(item.amount ?? 0))}</strong><div className="pluggy-reconcile-actions financial-row-actions">{item.internalTransfer ? <><span className="reconciliation-badge internal"><ArrowRightLeft size={12} /> Transferência própria</span><button className="text-button" onClick={() => void transfer(item, false)}>Desfazer</button></> : <>{item.internalTransferSuggestion && <button className="secondary compact-button" onClick={() => void transfer(item, true)}><ArrowRightLeft size={13} /> É transferência própria</button>}{item.scope === "business" && (item.reconciliationStatus ? <><span className={`reconciliation-badge ${item.reconciliationStatus}`}><Check size={12} /> {item.reconciliationStatus === "imported" ? "Importada" : item.reconciliationStatus === "matched" ? "Conciliada" : "Ignorada"}</span><button className="icon-button" onClick={() => void reconcile(item, "unlink")}><Unlink size={14} /></button></> : <>{item.suggestion && <button className="secondary compact-button" onClick={() => void reconcile(item, "match")}><Link2 size={13} /> Conciliar</button>}<button className="secondary compact-button" onClick={() => void reconcile(item, "import")} disabled={item.status === "PENDING"}><Check size={13} /> Importar</button><button className="text-button" onClick={() => void reconcile(item, "ignore")}>Ignorar</button></>)}</>}</div></article>;
+}
+function LedgerRow({ item, displayMoney }: { item: LedgerTransaction; displayMoney: (value: number) => string }) { const incoming = item.type === "income"; return <article className="pluggy-transaction financial-transaction ledger"><span className={incoming ? "incoming" : "outgoing"}>{item.type === "transfer" ? <ArrowRightLeft size={15} /> : incoming ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}</span><div className="pluggy-transaction-info"><b>{item.description}</b><small>{when(item.date, false)} · {sourceName(item.source)} · {item.scope === "business" ? "Empresa" : "Pessoal"}</small></div><div className="financial-ledger-category"><Tag size={12} /> {item.category}</div><strong className={incoming ? "positive" : "negative"}>{incoming ? "+ " : item.type === "expense" ? "− " : ""}{displayMoney(item.amount)}</strong><div className="pluggy-reconcile-actions"><span className="reconciliation-badge ledger"><Receipt size={12} /> Registro do sistema</span></div></article>; }
+function CategoryRow({ item, child = false, edit, remove }: { item: Category; child?: boolean; edit: (item: Category) => void; remove: () => void }) { return <article className={child ? "child" : ""}><span style={{ background: item.color }}><Tag size={12} /></span><div><b>{child ? `↳ ${item.name}` : item.name}</b><small>{item.kind === "income" ? "Receita" : item.kind === "expense" ? "Despesa" : "Ambos"}</small></div><button className="icon-button" onClick={() => edit(item)}><Pencil size={13} /></button><button className="icon-button danger" onClick={remove}><Trash2 size={13} /></button></article>; }

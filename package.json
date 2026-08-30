@@ -12,7 +12,7 @@
     "start": "vinext start",
     "test": "npm run build && npm run test:ai && npm run test:api && node --test tests/rendered-html.test.mjs",
     "test:ai": "tsx --test tests/ai-critical.test.ts",
-    "test:api": "tsx --test tests/mercado-pago-payment.test.ts",
+    "test:api": "tsx --test tests/mercado-pago-payment.test.ts tests/pluggy-core.test.ts",
     "test:rules": "firebase emulators:exec --project psyzon-go-rules-test --only firestore \"tsx --test tests/firestore.rules.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.vercel.json",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
@@ -28,8 +28,11 @@
     "firebase-admin": "14.2.0",
     "lucide-react": "^1.31.0",
     "next": "16.3.1",
+    "pluggy-js": "^0.19.3",
+    "pluggy-sdk": "^0.90.0",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "react-pluggy-connect": "^2.12.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",

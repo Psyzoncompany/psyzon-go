@@ -130,3 +130,24 @@ test("immutable creation and integration fields cannot be changed", async () => 
   await assertFails(updateDoc(reference, { providerTransactionId: "999" }));
   await assertFails(updateDoc(reference, { createdAt: Timestamp.now() }));
 });
+
+test("Pluggy imports are valid but bank caches remain server-only", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const imported = doc(db, "users/user-a/transactions/pluggy-1");
+  await assertSucceeds(setDoc(imported, {
+    description: "Pix recebido", amount: 150, type: "income", account: "business", category: "Pix",
+    transactionDate: "2026-08-20", source: "pluggy", provider: "pluggy",
+    providerTransactionId: "7dd60cf1-446f-45a0-b94f-42d9df92d411", providerStatus: "POSTED",
+    paymentMethod: "PIX", createdAt: Timestamp.now(),
+  }));
+  await assertFails(setDoc(doc(db, "users/user-a/transactions/pluggy-invalid"), {
+    description: "Origem adulterada", amount: 150, type: "income", account: "business",
+    source: "pluggy", provider: "mercado_pago", providerTransactionId: "transaction-1",
+    providerStatus: "POSTED", createdAt: Timestamp.now(),
+  }));
+
+  await environment.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/user-a/pluggyAccounts/account-1"), { balance: 500 });
+  });
+  await assertFails(getDoc(doc(db, "users/user-a/pluggyAccounts/account-1")));
+});

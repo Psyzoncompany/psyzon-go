@@ -18,7 +18,7 @@ function contentSecurityPolicy(nonce: string) {
     "font-src 'self' data:",
     "img-src 'self' data: blob: https://lh3.googleusercontent.com",
     "connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebaseappcheck.googleapis.com https://www.googleapis.com https://accounts.google.com",
-    `frame-src 'self' https://accounts.google.com${firebaseAuthOrigin} https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/`,
+    `frame-src 'self' https://accounts.google.com${firebaseAuthOrigin} https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://connect.pluggy.ai`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "media-src 'self'",

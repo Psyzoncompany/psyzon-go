@@ -53,6 +53,36 @@ Mercado Pago é `/api/webhooks/mercadopago`. A integração valida a assinatura,
 confirma o pagamento na API oficial e sincroniza/concilia pelo acesso autenticado
 da PSYZON AI; ela não transfere dinheiro.
 
+## Open Finance com Pluggy
+
+A integração bancária usa o Connect Widget no cliente e o SDK oficial
+`pluggy-sdk` somente nas rotas server-side. `PLUGGY_CLIENT_ID`,
+`PLUGGY_CLIENT_SECRET`, API keys e tokens de leitura nunca são enviados ao
+navegador. O frontend recebe apenas um Connect Token temporário e restrito.
+
+Configure no ambiente do servidor:
+
+- `PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET`: credenciais da aplicação Pluggy.
+- `PLUGGY_WEBHOOK_URL`: URL HTTPS pública terminando em `/api/webhooks/pluggy`.
+- `PLUGGY_WEBHOOK_SECRET`: segredo longo usado no header `Authorization` do webhook.
+- `PLUGGY_OAUTH_REDIRECT_URI`: retorno OAuth opcional cadastrado na Pluggy.
+- `PLUGGY_TRANSACTION_LOOKBACK_DAYS`: histórico local, de 30 a 365 dias.
+- `PLUGGY_INCLUDE_SANDBOX`: conectores sandbox apenas fora de produção.
+- `PLUGGY_PAYMENTS_ENABLED`: mantenha `false` até aprovar a iniciação de pagamentos.
+
+Ao emitir o primeiro Connect Token, o backend registra ou atualiza um webhook
+global `all` com header secreto. O endpoint responde `202` imediatamente e
+processa o evento depois da resposta. Contas, saldos e o subconjunto necessário
+das transações ficam em subcoleções privadas do usuário no Firestore. As regras
+negam acesso direto a essas coleções; toda leitura e conciliação passa pelas APIs
+autenticadas com Firebase.
+
+As movimentações da Pluggy não alteram o saldo contábil automaticamente. No
+dashboard financeiro elas podem ser conciliadas com um registro existente,
+importadas para `transactions` ou ignoradas. Isso evita contagem duplicada. A
+estrutura do cliente de pagamentos e as capacidades Pix dos conectores já estão
+preparadas, mas nenhuma transferência é iniciada nesta etapa.
+
 Depois de alterar `db/schema.ts`, gere e publique as migrações com
 `npm run db:generate`. Os testes críticos da IA podem ser executados isoladamente
 com `npm run test:ai`.

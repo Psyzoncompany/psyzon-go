@@ -50,14 +50,22 @@ function privateRateLimitKey(scope: string, value: string) {
 }
 
 export async function enforceMercadoPagoRateLimit(identity: FirebaseIdentity, request: Request) {
+  return enforceFinancialRateLimit(identity, request, "mp", USER_RATE_LIMIT, IP_RATE_LIMIT);
+}
+
+export async function enforcePluggyRateLimit(identity: FirebaseIdentity, request: Request) {
+  return enforceFinancialRateLimit(identity, request, "pluggy", 20, 60);
+}
+
+async function enforceFinancialRateLimit(identity: FirebaseIdentity, request: Request, scope: string, userLimit: number, ipLimit: number) {
   const now = Date.now();
   const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);
   const db = getAdminFirestore();
   const limits = [
-    { ref: db.collection("securityRateLimits").doc(privateRateLimitKey("mp-user", identity.uid)), limit: USER_RATE_LIMIT },
+    { ref: db.collection("securityRateLimits").doc(privateRateLimitKey(`${scope}-user`, identity.uid)), limit: userLimit },
   ];
   const ip = requestIp(request);
-  if (ip) limits.push({ ref: db.collection("securityRateLimits").doc(privateRateLimitKey("mp-ip", ip)), limit: IP_RATE_LIMIT });
+  if (ip) limits.push({ ref: db.collection("securityRateLimits").doc(privateRateLimitKey(`${scope}-ip`, ip)), limit: ipLimit });
 
   return db.runTransaction(async (transaction) => {
     const snapshots = await transaction.getAll(...limits.map(({ ref }) => ref));

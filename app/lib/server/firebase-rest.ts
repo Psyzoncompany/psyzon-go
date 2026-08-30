@@ -3,7 +3,7 @@ import { getAdminFirestore, verifyFirebaseIdToken, type FirebaseIdentity } from 
 export type { FirebaseIdentity } from "./firebase-admin";
 
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
-export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState";
+export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState" | "pluggyItems" | "pluggyAccounts" | "pluggyTransactions";
 
 export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {
   const authorization = request.headers.get("authorization") ?? "";

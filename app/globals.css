@@ -364,6 +364,92 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .finance-summary b { font-size: 10px; }
 .movement-panel.full .movement { padding-inline: 17px; }
 .empty-movements { min-height: 120px; color: var(--muted); display: grid; place-items: center; font-size: 9px; }
+
+/* Open Finance / Pluggy */
+.pluggy-panel { margin-bottom: 14px; overflow: hidden; }
+.pluggy-heading { min-height: 78px; padding: 15px 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.pluggy-title, .pluggy-heading-actions, .pluggy-controls, .pluggy-reconcile-actions { display: flex; align-items: center; gap: 8px; }
+.pluggy-title { min-width: 0; gap: 11px; }
+.pluggy-title > div { min-width: 0; }
+.pluggy-title h2, .pluggy-transactions-head h3 { margin: 3px 0 0; font-size: 12px; }
+.pluggy-title p { margin: 4px 0 0; color: var(--muted); font-size: 8px; }
+.pluggy-logo, .pluggy-bank-icon { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 10px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
+.pluggy-heading-actions button, .pluggy-item button { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.spin { animation: pluggy-spin .85s linear infinite; }
+@keyframes pluggy-spin { to { transform: rotate(360deg); } }
+.pluggy-state { min-height: 170px; padding: 24px; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center; }
+.pluggy-state.compact { min-height: 125px; }
+.pluggy-state b { color: var(--text); font-size: 10px; }
+.pluggy-state small { max-width: 480px; font-size: 8px; line-height: 1.5; }
+.pluggy-state button { margin-top: 4px; border: 0; background: transparent; color: var(--blue); font-size: 8.5px; font-weight: 700; cursor: pointer; }
+.pluggy-state.warning svg, .pluggy-alert svg { color: #d97706; }
+.pluggy-state.error svg, .pluggy-alert:not(.info) svg { color: #dc2626; }
+.pluggy-alert { min-height: 39px; padding: 9px 17px; border-bottom: 1px solid color-mix(in srgb, #dc2626 24%, var(--border)); background: color-mix(in srgb, #dc2626 5%, var(--card)); color: var(--text); display: flex; align-items: center; gap: 8px; font-size: 8px; }
+.pluggy-alert.info { border-color: color-mix(in srgb, var(--blue) 20%, var(--border)); background: var(--blue-soft); }
+.pluggy-alert.info svg { color: var(--blue); }
+.pluggy-alert span { flex: 1; }
+.pluggy-alert button { border: 0; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; }
+.pluggy-item { min-height: 66px; padding: 10px 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+.pluggy-item > div { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.pluggy-item b { font-size: 9.5px; }
+.pluggy-item small, .pluggy-item em { margin-top: 3px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; font-size: 7.5px; font-style: normal; }
+.pluggy-item em { color: #d97706; }
+.pluggy-status { padding: 5px 8px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 7px; font-weight: 750; white-space: nowrap; }
+.pluggy-status.pending { background: var(--yellow-soft); color: #b45309; }
+.pluggy-status.danger { background: color-mix(in srgb, #dc2626 10%, var(--card)); color: #dc2626; }
+.pluggy-account-summary { padding: 13px 17px; border-bottom: 1px solid var(--border); background: var(--card-subtle); display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.pluggy-account-summary > div { min-width: 0; display: flex; flex-direction: column; }
+.pluggy-account-summary small, .pluggy-account-summary span { color: var(--muted); font-size: 7px; }
+.pluggy-account-summary strong { margin: 5px 0 3px; overflow: hidden; text-overflow: ellipsis; font-size: 12px; white-space: nowrap; }
+.pluggy-accounts { padding: 5px 17px 12px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pluggy-accounts article { min-height: 53px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--card); display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.pluggy-accounts article > span { width: 28px; height: 28px; border-radius: 8px; background: var(--blue-soft); color: var(--blue); display: grid; place-items: center; }
+.pluggy-accounts article > div { min-width: 0; display: flex; flex-direction: column; }
+.pluggy-accounts b, .pluggy-accounts strong { overflow: hidden; text-overflow: ellipsis; font-size: 8.5px; white-space: nowrap; }
+.pluggy-accounts small { margin-top: 3px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; font-size: 6.8px; white-space: nowrap; }
+.pluggy-transactions-head { min-height: 64px; padding: 12px 17px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pluggy-controls label { color: var(--muted); font-size: 7.5px; display: flex; align-items: center; gap: 6px; }
+.pluggy-controls select { height: 31px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card-subtle); color: var(--text); font-size: 7.5px; outline: none; }
+.pluggy-transaction-list { max-height: 540px; overflow-y: auto; }
+.pluggy-transaction { min-height: 72px; padding: 10px 17px; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 32px minmax(170px, 1fr) 95px minmax(160px, auto); align-items: center; gap: 9px; }
+.pluggy-transaction:last-child { border-bottom: 0; }
+.pluggy-transaction > span:first-child { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+.pluggy-transaction > span.incoming { background: var(--green-soft); color: var(--green); }
+.pluggy-transaction > span.outgoing { background: color-mix(in srgb, #dc2626 8%, var(--card)); color: #dc2626; }
+.pluggy-transaction-info { min-width: 0; display: flex; flex-direction: column; }
+.pluggy-transaction-info b { overflow: hidden; text-overflow: ellipsis; font-size: 9px; white-space: nowrap; }
+.pluggy-transaction-info small, .pluggy-transaction-info em { margin-top: 3px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; font-size: 7px; font-style: normal; white-space: nowrap; }
+.pluggy-transaction-info .suggestion { color: var(--blue); }
+.pluggy-transaction > strong { font-size: 9px; text-align: right; white-space: nowrap; }
+.pluggy-reconcile-actions { justify-content: flex-end; }
+.compact-button { min-height: 29px; padding: 0 8px; font-size: 7px; }
+.text-button { border: 0; background: transparent; color: var(--muted); font-size: 7px; cursor: pointer; }
+.reconciliation-badge { min-height: 25px; padding: 0 7px; border-radius: 999px; background: var(--green-soft); color: var(--green); display: inline-flex; align-items: center; gap: 4px; font-size: 6.8px; font-weight: 750; white-space: nowrap; }
+.reconciliation-badge.ignored { background: var(--card-subtle); color: var(--muted); }
+.icon-button { width: 31px; height: 31px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--muted); display: grid !important; place-items: center; cursor: pointer; }
+.icon-button:hover { color: var(--blue); }
+.pluggy-panel button:disabled { opacity: .55; cursor: wait; }
+
+@media (max-width: 820px) {
+  .pluggy-heading, .pluggy-transactions-head { align-items: flex-start; flex-direction: column; }
+  .pluggy-heading-actions, .pluggy-controls { width: 100%; }
+  .pluggy-heading-actions button, .pluggy-controls > select { flex: 1; }
+  .pluggy-item { flex-wrap: wrap; }
+  .pluggy-item > div { flex-basis: calc(100% - 48px); }
+  .pluggy-account-summary { grid-template-columns: 1fr; }
+  .pluggy-accounts { grid-template-columns: 1fr; }
+  .pluggy-transaction { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .pluggy-reconcile-actions { grid-column: 2 / -1; justify-content: flex-start; flex-wrap: wrap; }
+}
+@media (max-width: 520px) {
+  .pluggy-heading-actions, .pluggy-controls { align-items: stretch; flex-direction: column; }
+  .pluggy-controls label { justify-content: space-between; }
+  .pluggy-controls select { width: 100%; }
+  .pluggy-status { order: 4; }
+  .pluggy-transaction { grid-template-columns: 30px minmax(0, 1fr); }
+  .pluggy-transaction > strong { grid-column: 2; text-align: left; }
+  .pluggy-reconcile-actions { grid-column: 2; }
+}
 .personal-actions { margin: -3px 0 14px; display: flex; justify-content: flex-end; gap: 8px; }
 .personal-actions button, .personal-action { display: flex; align-items: center; gap: 7px; }
 .personal-finance-grid { display: grid; grid-template-columns: minmax(290px, .82fr) minmax(0, 1.18fr); gap: 14px; align-items: start; }

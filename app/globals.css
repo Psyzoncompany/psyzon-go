@@ -2,6 +2,7 @@
 
 :root {
   --ui-zoom: 1;
+  --ui-zoom-inverse: 1;
   --ui-viewport-width: 100vw;
   --ui-viewport-height: 100vh;
   --ui-notification-height: 72vh;
@@ -23,9 +24,9 @@
   --shadow: 0 1px 2px rgba(15, 23, 42, .025), 0 8px 24px rgba(15, 23, 42, .035);
 }
 
-:root[data-ui-size="compact"] { --ui-zoom: .9; --ui-viewport-width: 111.111vw; --ui-viewport-height: 111.111vh; --ui-notification-height: 80vh; }
-:root[data-ui-size="large"] { --ui-zoom: 1.14; --ui-viewport-width: 87.719vw; --ui-viewport-height: 87.719vh; --ui-notification-height: 63.158vh; }
-:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; --ui-viewport-width: 78.125vw; --ui-viewport-height: 78.125vh; --ui-notification-height: 56.25vh; }
+:root[data-ui-size="compact"] { --ui-zoom: .9; --ui-zoom-inverse: 1.111111; --ui-viewport-width: 111.111vw; --ui-viewport-height: 111.111vh; --ui-notification-height: 80vh; }
+:root[data-ui-size="large"] { --ui-zoom: 1.14; --ui-zoom-inverse: .877193; --ui-viewport-width: 87.719vw; --ui-viewport-height: 87.719vh; --ui-notification-height: 63.158vh; }
+:root[data-ui-size="extra-large"] { --ui-zoom: 1.28; --ui-zoom-inverse: .78125; --ui-viewport-width: 78.125vw; --ui-viewport-height: 78.125vh; --ui-notification-height: 56.25vh; }
 
 :root[data-theme="dark"] {
   --bg: #0f1115;
@@ -367,6 +368,10 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 
 /* Open Finance / Pluggy */
 .pluggy-panel { margin-bottom: 14px; overflow: hidden; }
+.pluggy-widget-portal { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 2147483000; isolation: isolate; zoom: var(--ui-zoom-inverse); }
+.pluggy-widget-portal > #PluggyConnect { position: static; overflow: visible; }
+html.pluggy-connect-visible, html.pluggy-connect-visible body { overflow: hidden; }
+html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-floating-button, html.pluggy-connect-visible .ai-floating-panel, html.pluggy-connect-visible .notes-calculator-fab { visibility: hidden; }
 .pluggy-heading { min-height: 78px; padding: 15px 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .pluggy-title, .pluggy-heading-actions, .pluggy-controls, .pluggy-reconcile-actions { display: flex; align-items: center; gap: 8px; }
 .pluggy-title { min-width: 0; gap: 11px; }

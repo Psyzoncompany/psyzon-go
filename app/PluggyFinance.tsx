@@ -4,6 +4,7 @@ import type { User } from "firebase/auth";
 import { AlertTriangle, ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Building2, Check, Link2, LoaderCircle, RefreshCw, Unlink, WalletCards } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 const PluggyConnect = dynamic(() => import("react-pluggy-connect").then((module) => module.PluggyConnect), { ssr: false });
 
@@ -124,6 +125,11 @@ export default function PluggyFinance({ user, displayMoney, notify }: { user: Us
     const timer = window.setInterval(() => void load(true), 15_000);
     return () => window.clearInterval(timer);
   }, [data?.items, load]);
+  useEffect(() => {
+    if (!widget) return;
+    document.documentElement.classList.add("pluggy-connect-visible");
+    return () => document.documentElement.classList.remove("pluggy-connect-visible");
+  }, [widget]);
 
   const openWidget = async (itemId?: string) => {
     setBusy(itemId ? `reconnect-${itemId}` : "connect");
@@ -208,23 +214,25 @@ export default function PluggyFinance({ user, displayMoney, notify }: { user: Us
       </div>
     </div>
 
-    {widget && <PluggyConnect
-      connectToken={widget.accessToken}
-      updateItem={widget.itemId}
-      includeSandbox={widget.includeSandbox}
-      language="pt"
-      theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
-      products={["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS", "PAYMENT_DATA"]}
-      allowConnectInBackground
-      onSuccess={({ item }) => void registerItem(item.id)}
-      onError={({ message, data: errorData }) => {
-        setWidget(null);
-        setError(message || "A instituição não concluiu a conexão. Tente novamente.");
-        if (errorData?.item?.id) void registerItem(errorData.item.id);
-      }}
-      onClose={() => setWidget(null)}
-      onLoadError={() => { setWidget(null); setError("Não foi possível carregar o ambiente seguro da Pluggy."); }}
-    />}
+    {widget ? createPortal(<div className="pluggy-widget-portal">
+      <PluggyConnect
+        connectToken={widget.accessToken}
+        updateItem={widget.itemId}
+        includeSandbox={widget.includeSandbox}
+        language="pt"
+        theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
+        products={["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS", "PAYMENT_DATA"]}
+        allowConnectInBackground
+        onSuccess={({ item }) => void registerItem(item.id)}
+        onError={({ message, data: errorData }) => {
+          setWidget(null);
+          setError(message || "A instituição não concluiu a conexão. Tente novamente.");
+          if (errorData?.item?.id) void registerItem(errorData.item.id);
+        }}
+        onClose={() => setWidget(null)}
+        onLoadError={() => { setWidget(null); setError("Não foi possível carregar o ambiente seguro da Pluggy."); }}
+      />
+    </div>, document.body) : null}
 
     {loading ? <div className="pluggy-state"><LoaderCircle className="spin" size={24} /><b>Carregando dados bancários</b><small>Consultando apenas o cache seguro do servidor.</small></div>
       : data?.configured === false ? <div className="pluggy-state warning"><AlertTriangle size={24} /><b>Pluggy ainda não configurada</b><small>Adicione PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET somente no ambiente do servidor.</small></div>

@@ -293,6 +293,20 @@ test("keeps notifications inside the viewport at every interface size", async ()
   assert.match(css, /\.notification-item small \{[^}]+overflow-wrap: anywhere/);
 });
 
+test("allows the Pluggy modal stylesheet without weakening script CSP", async () => {
+  const [proxy, css, component] = await Promise.all([
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/PluggyFinance.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(proxy, /script-src 'self' 'nonce-\$\{nonce\}' 'strict-dynamic'/);
+  assert.match(proxy, /style-src-elem 'self' 'unsafe-inline'/);
+  assert.doesNotMatch(proxy, /script-src[^\n]+unsafe-inline/);
+  assert.match(css, /\.pluggy-widget-portal \[id\$="_modal"\][^}]+width: 100vw !important[^}]+height: 100dvh !important/);
+  assert.match(css, /\.pluggy-widget-portal iframe[^}]+width: 100% !important[^}]+height: 100% !important/);
+  assert.match(component, /allowFullscreen/);
+});
+
 test("uses the full desktop viewport for the fabric calculator", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /@media \(min-width: 901px\) \{[\s\S]+?\.calculator-panel \{[^}]+width: 100%; height: 100%; max-height: none/);

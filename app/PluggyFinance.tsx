@@ -222,6 +222,7 @@ export default function PluggyFinance({ user, displayMoney, notify }: { user: Us
         language="pt"
         theme={document.documentElement.dataset.theme === "dark" ? "dark" : "light"}
         products={["ACCOUNTS", "CREDIT_CARDS", "TRANSACTIONS", "PAYMENT_DATA"]}
+        allowFullscreen
         allowConnectInBackground
         onSuccess={({ item }) => void registerItem(item.id)}
         onError={({ message, data: errorData }) => {

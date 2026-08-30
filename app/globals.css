@@ -368,8 +368,12 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 
 /* Open Finance / Pluggy */
 .pluggy-panel { margin-bottom: 14px; overflow: hidden; }
-.pluggy-widget-portal { position: fixed; top: 0; left: 0; width: 100vw; height: 100dvh; z-index: 2147483000; isolation: isolate; zoom: var(--ui-zoom-inverse); }
-.pluggy-widget-portal > #PluggyConnect { position: static; overflow: visible; }
+.pluggy-widget-portal { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 2147483000; isolation: isolate; overflow: hidden; background: #fff; zoom: var(--ui-zoom-inverse); }
+.pluggy-widget-portal > #PluggyConnect { position: fixed; inset: 0; width: 100vw; height: 100dvh; overflow: hidden; }
+.pluggy-widget-portal [id$="_modal-overlay"] { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; padding: 0 !important; background: #fff !important; display: flex !important; align-items: stretch !important; justify-content: stretch !important; }
+.pluggy-widget-portal [id$="_modal"] { position: relative !important; inset: auto !important; width: 100vw !important; max-width: none !important; height: 100dvh !important; max-height: none !important; margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+.pluggy-widget-portal [class*="_modal-content"], .pluggy-widget-portal [class*="_container"] { width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; border-radius: 0 !important; }
+.pluggy-widget-portal iframe { width: 100% !important; height: 100% !important; min-width: 100% !important; min-height: 100% !important; border: 0 !important; }
 html.pluggy-connect-visible, html.pluggy-connect-visible body { overflow: hidden; }
 html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-floating-button, html.pluggy-connect-visible .ai-floating-panel, html.pluggy-connect-visible .notes-calculator-fab { visibility: hidden; }
 .pluggy-heading { min-height: 78px; padding: 15px 17px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 16px; }

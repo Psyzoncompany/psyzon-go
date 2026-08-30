@@ -14,6 +14,9 @@ function contentSecurityPolicy(nonce: string) {
     "form-action 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/${developmentScriptFallback}`,
     `style-src 'self' 'nonce-${nonce}'`,
+    // Pluggy Connect injects a generated <style> element for its modal shell.
+    // Keep script execution nonce-protected while allowing only inline CSS elements.
+    "style-src-elem 'self' 'unsafe-inline'",
     "style-src-attr 'unsafe-inline'",
     "font-src 'self' data:",
     "img-src 'self' data: blob: https://lh3.googleusercontent.com",

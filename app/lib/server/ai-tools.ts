@@ -1,4 +1,5 @@
 import type { AIPermissionMode } from "../../ai/types";
+import { readDocument, type NoteMaterial } from "../../notes-model";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
   createUserDocument,
@@ -230,7 +231,10 @@ const searchSystem: ToolDefinition = {
       orders: orders.filter((item) => match(item, ["customer", "product", "notes"])).slice(0, 10).map((item) => ({ id: item.id, customer: item.customer, product: item.product, status: item.status })),
       clients: clients.filter((item) => match(item, ["name", "company"])).slice(0, 10).map((item) => ({ id: item.id, name: item.name, company: item.company })),
       transactions: transactions.filter((item) => match(item, ["description", "category"])).slice(0, 10).map((item) => ({ id: item.id, description: item.description, amount: item.amount, type: item.type })),
-      notes: notes.filter((item) => match(item, ["title", "content"])).slice(0, 5).map((item) => ({ id: item.id, title: item.title, category: item.category })),
+      notes: notes.filter((item) => {
+        const document = readDocument(text(item.content), (item.materials || []) as NoteMaterial[]);
+        return document.status === "active" && match({ ...item, content: document.blocks.map(block => block.text).join(" ") }, ["title", "content"]);
+      }).slice(0, 5).map((item) => ({ id: item.id, title: item.title, category: item.category })),
     };
   },
 };

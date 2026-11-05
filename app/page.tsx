@@ -817,10 +817,10 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className="content">
+        <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
-          {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
+          {view === "notas" && <NotesWorkspace key={uid} uid={uid} notes={notes} orders={orders} customers={visibleCustomers} privateValues={privateValues} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
           {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} displayMoney={displayMoney} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
 

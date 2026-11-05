@@ -1460,7 +1460,7 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
   body:has(.production-print-root) { margin: 0; background: white; color: #142b55; zoom: 1 !important; font-family: Arial, sans-serif; }
   body:has(.production-print-root) > *:not(.production-print-root) { display: none !important; }
   .production-print-root { display: block !important; color-scheme: light; }
-  .production-sheet { width: 100%; min-height: 273mm; display: flex; flex-direction: column; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .production-sheet { width: 100%; display: flex; flex-direction: column; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .production-sheet:last-child { break-after: auto; }
   .production-sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 10mm; padding: 4mm 0 6mm; border-bottom: .3mm solid #ced9e9; }
   .production-sheet-header h1 { margin: 2mm 0; font-size: 22pt; font-weight: 800; letter-spacing: 1pt; }
@@ -1491,6 +1491,15 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
   .production-sheet-footer > div > span { min-width: 17mm; padding: 3mm; border-radius: 2mm; background: #edf2fa; display: flex; flex-direction: column; gap: 2mm; font-size: 9pt; }
   .production-sheet-footer small { font-size: 8pt; }
   .production-sheet-footer p { display: flex; justify-content: space-between; gap: 5mm; font-size: 8pt; margin-block: 3mm; }
+  .production-sheet:has(.production-product-photo) .production-sheet-header { padding-block: 2mm 3mm; }
+  .production-sheet:has(.production-product-photo) .production-stages { padding-block: 2mm; }
+  .production-sheet:has(.production-product-photo) .production-group { margin-bottom: 2mm; }
+  .production-sheet:has(.production-product-photo) .production-group h2 { padding: 2.5mm 3mm; }
+  .production-sheet:has(.production-product-photo) .production-size { padding: 1mm 2.5mm .5mm; }
+  .production-sheet:has(.production-product-photo) .production-size h3 { padding: 1.25mm 2mm; }
+  .production-sheet:has(.production-product-photo) .production-piece { padding-block: 1.4mm; }
+  .production-sheet:has(.production-product-photo) .production-sheet-footer { padding-top: 3mm; }
+  .production-sheet-header p, .production-attention p, .production-group h2 span { overflow-wrap: anywhere; }
 }
 @media screen {
   .topbar { height: 52px; padding-inline: 24px; }

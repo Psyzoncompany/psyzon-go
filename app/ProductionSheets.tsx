@@ -10,7 +10,8 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   const pages = productionPages(checklist.rows);
   const summary = productionSummary(checklist.rows);
   const attention = [checklist.notes, ...checklist.warnings].filter(Boolean).join("\n");
-  const extra = attention.length > 200 ? attention.match(/[\s\S]{1,1200}/g) ?? [] : [];
+  const inlineLimit = photoData && checklist.rows.length <= 20 ? 420 : 200;
+  const extra = attention.length > inlineLimit || attention.split("\n").length > 8 ? attention.match(/[\s\S]{1,1200}/g) ?? [] : [];
   const totalPages = pages.length + extra.length;
   const header = <header className="production-sheet-header"><div><small>PSYZON · CONTROLE DE PRODUÇÃO</small><h1>LISTA DE CAMISAS</h1><p>{checklist.client || "Pedido"}{checklist.deadline ? ` · Entrega: ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${checklist.deadline}T12:00:00`))}` : ""}</p></div>{photoData && <figure className="production-product-photo"><img src={photoData} alt="Foto do produto" /><figcaption>Referência do produto</figcaption></figure>}<div><strong>{checklist.rows.length} UNIDADES</strong><small>Total do pedido</small></div></header>;
   const footer = (index: number) => <footer className="production-sheet-footer"><h2>RESUMO POR TAMANHO</h2><div>{summary.map((item) => <span key={item.size}><small>{item.size}</small><b>{item.quantity} un.</b></span>)}</div><p>{checklist.rows.filter((row) => row.name === "Sem nome").length} peça(s) sem nome · {checklist.rows.length} peças no total <span>A4 · Página {index + 1} de {totalPages}</span></p></footer>;

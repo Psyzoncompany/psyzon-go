@@ -61,6 +61,10 @@ export async function enforceProductionRateLimit(identity: FirebaseIdentity, req
   return enforceFinancialRateLimit(identity, request, "production-checklist", 12, 30);
 }
 
+export async function enforcePrivacyRateLimit(identity: FirebaseIdentity, request: Request) {
+  return enforceFinancialRateLimit(identity, request, "values-privacy", 12, 24);
+}
+
 async function enforceFinancialRateLimit(identity: FirebaseIdentity, request: Request, scope: string, userLimit: number, ipLimit: number) {
   const now = Date.now();
   const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);

@@ -4,9 +4,10 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
 import OrderPhotoField from "./OrderPhotoField";
+import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
-import { billDueDate, billIsSettled, customerAdjustments, customerBalances, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
@@ -95,6 +96,7 @@ type Order = {
   quantity: number;
   total: number;
   paid: number;
+  receivable?: number;
   dueDate: string;
   status: OrderStatus;
   notes?: string;
@@ -110,7 +112,7 @@ type Transaction = {
   account: "business" | "personal";
   category?: string;
   transactionDate?: string;
-  source?: "bill" | "ai_adjustment" | "mercado_pago" | "pluggy";
+  source?: "bill" | "ai_adjustment" | "mercado_pago" | "pluggy" | "customer_receipt" | "order_payment";
   provider?: "mercado_pago" | "pluggy";
   providerTransactionId?: string;
   externalReference?: string;
@@ -120,6 +122,7 @@ type Transaction = {
   netAmount?: number | null;
   billId?: string;
   orderId?: string;
+  customerId?: string;
   createdAt?: unknown;
 };
 type View = import("./useViewHistory").View;
@@ -241,6 +244,7 @@ function dueTone(dateString: string, status: OrderStatus) {
 
 export default function HomePage() {
   const [view, setView] = useViewHistory();
+  useEffect(() => { const timer = window.setInterval(() => setCalendarDate(localDateValue()), 30000); return () => window.clearInterval(timer); }, []);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -255,7 +259,10 @@ export default function HomePage() {
   const [authError, setAuthError] = useState("");
   const [resetting, setResetting] = useState(false);
   const [dark, setDark] = useState(false);
-  const [privateValues, setPrivateValues] = useState(false);
+  const [privateValues, setPrivateValues] = useState(true);
+  const [privacyTarget, setPrivacyTarget] = useState<boolean | null>(null);
+  const revealAction = useRef<(() => void) | null>(null);
+  const [calendarDate, setCalendarDate] = useState(() => localDateValue());
   const [uiSize, setUiSize] = useState<UISize>("comfortable");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -300,6 +307,9 @@ export default function HomePage() {
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribers = [];
+      setPrivateValues(true);
+      setPrivacyTarget(null);
+      revealAction.current = null;
       setUser(nextUser);
       setUid(nextUser?.uid ?? "");
       setAuthReady(true);
@@ -480,7 +490,17 @@ export default function HomePage() {
     }
   };
 
+  const closePrivacy = () => { setPrivacyTarget(null); revealAction.current = null; };
+  const requestPrivacy = (hide: boolean) => { revealAction.current = null; setPrivacyTarget(hide); };
+  const requireVisible = (action: () => void) => {
+    if (!privateValues) { action(); return; }
+    revealAction.current = action;
+    setPrivacyTarget(false);
+  };
+
   const signOutGoogle = async () => {
+    setPrivateValues(true);
+    closePrivacy();
     if (!isFirebaseConfigured) return;
     await signOut(clientAuth(getApps()[0]));
     setView("inicio");
@@ -518,10 +538,9 @@ export default function HomePage() {
 
   const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
   const visibleCustomers = balances.filter((customer) => !customer.archived);
-  const pending = balances.reduce((sum, customer) => sum + customer.pending, 0)
-    + bills.filter((bill) => bill.direction === "receivable" && !billIsSettled(bill)).reduce((sum, bill) => sum + bill.amount, 0);
-  const payable = bills.filter((bill) => bill.direction !== "receivable" && !billIsSettled(bill)).reduce((sum, bill) => sum + bill.amount, 0);
-  const activeOrders = orders.filter((order) => order.status !== "Entregue");
+  const { pending, toPay: payable, debtors } = financialSummary(balances, bills, calendarDate.slice(0, 7));
+  const orderBalances = orderReceivables(balances, orders);
+  const activeOrders = orders.filter((order) => order.status !== "Entregue").map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
   const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
 
@@ -543,11 +562,11 @@ export default function HomePage() {
       const dueDate = billDueDate(bill, month);
       const days = Math.ceil((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
       const action = bill.direction === "receivable" ? "a receber" : "a pagar";
-      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: money.format(bill.amount) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
+      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: (privateValues ? "Valor protegido" : money.format(bill.amount)) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
     });
 
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [activeOrders, bills]);
+  }, [activeOrders, bills, privateValues, calendarDate]);
 
   useEffect(() => {
     if (!notificationsEnabled || !dataReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -613,8 +632,8 @@ export default function HomePage() {
   const searchResults = useMemo(() => {
     const value = search.trim().toLocaleLowerCase("pt-BR");
     if (!value) return [];
-    return orders.filter((order) => [order.customer, order.product, order.id, order.phone, String(order.total)].some((field) => field?.toLocaleLowerCase("pt-BR").includes(value))).slice(0, 5);
-  }, [orders, search]);
+    return orders.filter((order) => [order.customer, order.product, order.id, order.phone, (!privateValues ? String(order.total) : undefined)].some((field) => field?.toLocaleLowerCase("pt-BR").includes(value))).slice(0, 5);
+  }, [orders, search, privateValues]);
 
   const displayMoney = (value: number) => (privateValues ? "R$ ••••••" : money.format(value));
 
@@ -627,7 +646,7 @@ export default function HomePage() {
     try {
       if (kind === "pedido") {
         const nextOrder: Omit<Order, "id"> = {
-          customer: String(form.get("customer")),
+          customer: String(form.get("customer")).trim(),
           phone: String(form.get("phone") || ""),
           product: String(form.get("product")),
           quantity: Number(form.get("quantity")),
@@ -646,8 +665,8 @@ export default function HomePage() {
         const customerKey = nextOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || orderKey;
         const batch = writeBatch(db);
         batch.set(orderReference, nextOrder);
-        const existingCustomer = customers.find((customer) => customer.name === nextOrder.customer);
-        batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: nextOrder.customer, phone: nextOrder.phone ?? "", archived: false }, { merge: true });
+        const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(nextOrder.customer));
+        batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: nextOrder.customer.trim(), phone: nextOrder.phone ?? "", archived: false, ...(existingCustomer?.archived ? customerAdjustments(0, 0, orders.filter(order => customerNameKey(order.customer) === customerNameKey(nextOrder.customer))) : {}) }, { merge: true });
         if (nextOrder.paid > 0) {
           batch.set(doc(userCollection(uid, "transactions")), { description: `Entrada · ${nextOrder.customer} · #${orderKey.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", category: "Vendas", orderId: orderKey, transactionDate: localDateValue(), createdAt: serverTimestamp() });
         }
@@ -655,10 +674,10 @@ export default function HomePage() {
         showToast("Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
         const name = String(form.get("name")).trim();
-        const existing = customers.find((customer) => customer.name === name);
+        const existing = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(name));
         const customer = { name, phone: String(form.get("phone") || ""), company: String(form.get("company") || ""), archived: false };
         if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-        if (existing) await setDoc(userDocument(uid, "customers", existing.id), customer, { merge: true });
+        if (existing) await setDoc(userDocument(uid, "customers", existing.id), { ...customer, ...(existing.archived ? customerAdjustments(0, 0, orders.filter(order => customerNameKey(order.customer) === customerNameKey(name))) : {}) }, { merge: true });
         else await addDoc(userCollection(uid, "customers"), customer);
         showToast("Cliente adicionado");
       }
@@ -682,7 +701,7 @@ export default function HomePage() {
     if (!editingOrder || firebaseState !== "live") return showToast("Firestore ainda não está conectado");
     const form = new FormData(event.currentTarget);
     const updatedOrder = {
-      customer: String(form.get("customer")),
+      customer: String(form.get("customer")).trim(),
       phone: String(form.get("phone") || ""),
       product: String(form.get("product")),
       quantity: Number(form.get("quantity")),
@@ -695,37 +714,59 @@ export default function HomePage() {
     };
     const db = getFirestore(getApps()[0]);
     const customerKey = updatedOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || editingOrder.id;
-    const linkedPayments = transactions.filter((transaction) => transaction.orderId === editingOrder.id);
-    const batch = writeBatch(db);
-    batch.update(userDocument(uid, "orders", editingOrder.id), updatedOrder);
-    const existingCustomer = customers.find((customer) => customer.name === updatedOrder.customer);
-    batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
-    if (updatedOrder.paid > 0) {
-      const payment = { description: `Entrada · ${updatedOrder.customer} · #${editingOrder.id.slice(0, 5).toUpperCase()}`, amount: updatedOrder.paid, type: "income", account: "business", category: "Vendas", orderId: editingOrder.id };
-      if (linkedPayments[0]) batch.update(userDocument(uid, "transactions", linkedPayments[0].id), payment);
-      else batch.set(doc(userCollection(uid, "transactions")), { ...payment, transactionDate: localDateValue(), createdAt: serverTimestamp() });
-      linkedPayments.slice(1).forEach((transaction) => batch.delete(userDocument(uid, "transactions", transaction.id)));
-    } else {
-      linkedPayments.forEach((transaction) => batch.delete(userDocument(uid, "transactions", transaction.id)));
-    }
-    await batch.commit();
+    await runTransaction(db, async transaction => {
+      const orderRef = userDocument(uid, "orders", editingOrder.id);
+      const current = await transaction.get(orderRef);
+      if (!current.exists()) throw new Error("Este pedido foi excluído.");
+      if (current.data().paid !== editingOrder.paid || current.data().total !== editingOrder.total) {
+        throw new Error("O valor do pedido mudou. Feche a edição, confira os valores e tente novamente.");
+      }
+      const linkedPayments = transactions.filter(item => item.orderId === editingOrder.id);
+      transaction.update(orderRef, updatedOrder);
+      const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(updatedOrder.customer));
+      transaction.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
+      if (updatedOrder.paid !== editingOrder.paid) {
+        const manual = linkedPayments.filter(item => !item.source || item.source === "order_payment");
+        const recorded = roundMoney(linkedPayments.filter(item => item.type === "income" && item.source && item.source !== "order_payment").reduce((sum, item) => sum + item.amount, 0));
+        const amount = roundMoney(updatedOrder.paid - recorded);
+        if (amount < 0) throw new Error("O valor é menor que os recebimentos já registrados para este pedido.");
+        const payment = { description: `Entrada · ${updatedOrder.customer} · #${editingOrder.id.slice(0, 5).toUpperCase()}`, amount, type: "income", account: "business", category: "Vendas", orderId: editingOrder.id };
+        if (amount > 0) {
+          if (manual[0]) transaction.update(userDocument(uid, "transactions", manual[0].id), payment);
+          else transaction.set(doc(userCollection(uid, "transactions")), { ...payment, source: "order_payment", transactionDate: localDateValue(), createdAt: serverTimestamp() });
+        }
+        manual.slice(amount > 0 ? 1 : 0).forEach(item => transaction.delete(userDocument(uid, "transactions", item.id)));
+      }
+    });
     setEditingOrder(null);
     showToast("Pedido e financeiro atualizados");
   };
 
   const saveCustomerValues = async (customer: CustomerBalance, total: number, pending: number) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-    const adjustments = customerAdjustments(total, pending, orders.filter((order) => order.customer === customer.name));
-    await setDoc(userDocument(uid, "customers", customer.id), { name: customer.name, phone: customer.phone, ...adjustments }, { merge: true });
+    const key = customerNameKey(customer.name);
+    const related = orders.filter(order => customerNameKey(order.customer) === key);
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const reference = userDocument(uid, "customers", customer.id);
+      const snapshot = await transaction.get(reference);
+      const orderSnapshots = await Promise.all(related.map(order => transaction.get(userDocument(uid, "orders", order.id))));
+      const currentOrders = orderSnapshots.filter(item => item.exists()).map(item => item.data() as Order).filter(order => customerNameKey(order.customer) === key);
+      const current = snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as Customer : customer;
+      const [balance] = customerBalances([current], currentOrders);
+      if (current.archived || balance.total !== customer.total || balance.pending !== customer.pending) {
+        throw new Error("Os valores do cliente mudaram. Abra a edição novamente para conferir o saldo atualizado.");
+      }
+      transaction.set(reference, { name: current.name, phone: current.phone, ...customerAdjustments(total, pending, currentOrders) }, { merge: true });
+    });
     showToast("Valores do cliente atualizados");
   };
 
   const deleteCustomer = async (customer: CustomerBalance) => {
-    if (!window.confirm("Excluir o cliente “" + customer.name + "”? Os pedidos e valores a receber serão preservados.")) return;
+    if (!window.confirm("Excluir o cliente “" + customer.name + "”? Os pedidos ficam no histórico e este cliente deixará de compor o total a receber.")) return;
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
     // A tombstone prevents historical orders from recreating a deleted customer.
     const batch = writeBatch(getFirestore(getApps()[0]));
-    const matches = customers.filter((item) => item.name === customer.name);
+    const matches = customers.filter((item) => customerNameKey(item.name) === customerNameKey(customer.name));
     if (!matches.length) matches.push(customer);
     matches.forEach((item) => batch.set(userDocument(uid, "customers", item.id), { name: item.name, phone: item.phone, archived: true }, { merge: true }));
     await batch.commit();
@@ -733,15 +774,40 @@ export default function HomePage() {
   };
 
   const receiveCustomer = async (customer: CustomerBalance) => {
-    if (!window.confirm("Confirmar o recebimento de " + money.format(customer.pending) + " de " + customer.name + "?")) return;
-    await saveCustomerValues(customer, customer.total, 0);
+    if (!window.confirm("Confirmar o recebimento de " + displayMoney(customer.pending) + " de " + customer.name + "?")) return;
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    const related = orders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
+    if (related.length > 180) throw new Error("Receba os pedidos em lotes menores.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const customerRef = userDocument(uid, "customers", customer.id);
+      const customerSnapshot = await transaction.get(customerRef);
+      const orderSnapshots = await Promise.all(related.map(order => transaction.get(userDocument(uid, "orders", order.id))));
+      const currentOrders = orderSnapshots.filter(snapshot => snapshot.exists()).map(snapshot => ({ ...snapshot.data(), id: snapshot.id } as Order)).filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
+      const current = customerSnapshot.exists() ? { ...customerSnapshot.data(), id: customerSnapshot.id } as Customer : customer;
+      const receipt = customerReceipt(current, currentOrders);
+      if (roundMoney(receipt.amount) !== roundMoney(customer.pending)) throw new Error("O saldo mudou. Confira o valor atualizado e tente novamente.");
+      for (const payment of receipt.payments) {
+        transaction.update(userDocument(uid, "orders", payment.orderId), { paid: payment.paid });
+        transaction.set(doc(userCollection(uid, "transactions")), { description: "Recebimento · " + current.name, amount: payment.amount, type: "income", account: "business", category: "Vendas", source: "customer_receipt", customerId: current.id, orderId: payment.orderId, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+      }
+      if (receipt.unallocated > 0) transaction.set(doc(userCollection(uid, "transactions")), { description: "Recebimento · " + current.name, amount: receipt.unallocated, type: "income", account: "business", category: "Vendas", source: "customer_receipt", customerId: current.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+      transaction.set(customerRef, { name: current.name, phone: current.phone, ...receipt.adjustments }, { merge: true });
+    });
+    showToast("Recebimento e pedidos atualizados");
   };
 
   const saveBill = async (bill: Bill | null, input: BillInput) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
     if (!input.description || !input.category || !Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Preencha a descrição e um valor válido.");
     if (bill) {
-      await updateDoc(userDocument(uid, "bills", bill.id), { ...input, dueDate: input.dueDate ?? deleteField(), totalInstallments: input.totalInstallments ?? deleteField(), ...(bill.billingType !== input.billingType ? { lastPaidMonth: deleteField(), settled: deleteField(), paidInstallments: 0 } : {}) });
+      await runTransaction(getFirestore(getApps()[0]), async transaction => {
+        const reference = userDocument(uid, "bills", bill.id);
+        const snapshot = await transaction.get(reference);
+        if (!snapshot.exists()) throw new Error("Esta conta foi excluída.");
+        const current = { ...snapshot.data(), id: snapshot.id } as Bill;
+        const settlement = billSettlementAfterEdit(current, input.billingType);
+        transaction.update(reference, { ...input, dueDate: input.dueDate ?? deleteField(), totalInstallments: input.totalInstallments ?? deleteField(), ...settlement });
+      });
     } else {
       await addDoc(userCollection(uid, "bills"), { ...input, paidInstallments: 0, createdAt: serverTimestamp() });
     }
@@ -752,14 +818,17 @@ export default function HomePage() {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
     if (billIsSettled(bill)) return;
     const receiving = bill.direction === "receivable";
-    if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + money.format(bill.amount) + " · " + bill.description + "?")) return;
+    if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return;
     const month = localDateValue().slice(0, 7);
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const reference = userDocument(uid, "bills", bill.id);
       const snapshot = await transaction.get(reference);
       if (!snapshot.exists()) throw new Error("Esta conta foi excluída. Atualize a página.");
       const current = { ...snapshot.data(), id: snapshot.id } as Bill;
-      if (billIsSettled(current, month)) return;
+      if (billIsSettled(current, month)) throw new Error("Esta conta já foi concluída.");
+      if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType) {
+        throw new Error("A conta mudou. Confira os dados atualizados antes de confirmar.");
+      }
       transaction.set(userDocument(uid, "transactions", `bill-${bill.id}-${current.billingType === "once" ? "once" : month}`), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
       transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
     });
@@ -767,7 +836,8 @@ export default function HomePage() {
   };
 
   const deleteBill = async (bill: Bill) => {
-    if (!window.confirm("Excluir a conta “" + bill.description + "”?")) return;
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    if (!window.confirm("Excluir a conta “" + bill.description + "”? O histórico de pagamentos será mantido.")) return;
     await deleteDoc(userDocument(uid, "bills", bill.id));
     showToast("Conta removida");
   };
@@ -806,11 +876,11 @@ export default function HomePage() {
             <Search size={18} />
             <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, pedido ou produto…" aria-label="Busca global" />
             <kbd>/</kbd>
-            {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(order.total - order.paid)}<small>pendente</small></strong></button>)}</div>}
+            {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(orderBalances.get(order.id) ?? 0)}<small>pendente</small></strong></button>)}</div>}
           </div>
           <div className="top-actions">
             <button className={`floating-mode-action ${floatingActive ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingActive ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingActive}><PictureInPicture2 size={18} /><span>{floatingActive ? "Flutuante ativo" : "Modo flutuante"}</span></button>
-            <button className="desktop-action" onClick={() => setPrivateValues((value) => !value)} aria-label="Ocultar valores">{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+            <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-label={privateValues ? "Mostrar valores" : "Ocultar valores"} title={privateValues ? "Mostrar valores" : "Ocultar valores"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>
             {notificationsOpen && <div className="notification-panel"><header><div><b>Notificações</b><small>{notifications.length ? `${notifications.length} item(ns) precisam de atenção` : "Tudo em dia por aqui"}</small></div><button onClick={() => setNotificationsOpen(false)} aria-label="Fechar notificações"><X size={16} /></button></header><div>{notifications.length ? notifications.map((item) => <button className="notification-item" key={item.id} onClick={() => { setView(item.view); setNotificationsOpen(false); }}><span className={item.tone}>{item.tone === "danger" ? <AlertTriangle size={15} /> : <Bell size={15} />}</span><span><b>{item.title}</b><small>{item.detail}</small></span><ChevronRight size={15} /></button>) : <div className="notification-empty"><Check size={20} /><b>Nenhuma pendência próxima</b><small>Pedidos e contas aparecerão aqui.</small></div>}</div></div>}
@@ -818,14 +888,14 @@ export default function HomePage() {
         </header>
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
-          {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
-          {view === "notas" && <NotesWorkspace key={uid} uid={uid} notes={notes} orders={orders} customers={visibleCustomers} privateValues={privateValues} />}
-          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
-          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} displayMoney={displayMoney} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
+          {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={(order: Order) => requireVisible(() => setEditingOrder(order))} />}
+          {view === "notas" && <NotesWorkspace key={uid} uid={uid} notes={notes} orders={orders} customers={visibleCustomers} privateValues={privateValues} requireVisible={requireVisible} />}
+          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} requireVisible={requireVisible} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} requireVisible={requireVisible} displayMoney={displayMoney} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
 
 
-          {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
+          {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
@@ -837,10 +907,11 @@ export default function HomePage() {
       </nav>
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
-      {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={saveOrder} />}
+      {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}
 
 
 
+      {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={() => { const action = revealAction.current; setPrivateValues(privacyTarget); closePrivacy(); action?.(); }} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -894,7 +965,7 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ userName, orders, pending, payable, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -903,16 +974,16 @@ function Dashboard({ userName, orders, pending, payable, overdue, urgent, displa
     </div>
     <div className="metric-grid">
       <Metric icon={WalletCards} label="A pagar" value={displayMoney(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
-      <Metric icon={CircleDollarSign} label="A receber" value={displayMoney(pending)} detail={<><span>{orders.filter((o: Order) => o.total > o.paid).length} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
+      <Metric icon={CircleDollarSign} label="A receber" value={displayMoney(pending)} detail={<><span>{debtorsCount} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={`${orders.length} pedidos`} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
 
     </div>
 
     <div className="dashboard-grid">
       <div className="main-column">
-        {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + orders.filter((o: Order) => o.total > o.paid).length} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido #{order.id} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}
+        {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + debtorsCount} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido #{order.id} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}
         <section className="panel"><div className="section-title"><div><h2>Hoje</h2><span className="count">{Math.min(3, orders.length)}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div><div className="today-list">{orders.slice(0, 3).map((order: Order, index: number) => <div className="today-row" key={order.id}><button className="check-button" onClick={() => updateStatus(order, order.status === "Finalização" ? "Pronto" : "Finalização")} aria-label="Concluir etapa"><span /></button><div><span className="task-type">PEDIDO #{order.id}</span><b>{index === 0 ? "Finalizar e embalar" : index === 1 ? "Conferir impressão" : "Separar materiais"}</b><small>{order.customer} · {order.quantity} un.</small></div><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><button className="row-menu"><MoreHorizontal size={18} /></button></div>)}</div></section>
-        <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{orders.slice(0, 4).map((order: Order) => <div className="delivery-row" key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><div><span style={{ width: `${statusProgress[order.status]}%` }} /></div><small>{order.status} · {statusProgress[order.status]}%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.total - order.paid)}</b></div><ChevronRight size={17} /></div>)}</div></section>
+        <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{orders.slice(0, 4).map((order: Order) => <div className="delivery-row" key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><div><span style={{ width: `${statusProgress[order.status]}%` }} /></div><small>{order.status} · {statusProgress[order.status]}%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></div><ChevronRight size={17} /></div>)}</div></section>
       </div>
       <aside className="side-column">
         <section className="panel quick-panel"><div className="section-title"><h2>Ações rápidas</h2></div><button onClick={() => setModal("pedido")}><Boxes size={18} /><span><b>Novo pedido</b><small>Produção e prazo</small></span><Plus size={17} /></button><button onClick={() => setModal("cliente")}><UsersRound size={18} /><span><b>Novo cliente</b><small>Cadastro essencial</small></span><Plus size={17} /></button><button onClick={() => setView("financeiro")}><WalletCards size={18} /><span><b>Contas a pagar e receber</b><small>Despesas mensais</small></span><ChevronRight size={17} /></button></section>
@@ -929,22 +1000,22 @@ function Metric({ icon: Icon, label, value, detail, onClick }: any) {
 
 function Production({ orders, board, setBoard, displayMoney, updateStatus, editOrder }: any) {
   const statuses: OrderStatus[] = ["Aguardando material", "Produção", "Finalização", "Pronto"];
-  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span className="order-customer-cell">{order.photoData && <img className="order-photo-thumb" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.total - order.paid)} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span className="order-customer-cell">{order.photoData && <img className="order-photo-thumb" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
 }
 
 function OrderCard({ order, displayMoney, updateStatus, editOrder }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void; editOrder: (order: Order) => void }) {
   const contactUrl = whatsappUrl(order.phone, `Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`);
-  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>{order.photoData && <img className="order-card-photo" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
+  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>{order.photoData && <img className="order-card-photo" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
 }
 
-function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValues, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, user, onSignOut, onReset, resetting }: any) {
+function MoreView({ firebaseState, dark, setDark, privateValues, requestPrivacy, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, user, onSignOut, onReset, resetting }: any) {
   const sizes: { value: UISize; label: string; hint: string }[] = [
     { value: "compact", label: "Pequena", hint: "90%" },
     { value: "comfortable", label: "Normal", hint: "100%" },
     { value: "large", label: "Grande", hint: "114%" },
     { value: "extra-large", label: "Muito grande", hint: "128%" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

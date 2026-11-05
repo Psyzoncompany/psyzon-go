@@ -97,6 +97,19 @@ test("owners can adjust and remove customer cards without changing historical or
   await assertFails(updateDoc(doc(environment.authenticatedContext("user-b").firestore(), "users/user-a/customers/ana"), { archived: false }));
 });
 
+test("customer receipts can update orders while privacy credentials remain server-only", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  await assertFails(getDoc(doc(db, "privateSettings/valuesPrivacy")));
+  await assertFails(setDoc(doc(db, "privateSettings/valuesPrivacy"), { salt: "test", hash: "test" }));
+  const order = doc(db, "users/user-a/orders/one");
+  await assertSucceeds(setDoc(order, validOrder()));
+  await assertSucceeds(updateDoc(order, { paid: 1000 }));
+  await assertSucceeds(setDoc(doc(db, "users/user-a/transactions/receipt"), {
+    description: "Recebimento", amount: 750, type: "income", account: "business",
+    source: "customer_receipt", customerId: "cliente-a", orderId: "one",
+  }));
+});
+
 test("one-time payable and receivable bills require valid due dates and settle correctly", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   const reference = doc(db, "users/user-a/bills/supply");

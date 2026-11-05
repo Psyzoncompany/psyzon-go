@@ -72,7 +72,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
           "description", "amount", "type", "account", "category", "transactionDate", "source",
           "provider", "providerTransactionId", "externalReference", "paymentMethod", "providerStatus",
-          "feeAmount", "netAmount", "billId", "orderId", "createdAt"
+          "feeAmount", "netAmount", "billId", "orderId", "customerId", "createdAt"
         ])
         && data.keys().hasAll(["description", "amount", "type", "account"])
         && text(data.description, 1, 240)
@@ -81,9 +81,10 @@ service cloud.firestore {
         && data.account in ["business", "personal"]
         && optionalText(data, "category", 100)
         && (!("transactionDate" in data) || calendarDate(data.transactionDate))
-        && (!("source" in data) || data.source in ["bill", "ai_adjustment", "mercado_pago", "pluggy"])
+        && (!("source" in data) || data.source in ["bill", "ai_adjustment", "mercado_pago", "pluggy", "customer_receipt", "order_payment"])
         && optionalText(data, "billId", 160)
         && optionalText(data, "orderId", 160)
+        && optionalText(data, "customerId", 600)
         && optionalNullableText(data, "externalReference", 160)
         && optionalNullableText(data, "paymentMethod", 80)
         && optionalText(data, "providerStatus", 60)

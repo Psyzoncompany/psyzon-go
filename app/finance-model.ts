@@ -8,7 +8,7 @@ export type Customer = {
   archived?: boolean;
 };
 
-export type CustomerOrder = { customer: string; phone?: string; total: number; paid: number };
+export type CustomerOrder = { id?: string; customer: string; phone?: string; total: number; paid: number };
 export type CustomerBalance = Customer & { total: number; pending: number; orderCount: number };
 export type Bill = {
   id: string;
@@ -29,15 +29,66 @@ export type Bill = {
 
 export function customerBalances(customers: Customer[], orders: CustomerOrder[]): CustomerBalance[] {
   const map = new Map<string, CustomerBalance>();
-  customers.forEach((customer) => map.set(customer.name, { ...customer, total: customer.totalAdjustment ?? 0, pending: customer.pendingAdjustment ?? 0, orderCount: 0 }));
+  customers.forEach((customer) => {
+    const key = customerNameKey(customer.name);
+    const previous = map.get(key);
+    if (!previous || (previous.archived && !customer.archived)) map.set(key, { ...customer, total: customer.totalAdjustment ?? 0, pending: customer.pendingAdjustment ?? 0, orderCount: 0 });
+  });
   orders.forEach((order) => {
-    const customer = map.get(order.customer) ?? { id: `legacy-${encodeURIComponent(order.customer)}`, name: order.customer, phone: order.phone ?? "", total: 0, pending: 0, orderCount: 0 };
+    const key = customerNameKey(order.customer);
+    const customer = map.get(key) ?? { id: `legacy-${encodeURIComponent(key)}`, name: order.customer, phone: order.phone ?? "", total: 0, pending: 0, orderCount: 0 };
     customer.total += order.total;
     customer.pending += Math.max(0, order.total - order.paid);
     customer.orderCount += 1;
-    map.set(order.customer, customer);
+    map.set(key, customer);
   });
   return [...map.values()].map((customer) => ({ ...customer, total: Math.max(0, Math.round(customer.total * 100) / 100), pending: Math.max(0, Math.round(customer.pending * 100) / 100) }));
+}
+
+export function customerNameKey(name: string) {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
+export function financialSummary(customers: CustomerBalance[], bills: Bill[], month = localDateValue().slice(0, 7)) {
+  const debtors = customers.filter((customer) => !customer.archived && customer.pending > 0);
+  const open = bills.filter((bill) => !billIsSettled(bill, month));
+  const payable = open.filter((bill) => bill.direction !== "receivable");
+  const receivable = open.filter((bill) => bill.direction === "receivable");
+  return { debtors, payable, receivable, pending: roundMoney(debtors.reduce((sum, customer) => sum + customer.pending, 0) + receivable.reduce((sum, bill) => sum + bill.amount, 0)), toPay: roundMoney(payable.reduce((sum, bill) => sum + bill.amount, 0)) };
+}
+
+export const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+export function orderReceivables(customers: CustomerBalance[], orders: CustomerOrder[]) {
+  const remaining = new Map(customers.map((customer) => [customerNameKey(customer.name), customer.archived ? 0 : customer.pending]));
+  const result = new Map<string, number>();
+  for (const order of orders) {
+    const key = customerNameKey(order.customer);
+    const amount = roundMoney(Math.min(Math.max(0, remaining.get(key) ?? 0), Math.max(0, order.total - order.paid)));
+    if (order.id) result.set(order.id, amount);
+    remaining.set(key, roundMoney((remaining.get(key) ?? 0) - amount));
+  }
+  return result;
+}
+
+export function customerReceipt(customer: Customer, orders: CustomerOrder[]) {
+  const balance = customerBalances([customer], orders)[0];
+  if (!balance || balance.archived || balance.pending <= 0) throw new Error("Este cliente não possui saldo a receber.");
+  let remaining = balance.pending;
+  const payments: Array<{ orderId: string; amount: number; paid: number }> = [];
+  const updated = orders.map((order) => {
+    if (!order.id) throw new Error("Pedido sem identificação.");
+    const amount = roundMoney(Math.min(remaining, Math.max(0, order.total - order.paid)));
+    remaining = roundMoney(remaining - amount);
+    if (amount > 0) payments.push({ orderId: order.id, amount, paid: roundMoney(order.paid + amount) });
+    return { ...order, paid: roundMoney(order.paid + amount) };
+  });
+  return { amount: balance.pending, payments, unallocated: remaining, adjustments: customerAdjustments(balance.total, 0, updated) };
+}
+
+export function billSettlementAfterEdit(bill: Bill, nextType: Bill["billingType"]) {
+  if (bill.billingType === nextType) return {};
+  return { paidInstallments: 0, settled: nextType === "once" && billIsSettled(bill) };
 }
 
 export function customerAdjustments(total: number, pending: number, orders: CustomerOrder[]) {

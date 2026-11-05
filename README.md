@@ -8,7 +8,10 @@ usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
 - Os botões de voltar/avançar do navegador e do mouse navegam entre as telas.
 - Em Clientes, o lápis edita total comprado e saldo pendente. Os ajustes continuam
   recebendo os valores de novos pedidos. A lixeira remove o cadastro da lista e
-  preserva pedidos e recebíveis históricos.
+  preserva os pedidos no histórico e retira o saldo do cliente do total a receber.
+  O botão Receber atualiza o saldo do cliente e os pagamentos dos pedidos vinculados.
+- Os valores começam ocultos. Use o botão do olho ou a opção em Configurações e
+  confirme a senha de privacidade para mudar a visibilidade.
 - O Financeiro concentra contas mensais, únicas e parceladas, a pagar ou receber,
   e despesas pagas por mês. As telas de saldo empresarial/pessoal, movimentações
   avulsas, conexão bancária e assistente geral foram retiradas da interface.

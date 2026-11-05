@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { billDueDate, billIsSettled, customerAdjustments, customerBalances, type Bill } from "../app/finance-model";
+import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { viewFromHash } from "../app/useViewHistory";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
@@ -28,6 +28,37 @@ test("zero adjustments are respected, invalid balances rejected, and deletion su
 });
 
 const bill = (overrides: Partial<Bill> = {}): Bill => ({ id: "rent", description: "Aluguel", amount: 500, account: "business", billingType: "fixed", dueDay: 31, category: "Estrutura", ...overrides });
+
+test("deleting a customer removes only their debt from all live totals and keeps historical orders", () => {
+  const orders = [{ id: "old", customer: " JOÃO  SILVA ", total: 880, paid: 520 }, { id: "live", customer: "Ana", total: 200, paid: 100 }];
+  const customers = [{ id: "joao", name: "João Silva", phone: "", archived: true }];
+  const balances = customerBalances(customers, orders);
+  const summary = financialSummary(balances, [bill({ direction: "receivable", amount: 75 })], "2026-11");
+  assert.equal(summary.pending, 175);
+  assert.deepEqual(summary.debtors.map(customer => customer.name), ["Ana"]);
+  assert.equal(orderReceivables(balances, orders).get("old"), 0);
+  assert.equal(orders[0].paid, 520);
+});
+
+test("receipts update orders and preserve the rest of the adjusted customer balance", () => {
+  const orders = [{ id: "one", customer: "Ana", total: 200, paid: 100 }, { id: "two", customer: "Ana", total: 150, paid: 0 }];
+  const customer = { id: "ana", name: "Ana", phone: "", pendingAdjustment: -125 };
+  const receipt = customerReceipt(customer, orders);
+  assert.equal(receipt.amount, 125);
+  assert.deepEqual(receipt.payments, [{ orderId: "one", amount: 100, paid: 200 }, { orderId: "two", amount: 25, paid: 25 }]);
+  const after = orders.map((order, index) => ({ ...order, paid: receipt.payments[index].paid }));
+  const updatedCustomer = { ...customer, ...receipt.adjustments };
+  assert.equal(financialSummary(customerBalances([updatedCustomer], after), []).pending, 0);
+  assert.equal(financialSummary(customerBalances([updatedCustomer], [...after, { customer: "Ana", total: 150, paid: 0 }]), []).pending, 150);
+  assert.throws(() => customerReceipt({ ...customer, archived: true }, orders));
+});
+
+test("changing recurrence keeps a bill settled for the period already paid", () => {
+  const month = new Date().toLocaleDateString("sv-SE").slice(0, 7);
+  const original = bill({ lastPaidMonth: month });
+  const changed = { ...original, billingType: "once" as const, ...billSettlementAfterEdit(original, "once") };
+  assert.equal(billIsSettled(changed, month), true);
+});
 
 test("monthly bills reopen next month and clamp due dates to short months", () => {
   const paid = bill({ lastPaidMonth: "2026-11" });

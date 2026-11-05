@@ -26,6 +26,8 @@ import {
 import { getApps } from "firebase/app";
 import { addDoc, collection, deleteDoc, doc, getFirestore, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import ProductionChecklist from "./ProductionChecklist";
+import type { ProductionChecklist as Checklist } from "./production-checklist";
 
 export type NoteCategory = "Geral" | "Produção" | "Clientes" | "Compras" | "Modelagem";
 
@@ -36,6 +38,7 @@ export type BusinessNote = {
   category: NoteCategory;
   pinned: boolean;
   materials?: NoteMaterial[];
+  checklist?: Checklist | null;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -58,7 +61,7 @@ export type NoteMaterial = {
   supplier: "Costa Rica" | "Atual Têxtil";
 };
 
-type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & { materials: NoteMaterial[] };
+type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned" | "checklist"> & { materials: NoteMaterial[] };
 type SaveState = "saved" | "saving" | "error";
 type FabricType = "PV" | "PP" | "PIQUET";
 type CollarType = "common" | "polo";
@@ -159,7 +162,7 @@ function toDraft(note: BusinessNote): Draft {
     : note.content;
   const content = materials.length ? includeMaterialCostLines(baseContent, materials) : baseContent;
   const organized = organizeMaterialList(normalizeKgInText(content), materials);
-  return { title: note.title, content: organized.content, category: note.category, pinned: note.pinned, materials: organized.materials };
+    return { title: note.title, content: organized.content, category: note.category, pinned: note.pinned, materials: organized.materials, checklist: note.checklist ?? null };
 }
 
 function titleCaseColor(value: string) {
@@ -195,6 +198,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   const initialDraft: Draft = initialNote ? toDraft(initialNote) : emptyDraft;
   const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
   const [draft, setDraft] = useState<Draft>(initialDraft);
+  const [checklistMode, setChecklistMode] = useState(Boolean(initialNote?.checklist));
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<(typeof categories)[number]>("Todos");
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -453,10 +457,10 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
   };
 
   return (
-    <div className="notes-workspace">
+    <div className={`notes-workspace ${checklistMode ? "checklist-editing" : ""}`}>
       <div className="page-heading compact notes-heading">
-        <div><span className="eyebrow">CENTRAL DE ANOTAÇÕES</span><h1>Bloco de notas</h1><p>Produção, clientes, compras e modelagem salvos em tempo real.</p></div>
-        <button className="primary" onClick={() => createNote()}><FilePlus2 size={18} /> Nova anotação</button>
+        <div><h1>Bloco de notas</h1></div>
+        <div className="notes-heading-actions"><button className="secondary" onClick={async () => { if (!selectedId) await createNote(); setChecklistMode((current) => !current); }}>{checklistMode ? "Voltar ao texto" : "Checklist de produção"}</button><button className="primary" onClick={() => createNote()}><FilePlus2 size={18} /> Nova anotação</button></div>
       </div>
 
       <section className="notes-page-navigation panel" aria-label="Páginas do bloco de notas">
@@ -500,6 +504,7 @@ export default function NotesWorkspace({ uid, notes }: { uid: string; notes: Bus
                 <button className="danger" onClick={deleteNote} aria-label="Excluir página" title="Excluir página"><Trash2 size={15} /></button>
               </div>
               <textarea className="notion-text-editor" ref={textareaRef} value={draft.content} onChange={(event) => updateNoteContent(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase("pt-BR") === "b") { event.preventDefault(); wrapSelection("**"); } }} placeholder={'Comece a escrever…\n\nUse a calculadora para inserir materiais diretamente nesta página.'} aria-label="Conteúdo da página" spellCheck />
+              {checklistMode && <ProductionChecklist key={selectedId} title={draft.title} source={draft.content} value={draft.checklist} onChange={(checklist) => setDraft((current) => ({ ...current, checklist, category: checklist ? "Produção" : current.category }))} />}
               <div className="note-print-export" aria-hidden="true"><h1>{draft.title || "Sem título"}</h1><pre>{exportedMaterials()}</pre></div>
               <div className="notion-writing-help"><span><b>Texto livre</b> · o cálculo entra aqui e pode ser editado como TXT</span><span>{draft.content.length.toLocaleString("pt-BR")} caracteres</span></div>
             </div>

@@ -213,7 +213,7 @@ test("service worker clones only a public static response before its body is con
   assert.equal(cachedBody, "fresh asset");
 });
 
-test("ships the secured PSYZON AI page, floating assistant and server integrations", async () => {
+test("removes AI and bank widgets from the app while preserving secured server integrations", async () => {
   const [page, workspace, schema, aiRoute, aiStore, webhook, paymentLookup, paymentHandler, mercadoPago, exampleEnv] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/PSYZONAIWorkspace.tsx", import.meta.url), "utf8"),
@@ -227,13 +227,16 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
   ]);
 
-  assert.match(page, /label: "PSYZON AI"/);
-  assert.match(page, /ai-floating-button/);
+
+
   assert.match(page, /event\.ctrlKey \|\| event\.metaKey \|\| event\.altKey/);
   assert.match(page, /Tamanho das letras/);
   assert.match(page, /extra-large/);
-  assert.match(page, /main \$\{view === "ai" \? "ai-view" : ""\}/);
-  assert.match(page, /<PSYZONAIWorkspace/);
+
+
+  assert.doesNotMatch(page, /PSYZONAIWorkspace|ai-floating-button|PluggyFinance|Saldo pessoal|Saldo empresa/);
+  assert.match(page, /<FinanceWorkspace/);
+  assert.match(page, /<CustomersWorkspace/);
   assert.match(workspace, /ai-quick-grid/);
   assert.match(workspace, /SpeechRecognition/);
   assert.match(workspace, /Salvar hist/);
@@ -259,8 +262,8 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
   assert.match(paymentHandler, /private, no-store/);
   assert.match(mercadoPago, /external_reference: value/);
   assert.match(mercadoPago, /fetchMercadoPagoPayment\(value\)/);
-  assert.match(page, /Importar Pix\/MP/);
-  assert.match(page, /providerTransactionId: payment\.paymentId/);
+
+
   assert.match(page, /initializeAuth\(app, \{[\s\S]*?persistence: browserLocalPersistence,[\s\S]*?popupRedirectResolver: browserPopupRedirectResolver/);
   assert.doesNotMatch(page, /setPersistence\(/);
   assert.match(exampleEnv, /^DEEPSEEK_API_KEY=/m);
@@ -276,12 +279,11 @@ test("ships the secured PSYZON AI page, floating assistant and server integratio
 
 test("keeps the AI workspace stable with large global fonts", async () => {
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(css, /body\.ai-workspace-active \{ zoom: 1;/);
   assert.match(css, /\.app-shell\.ai-page-active > \.sidebar/);
   assert.match(css, /--ai-answer-text: 14\.5px/);
   assert.match(css, /overflow-x: hidden/);
-  assert.match(page, /document\.body\.classList\.toggle\("ai-workspace-active", aiWorkspaceActive\)/);
+
 });
 
 test("keeps notifications inside the viewport at every interface size", async () => {

@@ -3,7 +3,11 @@
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
-import PluggyFinance from "./PluggyFinance";
+import OrderPhotoField from "./OrderPhotoField";
+import CustomersWorkspace from "./CustomersWorkspace";
+import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
+import { billDueDate, billIsSettled, customerAdjustments, customerBalances, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
@@ -28,6 +32,7 @@ import {
   doc,
   getFirestore,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -38,11 +43,9 @@ import {
   Bell,
   Boxes,
   BriefcaseBusiness,
-  Calculator,
   Check,
   ChevronRight,
   CircleDollarSign,
-  CalendarClock,
   Clock3,
   Eye,
   EyeOff,
@@ -62,21 +65,14 @@ import {
   RotateCcw,
   Search,
   Settings,
-  Sparkles,
   Sun,
-  TrendingDown,
-  TrendingUp,
-  Trash2,
-  UserRound,
   UsersRound,
   WalletCards,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type View = "inicio" | "producao" | "notas" | "clientes" | "financeiro" | "pessoal" | "ai" | "mais";
-type CreateKind = "pedido" | "cliente" | "entrada" | "despesa" | "transferencia" | "conta";
-type AccountType = "business" | "personal";
+type CreateKind = "pedido" | "cliente";
 type UISize = "compact" | "comfortable" | "large" | "extra-large";
 type DocumentPictureInPictureController = {
   window: Window | null;
@@ -102,10 +98,10 @@ type Order = {
   dueDate: string;
   status: OrderStatus;
   notes?: string;
+  photoData?: string;
   createdAt?: unknown;
 };
 
-type Customer = { id: string; name: string; phone: string; company?: string };
 type Transaction = {
   id: string;
   description: string;
@@ -126,32 +122,7 @@ type Transaction = {
   orderId?: string;
   createdAt?: unknown;
 };
-type MercadoPagoImportPreview = {
-  paymentId: string;
-  externalReference: string | null;
-  description: string;
-  status: string;
-  statusDetail: string | null;
-  approved: boolean;
-  amount: number;
-  netAmount: number | null;
-  feeAmount: number;
-  paymentMethod: string | null;
-  transactionDate: string;
-};
-type Bill = {
-  id: string;
-  description: string;
-  amount: number;
-  account: AccountType;
-  billingType: "fixed" | "installment";
-  dueDay: number;
-  category: string;
-  totalInstallments?: number;
-  paidInstallments?: number;
-  lastPaidMonth?: string;
-  createdAt?: unknown;
-};
+type View = import("./useViewHistory").View;
 
 type AppNotification = {
   id: string;
@@ -162,7 +133,6 @@ type AppNotification = {
 };
 
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
-const PSYZONAIWorkspace = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -240,17 +210,15 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "notas", label: "Bloco de notas", icon: NotebookPen },
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
-  { id: "pessoal", label: "Pessoal", icon: UserRound },
-  { id: "ai", label: "PSYZON AI", icon: Sparkles },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "notas", "clientes"].includes(item.id)) },
-  { label: "Gestão", items: navItems.filter((item) => ["financeiro", "pessoal", "ai"].includes(item.id)) },
+  { label: "Gestão", items: navItems.filter((item) => ["financeiro"].includes(item.id)) },
   { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
 ];
 
-const mobileNavItems = navItems.filter((item) => ["inicio", "producao", "pessoal", "mais"].includes(item.id));
+const mobileNavItems = navItems;
 
 function dueLabel(dateString: string, status: OrderStatus) {
   if (status === "Entregue") return "Entregue";
@@ -272,7 +240,7 @@ function dueTone(dateString: string, status: OrderStatus) {
 }
 
 export default function HomePage() {
-  const [view, setView] = useState<View>("inicio");
+  const [view, setView] = useViewHistory();
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -291,18 +259,13 @@ export default function HomePage() {
   const [uiSize, setUiSize] = useState<UISize>("comfortable");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [editingBill, setEditingBill] = useState<Bill | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [mercadoPagoImportOpen, setMercadoPagoImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
-  const [modalAccount, setModalAccount] = useState<AccountType>("business");
   const [toast, setToast] = useState("");
   const [board, setBoard] = useState(false);
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
   const dailyRemindersSignature = useRef("");
@@ -408,19 +371,12 @@ export default function HomePage() {
     localStorage.setItem("psy-ui-size", uiSize);
   }, [uiSize]);
   useEffect(() => {
-    const aiWorkspaceActive = view === "ai" || aiPanelOpen;
-    document.body.classList.toggle("ai-workspace-active", aiWorkspaceActive);
-    return () => document.body.classList.remove("ai-workspace-active");
-  }, [view, aiPanelOpen]);
-
-  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (target?.matches("input, textarea, select") || target?.isContentEditable) {
         if (event.key === "Escape") {
           setModal(null);
-          setAiPanelOpen(false);
         }
         return;
       }
@@ -433,12 +389,11 @@ export default function HomePage() {
       }
       if (event.key === "Escape") {
         setModal(null);
-        setAiPanelOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [setView]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -497,11 +452,6 @@ export default function HomePage() {
     } catch {
       showToast("Não foi possível abrir o modo flutuante");
     }
-  };
-
-  const openCreate = (kind: CreateKind, account: AccountType = "business") => {
-    setModalAccount(account);
-    setModal(kind);
   };
 
   const signInGoogle = async () => {
@@ -566,25 +516,11 @@ export default function HomePage() {
     }
   };
 
-  const derivedCustomers = useMemo(() => {
-    const map = new Map<string, Customer>();
-    customers.forEach((item) => map.set(item.name, item));
-    orders.forEach((order) => {
-      if (!map.has(order.customer)) map.set(order.customer, { id: order.customer, name: order.customer, phone: order.phone ?? "" });
-    });
-    return [...map.values()];
-  }, [customers, orders]);
-
-  const businessIncome = transactions.filter((t) => t.account === "business" && t.type === "income").reduce((sum, t) => sum + t.amount, 0);
-  const businessExpense = transactions.filter((t) => t.account === "business" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
-  const businessTransfers = transactions.filter((t) => t.type === "transfer").reduce((sum, t) => sum + t.amount, 0);
-  const personalIncome = transactions.filter((t) => t.account === "personal" && t.type !== "expense").reduce((sum, t) => sum + t.amount, 0);
-  const personalExpense = transactions.filter((t) => t.account === "personal" && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
-  const pending = orders.reduce((sum, order) => sum + Math.max(0, order.total - order.paid), 0);
-  const businessBalance = businessIncome - businessExpense - businessTransfers;
-  const personalBalance = personalIncome - personalExpense;
-  const businessTransactions = transactions.filter((transaction) => transaction.account === "business" || transaction.type === "transfer");
-  const personalTransactions = transactions.filter((transaction) => transaction.account === "personal");
+  const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
+  const visibleCustomers = balances.filter((customer) => !customer.archived);
+  const pending = balances.reduce((sum, customer) => sum + customer.pending, 0)
+    + bills.filter((bill) => bill.direction === "receivable" && !billIsSettled(bill)).reduce((sum, bill) => sum + bill.amount, 0);
+  const payable = bills.filter((bill) => bill.direction !== "receivable" && !billIsSettled(bill)).reduce((sum, bill) => sum + bill.amount, 0);
   const activeOrders = orders.filter((order) => order.status !== "Entregue");
   const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
@@ -592,7 +528,7 @@ export default function HomePage() {
   const notifications = useMemo<AppNotification[]>(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const month = today.toISOString().slice(0, 7);
+    const month = localDateValue(today).slice(0, 7);
     const items: AppNotification[] = [];
 
     activeOrders.forEach((order) => {
@@ -603,13 +539,11 @@ export default function HomePage() {
     });
 
     bills.forEach((bill) => {
-      const installmentComplete = bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1);
-      const paidThisMonth = bill.lastPaidMonth === month || installmentComplete;
-      if (paidThisMonth) return;
-      const due = new Date(today.getFullYear(), today.getMonth(), Math.min(bill.dueDay, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()));
-      const days = Math.ceil((due.getTime() - today.getTime()) / 86400000);
-      if (days < 0) items.push({ id: `bill-${bill.id}`, title: `${bill.description} está vencida`, detail: `${money.format(bill.amount)} · ${Math.abs(days)} dia(s) em atraso`, tone: "danger", view: bill.account === "business" ? "financeiro" : "pessoal" });
-      else if (days <= 3) items.push({ id: `bill-${bill.id}`, title: days === 0 ? `${bill.description} vence hoje` : `${bill.description} vence em breve`, detail: `${money.format(bill.amount)} · dia ${bill.dueDay}`, tone: "warning", view: bill.account === "business" ? "financeiro" : "pessoal" });
+      if (billIsSettled(bill, month)) return;
+      const dueDate = billDueDate(bill, month);
+      const days = Math.ceil((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
+      const action = bill.direction === "receivable" ? "a receber" : "a pagar";
+      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: money.format(bill.amount) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
     });
 
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
@@ -702,6 +636,7 @@ export default function HomePage() {
           dueDate: String(form.get("dueDate")),
           status: "Aprovado",
           notes: String(form.get("notes") || ""),
+          photoData: String(form.get("photoData") || ""),
           createdAt: serverTimestamp(),
         };
         if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
@@ -711,48 +646,21 @@ export default function HomePage() {
         const customerKey = nextOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || orderKey;
         const batch = writeBatch(db);
         batch.set(orderReference, nextOrder);
-        batch.set(userDocument(uid, "customers", customerKey), { name: nextOrder.customer, phone: nextOrder.phone ?? "" }, { merge: true });
+        const existingCustomer = customers.find((customer) => customer.name === nextOrder.customer);
+        batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: nextOrder.customer, phone: nextOrder.phone ?? "", archived: false }, { merge: true });
         if (nextOrder.paid > 0) {
           batch.set(doc(userCollection(uid, "transactions")), { description: `Entrada · ${nextOrder.customer} · #${orderKey.slice(0, 5).toUpperCase()}`, amount: nextOrder.paid, type: "income", account: "business", category: "Vendas", orderId: orderKey, transactionDate: localDateValue(), createdAt: serverTimestamp() });
         }
         await batch.commit();
         showToast("Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
-        const customer = { name: String(form.get("name")), phone: String(form.get("phone")), company: String(form.get("company") || "") };
+        const name = String(form.get("name")).trim();
+        const existing = customers.find((customer) => customer.name === name);
+        const customer = { name, phone: String(form.get("phone") || ""), company: String(form.get("company") || ""), archived: false };
         if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-        await addDoc(userCollection(uid, "customers"), customer);
+        if (existing) await setDoc(userDocument(uid, "customers", existing.id), customer, { merge: true });
+        else await addDoc(userCollection(uid, "customers"), customer);
         showToast("Cliente adicionado");
-      } else if (kind === "conta") {
-        const billingType = String(form.get("billingType")) as Bill["billingType"];
-        const bill: Omit<Bill, "id"> = {
-          description: String(form.get("description")),
-          amount: Number(form.get("amount")),
-          account: String(form.get("account")) as AccountType,
-          billingType,
-          dueDay: Number(form.get("dueDay")),
-          category: String(form.get("customCategory") || form.get("category") || "Outros"),
-          paidInstallments: 0,
-          createdAt: serverTimestamp(),
-          ...(billingType === "installment" ? { totalInstallments: Number(form.get("totalInstallments")) } : {}),
-        };
-        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-        await addDoc(userCollection(uid, "bills"), bill);
-        showToast(billingType === "fixed" ? "Conta mensal adicionada" : "Compra parcelada adicionada");
-      } else {
-        const amount = Number(form.get("amount"));
-        const description = String(form.get("description"));
-        const transaction: Omit<Transaction, "id"> = {
-          description,
-          amount,
-          type: kind === "entrada" ? "income" : kind === "despesa" ? "expense" : "transfer",
-          account: kind === "transferencia" ? "personal" : String(form.get("account")) as AccountType,
-          category: String(form.get("customCategory") || form.get("category") || (kind === "entrada" ? "Vendas" : kind === "despesa" ? "Outros" : "Pró-labore")),
-          transactionDate: String(form.get("transactionDate") || localDateValue()),
-          createdAt: serverTimestamp(),
-        };
-        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-        await addDoc(userCollection(uid, "transactions"), transaction);
-        showToast(kind === "despesa" ? "Despesa registrada" : kind === "transferencia" ? "Transferência concluída" : "Entrada registrada");
       }
       setModal(null);
     } catch (error) {
@@ -783,13 +691,15 @@ export default function HomePage() {
       dueDate: String(form.get("dueDate")),
       status: String(form.get("status")) as OrderStatus,
       notes: String(form.get("notes") || ""),
+      photoData: String(form.get("photoData") || ""),
     };
     const db = getFirestore(getApps()[0]);
     const customerKey = updatedOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || editingOrder.id;
     const linkedPayments = transactions.filter((transaction) => transaction.orderId === editingOrder.id);
     const batch = writeBatch(db);
     batch.update(userDocument(uid, "orders", editingOrder.id), updatedOrder);
-    batch.set(userDocument(uid, "customers", customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
+    const existingCustomer = customers.find((customer) => customer.name === updatedOrder.customer);
+    batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
     if (updatedOrder.paid > 0) {
       const payment = { description: `Entrada · ${updatedOrder.customer} · #${editingOrder.id.slice(0, 5).toUpperCase()}`, amount: updatedOrder.paid, type: "income", account: "business", category: "Vendas", orderId: editingOrder.id };
       if (linkedPayments[0]) batch.update(userDocument(uid, "transactions", linkedPayments[0].id), payment);
@@ -803,105 +713,63 @@ export default function HomePage() {
     showToast("Pedido e financeiro atualizados");
   };
 
-  const payBill = async (bill: Bill) => {
-    if (firebaseState !== "live") return showToast("Firestore ainda não está conectado");
-    const db = getFirestore(getApps()[0]);
-    const month = new Date().toISOString().slice(0, 7);
-    if (bill.lastPaidMonth === month) return showToast("Esta conta já foi paga neste mês");
-    if (bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1)) return showToast("Todas as parcelas já foram pagas");
-    const batch = writeBatch(db);
-    batch.set(doc(userCollection(uid, "transactions")), { description: `${bill.billingType === "fixed" ? "Conta mensal" : `Parcela ${(bill.paidInstallments ?? 0) + 1}/${bill.totalInstallments}`} · ${bill.description}`, amount: bill.amount, type: "expense", account: bill.account, category: bill.category, source: "bill", billId: bill.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
-    batch.update(userDocument(uid, "bills", bill.id), {
-      lastPaidMonth: month,
-      ...(bill.billingType === "installment" ? { paidInstallments: (bill.paidInstallments ?? 0) + 1 } : {}),
-    });
+  const saveCustomerValues = async (customer: CustomerBalance, total: number, pending: number) => {
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    const adjustments = customerAdjustments(total, pending, orders.filter((order) => order.customer === customer.name));
+    await setDoc(userDocument(uid, "customers", customer.id), { name: customer.name, phone: customer.phone, ...adjustments }, { merge: true });
+    showToast("Valores do cliente atualizados");
+  };
+
+  const deleteCustomer = async (customer: CustomerBalance) => {
+    if (!window.confirm("Excluir o cliente “" + customer.name + "”? Os pedidos e valores a receber serão preservados.")) return;
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    // A tombstone prevents historical orders from recreating a deleted customer.
+    const batch = writeBatch(getFirestore(getApps()[0]));
+    const matches = customers.filter((item) => item.name === customer.name);
+    if (!matches.length) matches.push(customer);
+    matches.forEach((item) => batch.set(userDocument(uid, "customers", item.id), { name: item.name, phone: item.phone, archived: true }, { merge: true }));
     await batch.commit();
-    showToast("Pagamento registrado");
+    showToast("Cliente excluído");
+  };
+
+  const receiveCustomer = async (customer: CustomerBalance) => {
+    if (!window.confirm("Confirmar o recebimento de " + money.format(customer.pending) + " de " + customer.name + "?")) return;
+    await saveCustomerValues(customer, customer.total, 0);
+  };
+
+  const saveBill = async (bill: Bill | null, input: BillInput) => {
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    if (!input.description || !input.category || !Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Preencha a descrição e um valor válido.");
+    if (bill) {
+      await updateDoc(userDocument(uid, "bills", bill.id), { ...input, dueDate: input.dueDate ?? deleteField(), totalInstallments: input.totalInstallments ?? deleteField(), ...(bill.billingType !== input.billingType ? { lastPaidMonth: deleteField(), settled: deleteField(), paidInstallments: 0 } : {}) });
+    } else {
+      await addDoc(userCollection(uid, "bills"), { ...input, paidInstallments: 0, createdAt: serverTimestamp() });
+    }
+    showToast(bill ? "Conta atualizada" : "Conta cadastrada");
+  };
+
+  const payBill = async (bill: Bill) => {
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    if (billIsSettled(bill)) return;
+    const receiving = bill.direction === "receivable";
+    if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + money.format(bill.amount) + " · " + bill.description + "?")) return;
+    const month = localDateValue().slice(0, 7);
+    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
+      const reference = userDocument(uid, "bills", bill.id);
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("Esta conta foi excluída. Atualize a página.");
+      const current = { ...snapshot.data(), id: snapshot.id } as Bill;
+      if (billIsSettled(current, month)) return;
+      transaction.set(userDocument(uid, "transactions", `bill-${bill.id}-${current.billingType === "once" ? "once" : month}`), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+      transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
+    });
+    showToast(receiving ? "Recebimento registrado" : "Pagamento registrado");
   };
 
   const deleteBill = async (bill: Bill) => {
-    if (!window.confirm(`Excluir a conta “${bill.description}”?`)) return;
+    if (!window.confirm("Excluir a conta “" + bill.description + "”?")) return;
     await deleteDoc(userDocument(uid, "bills", bill.id));
     showToast("Conta removida");
-  };
-
-  const saveBill = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!editingBill) return;
-    const form = new FormData(event.currentTarget);
-    const billingType = String(form.get("billingType")) as Bill["billingType"];
-    await updateDoc(userDocument(uid, "bills", editingBill.id), {
-      description: String(form.get("description")),
-      amount: Number(form.get("amount")),
-      dueDay: Number(form.get("dueDay")),
-      billingType,
-      category: String(form.get("customCategory") || form.get("category") || "Outros"),
-      totalInstallments: billingType === "installment" ? Number(form.get("totalInstallments")) : deleteField(),
-    });
-    setEditingBill(null);
-    showToast("Conta atualizada");
-  };
-
-  const saveTransaction = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!editingTransaction) return;
-    const form = new FormData(event.currentTarget);
-    await updateDoc(userDocument(uid, "transactions", editingTransaction.id), {
-      description: String(form.get("description")),
-      amount: Number(form.get("amount")),
-      category: String(form.get("customCategory") || form.get("category") || "Outros"),
-      account: String(form.get("account")) as AccountType,
-      type: String(form.get("type")) as Transaction["type"],
-      transactionDate: String(form.get("transactionDate") || localDateValue()),
-    });
-    setEditingTransaction(null);
-    showToast("Movimentação atualizada");
-  };
-
-  const importMercadoPagoTransaction = async (payment: MercadoPagoImportPreview, description: string, category: string) => {
-    if (transactions.some((transaction) => transaction.providerTransactionId === payment.paymentId)) {
-      throw new Error("Esta transação já foi importada.");
-    }
-    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-
-    const documentId = `mercado-pago-${payment.paymentId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-    await setDoc(userDocument(uid, "transactions", documentId), {
-      description: description.trim(),
-      amount: payment.amount,
-      type: "income",
-      account: "business",
-      category,
-      transactionDate: payment.transactionDate,
-      source: "mercado_pago",
-      provider: "mercado_pago",
-      providerTransactionId: payment.paymentId,
-      externalReference: payment.externalReference,
-      paymentMethod: payment.paymentMethod,
-      providerStatus: payment.status,
-      feeAmount: payment.feeAmount,
-      netAmount: payment.netAmount,
-      createdAt: serverTimestamp(),
-    });
-    setMercadoPagoImportOpen(false);
-    showToast("Pagamento do Mercado Pago importado");
-  };
-
-  const deleteTransaction = async (transaction: Transaction) => {
-    if (!window.confirm(`Excluir a movimentação “${transaction.description}”?`)) return;
-    const db = getFirestore(getApps()[0]);
-    if (transaction.source === "bill" && transaction.billId) {
-      const linkedBill = bills.find((bill) => bill.id === transaction.billId);
-      const batch = writeBatch(db);
-      batch.delete(userDocument(uid, "transactions", transaction.id));
-      batch.update(userDocument(uid, "bills", transaction.billId), {
-        lastPaidMonth: deleteField(),
-        ...(linkedBill?.billingType === "installment" ? { paidInstallments: Math.max(0, (linkedBill.paidInstallments ?? 1) - 1) } : {}),
-      });
-      await batch.commit();
-    } else {
-      await deleteDoc(userDocument(uid, "transactions", transaction.id));
-    }
-    showToast("Movimentação removida");
   };
 
   if (!introComplete || !authReady) return <SplashScreen />;
@@ -913,11 +781,9 @@ export default function HomePage() {
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const floatingActive = floatingModeOpen;
-  const getAIIdToken = () => user.getIdToken();
-  const navigateFromAI = (target: View) => { setView(target); setAiPanelOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${view === "ai" ? "ai-page-active" : ""}`}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
         <div className="sidebar-brand-row">
           <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
@@ -933,7 +799,7 @@ export default function HomePage() {
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
       </aside>
 
-      <main className={`main ${view === "ai" ? "ai-view" : ""}`}>
+      <main className="main">
         <header className="topbar">
           <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
           <div className="search-wrap">
@@ -951,32 +817,30 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className={`content ${view === "ai" ? "ai-content" : ""}`}>
-          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
+        <section className="content">
+          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
           {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
-          {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
-          {view === "financeiro" && <Finance user={user} notify={showToast} transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} openMercadoPagoImport={() => setMercadoPagoImportOpen(true)} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
-          {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
-          {view === "ai" && <PSYZONAIWorkspace getIdToken={getAIIdToken} onNavigate={navigateFromAI} />}
+          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} displayMoney={displayMoney} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+
+
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} setPrivateValues={setPrivateValues} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
-      {view !== "notas" && view !== "ai" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
-      {view !== "ai" && <button className={`ai-floating-button ${aiPanelOpen ? "active" : ""}`} onClick={() => setAiPanelOpen((current) => !current)} aria-label={aiPanelOpen ? "Fechar PSYZON AI" : "Abrir PSYZON AI"} aria-expanded={aiPanelOpen}><span><Sparkles size={22} /></span><span><b>PSYZON AI</b><small>Pergunte sobre sua empresa</small></span></button>}
-      {aiPanelOpen && <div className="ai-floating-panel"><PSYZONAIWorkspace mode="panel" getIdToken={getAIIdToken} onClose={() => setAiPanelOpen(false)} onOpenFull={() => { setView("ai"); setAiPanelOpen(false); }} onNavigate={navigateFromAI} /></div>}
+      {view !== "notas" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+
+
       <nav className="mobile-nav">
-        {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
-        <button className="mobile-new" onClick={() => setModal("pedido")} aria-label="Novo pedido"><Plus /></button>
-        {mobileNavItems.slice(2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
+        {mobileNavItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}
       </nav>
 
-      {modal && <CreateModalV2 kind={modal} account={modalAccount} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
+      {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={saveOrder} />}
-      {editingBill && <FinancialEditModal bill={editingBill} close={() => setEditingBill(null)} onSubmit={saveBill} />}
-      {editingTransaction && <FinancialEditModal transaction={editingTransaction} close={() => setEditingTransaction(null)} onSubmit={saveTransaction} />}
-      {mercadoPagoImportOpen && <MercadoPagoImportModal getIdToken={getAIIdToken} close={() => setMercadoPagoImportOpen(false)} onImport={importMercadoPagoTransaction} />}
+
+
+
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -1030,35 +894,7 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function transactionDate(transaction: Transaction) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(transaction.transactionDate ?? "")) {
-    return new Date(`${transaction.transactionDate}T12:00:00`);
-  }
-  const value = transaction.createdAt;
-  if (typeof value === "number" || typeof value === "string") {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  if (value && typeof value === "object") {
-    const firestoreValue = value as { toDate?: () => Date; seconds?: number };
-    if (typeof firestoreValue.toDate === "function") return firestoreValue.toDate();
-    if (typeof firestoreValue.seconds === "number") return new Date(firestoreValue.seconds * 1000);
-  }
-  return new Date();
-}
-
-function transactionMonth(transaction: Transaction) {
-  const date = transactionDate(transaction);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthTitle(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
-  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(year, monthNumber - 1, 1));
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function Dashboard({ userName, orders, transactions, businessBalance, businessIncome, businessExpense, pending, personalBalance, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, pending, payable, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -1066,12 +902,12 @@ function Dashboard({ userName, orders, transactions, businessBalance, businessIn
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     <div className="metric-grid">
-      <Metric icon={BriefcaseBusiness} label="Saldo empresa" value={displayMoney(businessBalance)} detail={<><span className="positive">+ {displayMoney(businessIncome)}</span><span>entradas</span><span className="negative">− {displayMoney(businessExpense)}</span><span>saídas</span></>} />
+      <Metric icon={WalletCards} label="A pagar" value={displayMoney(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
       <Metric icon={CircleDollarSign} label="A receber" value={displayMoney(pending)} detail={<><span>{orders.filter((o: Order) => o.total > o.paid).length} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={`${orders.length} pedidos`} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
-      <Metric icon={UserRound} label="Saldo pessoal" value={displayMoney(personalBalance)} detail={<span className="personal-label">PESSOAL · separado da empresa</span>} />
+
     </div>
-    <section className="ai-dashboard-summary"><span><Sparkles size={20} /></span><div><small>PSYZON AI · RESUMO EXECUTIVO</small><h2>{overdue.length ? `${overdue.length} pedido(s) atrasado(s) precisam da sua atenção.` : "Nenhum pedido atrasado neste momento."}</h2><p>{pending > 0 ? `Há ${displayMoney(pending)} para receber. ` : "Não há valores pendentes nos pedidos. "}{businessIncome - businessExpense >= 0 ? `O resultado financeiro registrado está positivo em ${displayMoney(businessIncome - businessExpense)}.` : `As saídas superam as entradas registradas em ${displayMoney(Math.abs(businessIncome - businessExpense))}.`}</p></div><button onClick={() => setView("ai")}>Ver análise completa <ChevronRight size={15} /></button></section>
+
     <div className="dashboard-grid">
       <div className="main-column">
         {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + orders.filter((o: Order) => o.total > o.paid).length} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido #{order.id} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}
@@ -1079,8 +915,8 @@ function Dashboard({ userName, orders, transactions, businessBalance, businessIn
         <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{orders.slice(0, 4).map((order: Order) => <div className="delivery-row" key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><div><span style={{ width: `${statusProgress[order.status]}%` }} /></div><small>{order.status} · {statusProgress[order.status]}%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.total - order.paid)}</b></div><ChevronRight size={17} /></div>)}</div></section>
       </div>
       <aside className="side-column">
-        <section className="panel quick-panel"><div className="section-title"><h2>Ações rápidas</h2></div><button onClick={() => setModal("pedido")}><Boxes size={18} /><span><b>Novo pedido</b><small>Produção + financeiro</small></span><Plus size={17} /></button><button onClick={() => setModal("cliente")}><UsersRound size={18} /><span><b>Novo cliente</b><small>Cadastro essencial</small></span><Plus size={17} /></button><button onClick={() => setModal("entrada")}><TrendingUp size={18} /><span><b>Nova entrada</b><small>Recebimento avulso</small></span><Plus size={17} /></button><button onClick={() => setModal("despesa")}><TrendingDown size={18} /><span><b>Nova despesa</b><small>Empresa ou pessoal</small></span><Plus size={17} /></button></section>
-        <section className="panel movement-panel"><div className="section-title"><h2>Movimentações recentes</h2><button onClick={() => setView("financeiro")}>Ver tudo</button></div>{transactions.slice(0, 4).map((transaction: Transaction) => <div className="movement" key={transaction.id}><span className={transaction.type}><span>{transaction.type === "income" ? "+" : transaction.type === "expense" ? "−" : "↗"}</span></span><div><b>{transaction.description}</b><small>Hoje · Conta {transaction.account === "business" ? "empresa" : "pessoal"}</small></div><strong className={transaction.type === "income" ? "positive" : transaction.type === "expense" ? "negative" : ""}>{transaction.type === "expense" ? "− " : transaction.type === "income" ? "+ " : ""}{displayMoney(transaction.amount)}</strong></div>)}</section>
+        <section className="panel quick-panel"><div className="section-title"><h2>Ações rápidas</h2></div><button onClick={() => setModal("pedido")}><Boxes size={18} /><span><b>Novo pedido</b><small>Produção e prazo</small></span><Plus size={17} /></button><button onClick={() => setModal("cliente")}><UsersRound size={18} /><span><b>Novo cliente</b><small>Cadastro essencial</small></span><Plus size={17} /></button><button onClick={() => setView("financeiro")}><WalletCards size={18} /><span><b>Contas a pagar e receber</b><small>Despesas mensais</small></span><ChevronRight size={17} /></button></section>
+
       </aside>
     </div>
   </>;
@@ -1093,101 +929,12 @@ function Metric({ icon: Icon, label, value, detail, onClick }: any) {
 
 function Production({ orders, board, setBoard, displayMoney, updateStatus, editOrder }: any) {
   const statuses: OrderStatus[] = ["Aguardando material", "Produção", "Finalização", "Pronto"];
-  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span><b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.total - order.paid)} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span className="order-customer-cell">{order.photoData && <img className="order-photo-thumb" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.total - order.paid)} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
 }
 
 function OrderCard({ order, displayMoney, updateStatus, editOrder }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void; editOrder: (order: Order) => void }) {
   const contactUrl = whatsappUrl(order.phone, `Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`);
-  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div><h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
-}
-
-function Customers({ customers, orders, displayMoney, setModal }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">RELACIONAMENTO</span><h1>Clientes</h1><p>Cadastro simples e histórico em um só lugar.</p></div><button className="primary" onClick={() => setModal("cliente")}><Plus size={18} /> Novo cliente</button></div><div className="customer-grid">{customers.map((customer: Customer) => { const clientOrders = orders.filter((order: Order) => order.customer === customer.name); const total = clientOrders.reduce((sum: number, order: Order) => sum + order.total, 0); const pending = clientOrders.reduce((sum: number, order: Order) => sum + order.total - order.paid, 0); const contactUrl = whatsappUrl(customer.phone); return <article className="customer-card" key={customer.id}><div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Cliente PSYZON"}</p></div><button><MoreHorizontal size={18} /></button></div><div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(total)}</b></span><span><small>Saldo pendente</small><b className={pending ? "negative" : "positive"}>{displayMoney(pending)}</b></span></div><footer><span>{clientOrders.length} {clientOrders.length === 1 ? "pedido" : "pedidos"}</span>{contactUrl && <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> WhatsApp</a>}</footer></article>; })}</div></>;
-}
-
-function Finance({ user, notify, transactions, bills, orders, businessBalance, businessIncome, businessExpense, pending, displayMoney, openCreate, openMercadoPagoImport, payBill, deleteBill, editBill, editTransaction, deleteTransaction }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO EMPRESARIAL</span><h1>Dinheiro da empresa.</h1><p>Caixa, contas e compromissos da operação.</p></div><div className="page-heading-actions"><button className="secondary" onClick={openMercadoPagoImport}><Search size={16} /> Importar Pix/MP</button><button className="primary" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação</button></div></div><div className="account-grid single"><article className="account-card business"><div><span><BriefcaseBusiness size={19} /> EMPRESA</span><small>Saldo contábil disponível</small><strong>{displayMoney(businessBalance)}</strong></div><div className="account-stats"><span><small>Entradas</small><b className="positive">{displayMoney(businessIncome)}</b></span><span><small>Saídas</small><b>{displayMoney(businessExpense)}</b></span><span><small>A receber</small><b>{displayMoney(pending)}</b></span></div></article></div><PluggyFinance user={user} displayMoney={displayMoney} notify={notify} /><CostPerPiece orders={orders} transactions={transactions} bills={bills} displayMoney={displayMoney} /><BillsPanel bills={bills} account="business" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} editBill={editBill} /><MonthlyHistory transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} onEdit={editTransaction} onDelete={deleteTransaction} /></>;
-}
-
-function CostPerPiece({ orders, transactions, bills, displayMoney }: { orders: Order[]; transactions: Transaction[]; bills: Bill[]; displayMoney: (value: number) => string }) {
-  const month = localDateValue().slice(0, 7);
-  const units = orders.reduce((sum, order) => sum + Math.max(0, order.quantity), 0);
-  const monthlyExpenses = transactions.filter((transaction) => {
-    if (transaction.type !== "expense" || transaction.source === "bill") return false;
-    return transactionMonth(transaction) === month;
-  });
-  const directCosts = monthlyExpenses.reduce((totals, item) => {
-    const category = (item.category ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    if (category.includes("material") || category.includes("materia-prima")) totals.materials += item.amount;
-    else if (category.includes("fornecedor") || category.includes("terceir")) totals.suppliers += item.amount;
-    else if (category.includes("mao de obra") || category.includes("salario") || category.includes("equipe")) totals.labor += item.amount;
-    else totals.other += item.amount;
-    return totals;
-  }, { materials: 0, suppliers: 0, labor: 0, other: 0 });
-  const { materials, suppliers, labor, other: otherVariable } = directCosts;
-  const fixed = bills.filter((bill) => bill.billingType === "fixed" || (bill.paidInstallments ?? 0) < (bill.totalInstallments ?? 1)).reduce((sum, bill) => sum + bill.amount, 0);
-  const totalCost = fixed + materials + suppliers + labor + otherVariable;
-  const costPerPiece = units ? totalCost / units : 0;
-  const averageSale = units ? orders.reduce((sum, order) => sum + order.total, 0) / units : 0;
-  const estimatedMargin = averageSale - costPerPiece;
-  const breakdown = [
-    { label: "Fixos e parcelas", value: fixed },
-    { label: "Materiais", value: materials },
-    { label: "Fornecedores", value: suppliers },
-    { label: "Mão de obra", value: labor },
-    { label: "Outras saídas", value: otherVariable },
-  ];
-
-  return <section className="panel cost-panel"><div className="cost-panel-head"><div className="cost-icon"><Calculator size={20} /></div><div><span className="eyebrow">CUSTO REAL SIMPLIFICADO</span><h2>Quanto cada peça precisa pagar</h2><p>Rateio automático das contas do mês e saídas categorizadas entre as unidades dos pedidos ativos.</p></div></div><div className="cost-highlights"><article><small>Custo estimado por peça</small><strong>{units ? displayMoney(costPerPiece) : "Cadastre unidades"}</strong><span>{units} unidade(s) em produção</span></article><article><small>Venda média por peça</small><strong>{displayMoney(averageSale)}</strong><span>Com base nos pedidos ativos</span></article><article className={estimatedMargin >= 0 ? "healthy" : "attention"}><small>Margem estimada por peça</small><strong>{displayMoney(estimatedMargin)}</strong><span>{estimatedMargin >= 0 ? "Acima do custo calculado" : "Preço abaixo do custo"}</span></article></div><div className="cost-breakdown">{breakdown.map((item) => <div key={item.label}><span><b>{item.label}</b><small>{displayMoney(item.value)}</small></span><div><span style={{ width: `${totalCost ? Math.max(2, (item.value / totalCost) * 100) : 0}%` }} /></div></div>)}</div><footer><AlertTriangle size={15} /><span>Para um cálculo mais fiel, categorize toda saída como Material, Fornecedor ou Mão de obra. Contas fixas e parcelas entram automaticamente.</span></footer></section>;
-}
-
-function PersonalFinance({ transactions, bills, balance, income, expense, displayMoney, openCreate, payBill, deleteBill, editBill, editTransaction, deleteTransaction }: any) {
-  return <><div className="page-heading compact"><div><span className="eyebrow">FINANCEIRO PESSOAL</span><h1>Sua vida financeira.</h1><p>Categorias e histórico separados da empresa, como deve ser.</p></div><button className="primary personal-action" onClick={() => openCreate("entrada")}><Plus size={18} /> Movimentação pessoal</button></div><div className="account-grid single"><article className="account-card personal"><div><span><UserRound size={19} /> PESSOAL</span><small>Saldo pessoal</small><strong>{displayMoney(balance)}</strong></div><div className="account-stats"><span><small>Entradas + transferências</small><b className="positive">{displayMoney(income)}</b></span><span><small>Despesas pessoais</small><b>{displayMoney(expense)}</b></span></div></article></div><BillsPanel bills={bills} account="personal" displayMoney={displayMoney} openCreate={openCreate} payBill={payBill} deleteBill={deleteBill} editBill={editBill} /><div className="personal-actions"><button className="secondary" onClick={() => openCreate("entrada")}><TrendingUp size={16} /> Nova entrada</button><button className="secondary" onClick={() => openCreate("despesa")}><TrendingDown size={16} /> Nova despesa</button></div><div className="personal-finance-grid"><PersonalCategoryChart transactions={transactions} displayMoney={displayMoney} /><MonthlyHistory transactions={transactions} displayMoney={displayMoney} openCreate={openCreate} personal onEdit={editTransaction} onDelete={deleteTransaction} /></div></>;
-}
-
-function BillsPanel({ bills, account, displayMoney, openCreate, payBill, deleteBill, editBill }: { bills: Bill[]; account: AccountType; displayMoney: (value: number) => string; openCreate: (kind: CreateKind) => void; payBill: (bill: Bill) => void; deleteBill: (bill: Bill) => void; editBill: (bill: Bill) => void }) {
-  const month = new Date().toISOString().slice(0, 7);
-  const pendingTotal = bills.reduce((sum, bill) => {
-    const paid = bill.lastPaidMonth === month || (bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1));
-    return sum + (paid ? 0 : bill.amount);
-  }, 0);
-  return <section className="panel bills-panel"><div className="section-title"><div><CalendarClock size={18} /><div><h2>Contas fixas e parceladas</h2><span>{bills.length} cadastradas · {displayMoney(pendingTotal)} neste mês</span></div></div><button onClick={() => openCreate("conta")}><Plus size={15} /> Nova conta</button></div><div className="bill-list">{bills.length === 0 ? <div className="empty-finance"><CalendarClock size={24} /><b>Nenhuma conta cadastrada</b><small>Adicione aluguel, internet, cartão ou compras parceladas.</small><button onClick={() => openCreate("conta")}>Cadastrar primeira conta</button></div> : bills.map((bill) => { const installment = bill.billingType === "installment"; const paid = bill.lastPaidMonth === month || (installment && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1)); const progress = installment ? Math.min(100, ((bill.paidInstallments ?? 0) / (bill.totalInstallments ?? 1)) * 100) : paid ? 100 : 0; return <article className={`bill-row ${paid ? "paid" : ""}`} key={bill.id}><div className="bill-date"><small>VENCE</small><b>{String(bill.dueDay).padStart(2, "0")}</b></div><div className="bill-info"><span><b>{bill.description}</b><small>{bill.category} · {installment ? `${bill.paidInstallments ?? 0}/${bill.totalInstallments} parcelas pagas` : "Mensal fixa"}</small></span>{installment && <div className="bill-progress"><span style={{ width: `${progress}%` }} /></div>}</div><strong>{displayMoney(bill.amount)}<small>{paid ? "PAGO" : account === "business" ? "EMPRESA" : "PESSOAL"}</small></strong><button className="bill-pay" onClick={() => payBill(bill)} disabled={paid}>{paid ? "Pago" : "Pagar"}</button><button className="bill-edit" onClick={() => editBill(bill)} aria-label={`Editar ${bill.description}`}><Pencil size={14} /></button><button className="bill-delete" onClick={() => deleteBill(bill)} aria-label={`Excluir ${bill.description}`}><Trash2 size={15} /></button></article>; })}</div></section>;
-}
-
-function PersonalCategoryChart({ transactions, displayMoney }: { transactions: Transaction[]; displayMoney: (value: number) => string }) {
-  const currentMonth = localDateValue().slice(0, 7);
-  const months = useMemo(() => [...new Set([currentMonth, ...transactions.map(transactionMonth)])].sort().reverse(), [transactions, currentMonth]);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const palette = ["#7c3aed", "#2563eb", "#0ea5e9", "#14b8a6", "#f59e0b", "#f97316", "#ec4899", "#64748b"];
-  const categories = useMemo(() => {
-    const totals = new Map<string, number>();
-    transactions.filter((item) => item.type === "expense" && transactionMonth(item) === selectedMonth).forEach((item) => {
-      const category = item.category || "Outros";
-      totals.set(category, (totals.get(category) ?? 0) + item.amount);
-    });
-    return [...totals.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
-  }, [selectedMonth, transactions]);
-  const total = categories.reduce((sum, item) => sum + item.value, 0);
-  let cursor = 0;
-  const segments = categories.map((item, index) => {
-    const start = cursor;
-    cursor += total ? (item.value / total) * 100 : 0;
-    return `${palette[index % palette.length]} ${start}% ${cursor}%`;
-  });
-  const chartBackground = total ? `conic-gradient(${segments.join(", ")})` : "conic-gradient(var(--border) 0 100%)";
-
-  return <section className="panel category-chart"><div className="insight-heading"><div><span className="eyebrow">PESSOAL</span><h2>Gastos por categoria</h2></div><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} aria-label="Mês do gráfico de gastos">{months.map((month) => <option key={month} value={month}>{monthTitle(month)}</option>)}</select></div>{total ? <div className="category-chart-body"><div className="donut-chart" style={{ background: chartBackground }}><div><small>Total gasto</small><strong>{displayMoney(total)}</strong></div></div><div className="category-legend">{categories.map((item, index) => <div key={item.label}><span className="legend-dot" style={{ background: palette[index % palette.length] }} /><span><b>{item.label}</b><small>{Math.round((item.value / total) * 100)}% do total</small></span><strong>{displayMoney(item.value)}</strong></div>)}</div></div> : <div className="empty-chart"><CircleDollarSign size={24} /><b>Nenhum gasto neste mês</b><small>As despesas pessoais aparecerão aqui por categoria.</small></div>}</section>;
-}
-
-function MonthlyHistory({ transactions, displayMoney, openCreate, personal = false, onEdit, onDelete }: { transactions: Transaction[]; displayMoney: (value: number) => string; openCreate: (kind: CreateKind) => void; personal?: boolean; onEdit: (transaction: Transaction) => void; onDelete: (transaction: Transaction) => void }) {
-  const currentMonth = localDateValue().slice(0, 7);
-  const months = useMemo(() => [...new Set([currentMonth, ...transactions.map(transactionMonth)])].sort().reverse(), [transactions, currentMonth]);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
-  const selectedTransactions = useMemo(() => transactions.filter((item) => transactionMonth(item) === selectedMonth).sort((a, b) => transactionDate(b).getTime() - transactionDate(a).getTime()), [selectedMonth, transactions]);
-  const incoming = selectedTransactions.filter((item) => item.type === "income" || (personal && item.type === "transfer")).reduce((sum, item) => sum + item.amount, 0);
-  const outgoing = selectedTransactions.filter((item) => item.type === "expense" || (!personal && item.type === "transfer")).reduce((sum, item) => sum + item.amount, 0);
-
-  return <section className="panel monthly-history"><div className="history-heading"><div><span className="eyebrow">HISTÓRICO MENSAL</span><h2>Entradas e saídas por mês</h2></div><select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} aria-label="Selecionar mês do histórico">{months.map((month) => <option key={month} value={month}>{monthTitle(month)}</option>)}</select></div><div className="month-summary"><span><small>Entradas</small><b className="positive">+ {displayMoney(incoming)}</b></span><span><small>Saídas</small><b className="negative">− {displayMoney(outgoing)}</b></span><span><small>Resultado</small><b className={incoming - outgoing >= 0 ? "positive" : "negative"}>{displayMoney(incoming - outgoing)}</b></span></div><div className="history-actions"><span>{selectedTransactions.length} {selectedTransactions.length === 1 ? "movimentação" : "movimentações"} em {monthTitle(selectedMonth).toLocaleLowerCase("pt-BR")}</span><div><button onClick={() => openCreate("entrada")}>+ Entrada</button><button onClick={() => openCreate("despesa")}>+ Saída</button>{!personal && <button onClick={() => openCreate("transferencia")}>Transferir</button>}</div></div><div className="history-list">{selectedTransactions.length === 0 ? <div className="empty-movements">Nenhuma movimentação registrada neste mês.</div> : selectedTransactions.map((item) => { const incomingItem = item.type === "income" || (personal && item.type === "transfer"); return <div className="movement" key={item.id}><span className={incomingItem ? "income" : "expense"}><span>{incomingItem ? "+" : "−"}</span></span><div><b>{item.description}</b><small>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(transactionDate(item))} · {item.category || (item.type === "transfer" ? "Transferência" : "Sem categoria")}</small></div><strong className={incomingItem ? "positive" : "negative"}>{incomingItem ? "+ " : "− "}{displayMoney(item.amount)}</strong><div className="movement-actions"><button onClick={() => onEdit(item)} aria-label={`Editar ${item.description}`}><Pencil size={14} /></button><button onClick={() => onDelete(item)} aria-label={`Excluir ${item.description}`}><Trash2 size={14} /></button></div></div>; })}</div></section>;
+  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>{order.photoData && <img className="order-card-photo" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.total - order.paid)}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
 }
 
 function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValues, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, user, onSignOut, onReset, resetting }: any) {
@@ -1200,93 +947,12 @@ function MoreView({ firebaseState, dark, setDark, privateValues, setPrivateValue
   return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => setPrivateValues(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
-const businessExpenseCategories = ["Material", "Fornecedor", "Mão de obra", "Impostos", "Equipamentos", "Serviços", "Software", "Frete", "Outros"];
-const businessIncomeCategories = ["Vendas", "Serviços", "Sinal de cliente", "Outros"];
-const businessBillCategories = ["Estrutura", "Energia e internet", "Equipamentos", "Impostos", "Fornecedor", "Mão de obra", "Software", "Outros"];
-const personalExpenseCategories = ["Moradia", "Alimentação", "Transporte", "Saúde", "Educação", "Lazer", "Assinaturas", "Compras pessoais", "Outros"];
-const personalIncomeCategories = ["Salário", "Freelance", "Rendimentos", "Reembolso", "Presente", "Outros"];
-const personalBillCategories = ["Moradia", "Energia e internet", "Cartão de crédito", "Saúde", "Educação", "Assinaturas", "Compras pessoais", "Outros"];
-
-function CategoryFields({ options, defaultCategory }: { options: string[]; defaultCategory?: string }) {
-  const known = defaultCategory && options.includes(defaultCategory);
-  return <><label className="full">Categoria<select name="category" defaultValue={known ? defaultCategory : options[0]}>{options.map((option) => <option key={option}>{option}</option>)}</select></label><label className="full">Categoria personalizada <span>(opcional)</span><input name="customCategory" defaultValue={defaultCategory && !known ? defaultCategory : ""} placeholder="Ex.: Software, frete ou manutenção" /></label></>;
-}
-
-function CreateModalV2({ kind, account, setKind, close, onSubmit }: { kind: CreateKind; account: AccountType; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const titles: Record<CreateKind, string> = { pedido: "Novo pedido", cliente: "Novo cliente", entrada: "Nova entrada", despesa: "Nova despesa", transferencia: "Transferir para pessoal", conta: "Nova conta recorrente" };
-  const financeKind = ["entrada", "despesa", "transferencia", "conta"].includes(kind);
-  const expenseOptions = account === "personal" ? personalExpenseCategories : businessExpenseCategories;
-  const incomeOptions = account === "personal" ? personalIncomeCategories : businessIncomeCategories;
-  const recurringOptions = account === "personal" ? personalBillCategories : businessBillCategories;
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal"><header><div><span className="eyebrow">CADASTRO RÁPIDO</span><h2>{titles[kind]}</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button><button className={kind === "entrada" ? "active" : ""} onClick={() => setKind("entrada")}>Entrada</button><button className={kind === "despesa" ? "active" : ""} onClick={() => setKind("despesa")}>Despesa</button><button className={kind === "conta" ? "active" : ""} onClick={() => setKind("conta")}>Conta</button></div><form onSubmit={onSubmit}>{financeKind && <><input type="hidden" name="account" value={account} /><div className={`account-context ${account}`}><span>{account === "business" ? <BriefcaseBusiness size={15} /> : <UserRound size={15} />}</span><div><small>LANÇAMENTO EM</small><b>{account === "business" ? "Financeiro empresarial" : "Financeiro pessoal"}</b></div></div></>}{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus placeholder="Nome do cliente" /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" placeholder="55 71 99999-0000" /></label><label className="full">Produto<input name="product" required placeholder="Ex.: Camisetas personalizadas" /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><label className="full">Observação<textarea name="notes" rows={3} /></label></> : kind === "cliente" ? <><label className="full">Nome<input name="name" required autoFocus /></label><label className="full">WhatsApp<input name="phone" required inputMode="tel" /></label><label className="full">Empresa <span>(opcional)</span><input name="company" /></label></> : kind === "conta" ? <><label className="full">Nome da conta<input name="description" required autoFocus placeholder={account === "personal" ? "Ex.: Aluguel, cartão ou academia" : "Ex.: Aluguel, internet ou máquina"} /></label><div className="form-row"><label>Tipo<select name="billingType"><option value="fixed">Mensal fixa</option><option value="installment">Parcelada</option></select></label><label>Valor mensal/parcela<input name="amount" type="number" min="0.01" step="0.01" required /></label></div><div className="form-row"><label>Dia do vencimento<input name="dueDay" type="number" min="1" max="31" defaultValue="10" required /></label><label>Total de parcelas<input name="totalInstallments" type="number" min="2" defaultValue="12" /></label></div><CategoryFields options={recurringOptions} defaultCategory={recurringOptions[0]} /><p className="form-help">A conta será incluída apenas no financeiro {account === "personal" ? "pessoal" : "empresarial"}.</p></> : <><label className="full">Descrição<input name="description" required autoFocus placeholder={kind === "despesa" ? account === "personal" ? "Ex.: Supermercado" : "Ex.: Compra de material" : kind === "transferencia" ? "Ex.: Pró-labore" : account === "personal" ? "Ex.: Salário recebido" : "Ex.: Pagamento de cliente"} /></label><div className="form-row"><label>Valor<input name="amount" type="number" min="0.01" step="0.01" required /></label><label>Data da movimentação<input name="transactionDate" type="date" defaultValue={localDateValue()} required /></label></div>{kind === "despesa" ? <CategoryFields options={expenseOptions} defaultCategory={expenseOptions[0]} /> : kind === "entrada" ? <CategoryFields options={incomeOptions} defaultCategory={incomeOptions[0]} /> : <CategoryFields options={["Pró-labore", "Transferência", "Outros"]} defaultCategory="Pró-labore" />}</>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar</button></footer></form></aside></div>;
+function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const [photoBusy, setPhotoBusy] = useState(false);
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
 }
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></label><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
-}
-
-function MercadoPagoImportModal({ getIdToken, close, onImport }: { getIdToken: () => Promise<string>; close: () => void; onImport: (payment: MercadoPagoImportPreview, description: string, category: string) => Promise<void> }) {
-  const [identifier, setIdentifier] = useState("");
-  const [payment, setPayment] = useState<MercadoPagoImportPreview | null>(null);
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState(businessIncomeCategories[0]);
-  const [customCategory, setCustomCategory] = useState("");
-  const [alreadyImported, setAlreadyImported] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const lookupPayment = async () => {
-    const value = identifier.trim();
-    if (!value) return setError("Informe o ID do pagamento ou a referência Pix.");
-    setLoading(true);
-    setError("");
-    setPayment(null);
-    setAlreadyImported(false);
-    try {
-      const token = await getIdToken();
-      const response = await fetch("/api/integrations/mercadopago/payment", {
-        method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-        body: JSON.stringify({ identifier: value }),
-      });
-      const payload = await response.json().catch(() => ({})) as { error?: string; payment?: MercadoPagoImportPreview; alreadyImported?: boolean; existingTransaction?: { description?: string } | null };
-      if (!response.ok || !payload.payment) throw new Error(payload.error || "Pagamento não encontrado.");
-      setPayment(payload.payment);
-      setDescription(payload.payment.description);
-      setAlreadyImported(Boolean(payload.alreadyImported));
-      if (!payload.payment.approved) setError(`O pagamento está com status “${payload.payment.status}” e ainda não pode ser importado.`);
-      else if (payload.alreadyImported) setError(`Este pagamento já foi importado${payload.existingTransaction?.description ? ` como “${payload.existingTransaction.description}”` : ""}.`);
-    } catch (lookupError) {
-      setError(lookupError instanceof Error ? lookupError.message : "Não foi possível consultar o Mercado Pago.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const submitImport = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!payment) return void lookupPayment();
-    if (!payment.approved || alreadyImported) return;
-    setSaving(true);
-    setError("");
-    try {
-      await onImport(payment, description, customCategory.trim() || category);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Não foi possível importar a movimentação.");
-      setSaving(false);
-    }
-  };
-
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal mercado-pago-import-modal"><header><div><span className="eyebrow">MERCADO PAGO</span><h2>Importar pagamento</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={submitImport}><p className="mp-import-intro">Cole o ID numérico do pagamento ou a referência exibida no Pix. Valor, data e meio de pagamento serão preenchidos automaticamente.</p><label className="full">ID do pagamento ou referência Pix<div className="mp-lookup-row"><input value={identifier} onChange={(event) => { setIdentifier(event.target.value); setPayment(null); setAlreadyImported(false); setError(""); }} autoFocus inputMode="text" placeholder="Ex.: 1234567890" disabled={loading || saving} /><button type="button" className="secondary" onClick={() => void lookupPayment()} disabled={loading || saving}>{loading ? "Buscando…" : "Buscar"}</button></div></label>{payment && <><section className="mp-payment-preview"><div><small>VALOR</small><strong>{money.format(payment.amount)}</strong></div><div><small>DATA</small><b>{new Intl.DateTimeFormat("pt-BR").format(new Date(`${payment.transactionDate}T12:00:00`))}</b></div><div><small>MEIO</small><b>{payment.paymentMethod || "Mercado Pago"}</b></div><div><small>ID</small><b>{payment.paymentId}</b></div>{payment.feeAmount > 0 && <p>Taxa informada: {money.format(payment.feeAmount)}{payment.netAmount !== null ? ` · líquido ${money.format(payment.netAmount)}` : ""}</p>}</section><label className="full">Descrição ou nome<input value={description} onChange={(event) => setDescription(event.target.value)} required placeholder="Ex.: Pagamento do cliente João" /></label><label className="full">Categoria<select value={category} onChange={(event) => setCategory(event.target.value)}>{businessIncomeCategories.map((option) => <option key={option}>{option}</option>)}</select></label><label className="full">Categoria personalizada <span>(opcional)</span><input value={customCategory} onChange={(event) => setCustomCategory(event.target.value)} placeholder="Ex.: Uniformes escolares" /></label></>}{error && <div className="mp-import-error" role="alert"><AlertTriangle size={15} /><span>{error}</span></div>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={loading || saving || Boolean(payment && (!payment.approved || alreadyImported))}><Check size={17} /> {payment ? saving ? "Importando…" : "Adicionar movimentação" : loading ? "Buscando…" : "Buscar pagamento"}</button></footer></form></aside></div>;
-}
-
-function FinancialEditModal({ bill, transaction, close, onSubmit }: { bill?: Bill; transaction?: Transaction; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const item = bill ?? transaction;
-  if (!item) return null;
-  const billOptions = bill?.account === "personal" ? personalBillCategories : businessBillCategories;
-  const transactionOptions = transaction?.type === "income"
-    ? transaction.account === "personal" ? personalIncomeCategories : businessIncomeCategories
-    : transaction?.account === "personal" ? personalExpenseCategories : businessExpenseCategories;
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-financial-modal"><header><div><span className="eyebrow">EDIÇÃO FINANCEIRA</span><h2>{bill ? "Editar conta" : "Editar movimentação"}</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Descrição<input name="description" required autoFocus defaultValue={item.description} /></label><label className="full">Valor<input name="amount" type="number" min="0.01" step="0.01" required defaultValue={item.amount} /></label>{bill ? <><div className="form-row"><label>Tipo<select name="billingType" defaultValue={bill.billingType}><option value="fixed">Mensal fixa</option><option value="installment">Parcelada</option></select></label><label>Vencimento<input name="dueDay" type="number" min="1" max="31" defaultValue={bill.dueDay} required /></label></div><label className="full">Total de parcelas<input name="totalInstallments" type="number" min="2" defaultValue={bill.totalInstallments ?? 12} /></label><CategoryFields options={billOptions} defaultCategory={bill.category} /></> : transaction ? <><div className="form-row"><label>Tipo<select name="type" defaultValue={transaction.type}><option value="income">Entrada</option><option value="expense">Saída</option><option value="transfer">Transferência</option></select></label><label>Conta<select name="account" defaultValue={transaction.account}><option value="business">Empresa</option><option value="personal">Pessoal</option></select></label></div><label className="full">Data da movimentação<input name="transactionDate" type="date" defaultValue={localDateValue(transactionDate(transaction))} required /></label><CategoryFields options={transactionOptions} defaultCategory={transaction.category} /></> : null}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  const [photoBusy, setPhotoBusy] = useState(false);
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></label><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

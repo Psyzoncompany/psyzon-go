@@ -57,6 +57,10 @@ export async function enforcePluggyRateLimit(identity: FirebaseIdentity, request
   return enforceFinancialRateLimit(identity, request, "pluggy", 20, 60);
 }
 
+export async function enforceProductionRateLimit(identity: FirebaseIdentity, request: Request) {
+  return enforceFinancialRateLimit(identity, request, "production-checklist", 12, 30);
+}
+
 async function enforceFinancialRateLimit(identity: FirebaseIdentity, request: Request, scope: string, userLimit: number, ipLimit: number) {
   const now = Date.now();
   const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);

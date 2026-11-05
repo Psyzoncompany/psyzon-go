@@ -49,7 +49,7 @@ export class GeminiProvider implements AIProvider {
   readonly model: string;
   private client: GoogleGenAI;
 
-  constructor(apiKey: string, model = "gemini-3.6-flash") {
+  constructor(apiKey: string, model = "gemini-3.6-flash", private readonly outputSchema: Record<string, unknown> = responseSchema) {
     this.model = model;
     this.client = new GoogleGenAI({ apiKey, apiVersion: "v1" });
   }
@@ -60,7 +60,7 @@ export class GeminiProvider implements AIProvider {
       store: false,
       system_instruction: systemInstruction,
       tools,
-      response_format: { type: "text", mime_type: "application/json", schema: responseSchema },
+      response_format: { type: "text", mime_type: "application/json", schema: this.outputSchema },
       generation_config: { max_output_tokens: 2600, thinking_level: "medium" as const, thinking_summaries: "none" as const, tool_choice: "auto" as const },
     };
   }

@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
@@ -53,15 +53,19 @@ service cloud.firestore {
         && calendarDate(data.dueDate)
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
         && optionalText(data, "notes", 4000)
+        && (!("photoData" in data) || (text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))))
         && validCreatedAt(data);
     }
 
     function validCustomer(data) {
-      return data.keys().hasOnly(["name", "phone", "company"])
+      return data.keys().hasOnly(["name", "phone", "company", "totalAdjustment", "pendingAdjustment", "archived"])
         && data.keys().hasAll(["name", "phone"])
         && text(data.name, 1, 120)
         && text(data.phone, 0, 40)
-        && optionalText(data, "company", 160);
+        && optionalText(data, "company", 160)
+        && (!("archived" in data) || data.archived is bool)
+        && (!("totalAdjustment" in data) || (data.totalAdjustment is number && data.totalAdjustment >= -100000000 && data.totalAdjustment <= 100000000))
+        && (!("pendingAdjustment" in data) || (data.pendingAdjustment is number && data.pendingAdjustment >= -100000000 && data.pendingAdjustment <= 100000000));
     }
 
     function validTransaction(data) {
@@ -98,12 +102,16 @@ service cloud.firestore {
     }
 
     function validBill(data) {
-      return data.keys().hasOnly(["description", "amount", "account", "billingType", "dueDay", "category", "totalInstallments", "paidInstallments", "lastPaidMonth", "createdAt"])
+      return data.keys().hasOnly(["description", "amount", "account", "billingType", "dueDay", "category", "totalInstallments", "paidInstallments", "lastPaidMonth", "createdAt", "direction", "dueDate", "settled"])
         && data.keys().hasAll(["description", "amount", "account", "billingType", "dueDay", "category"])
         && text(data.description, 1, 200)
         && money(data.amount, false)
         && data.account in ["business", "personal"]
-        && data.billingType in ["fixed", "installment"]
+        && data.billingType in ["fixed", "installment", "once"]
+        && (!("direction" in data) || data.direction in ["payable", "receivable"])
+        && (!("settled" in data) || data.settled is bool)
+        && (!("dueDate" in data) || calendarDate(data.dueDate))
+        && (data.billingType != "once" || ("dueDate" in data && calendarDate(data.dueDate)))
         && data.dueDay is int && data.dueDay >= 1 && data.dueDay <= 31
         && text(data.category, 1, 100)
         && (!("totalInstallments" in data) || (data.totalInstallments is int && data.totalInstallments >= 1 && data.totalInstallments <= 600))
@@ -115,15 +123,27 @@ service cloud.firestore {
     }
 
     function validNote(data) {
-      return data.keys().hasOnly(["title", "content", "category", "pinned", "materials", "createdAt", "updatedAt"])
+      return data.keys().hasOnly(["title", "content", "category", "pinned", "materials", "createdAt", "updatedAt", "checklist"])
         && data.keys().hasAll(["title", "content", "category", "pinned", "materials", "updatedAt"])
         && text(data.title, 0, 200)
         && text(data.content, 0, 100000)
         && data.category in ["Geral", "Produção", "Clientes", "Compras", "Modelagem"]
         && data.pinned is bool
         && data.materials is list && data.materials.size() <= 100
+        && (!("checklist" in data) || data.checklist == null || validChecklist(data.checklist))
         && validCreatedAt(data)
         && data.updatedAt is timestamp;
+    }
+
+    function validChecklist(data) {
+      return data is map
+        && data.keys().hasOnly(["client", "deadline", "notes", "rows", "warnings"])
+        && data.keys().hasAll(["client", "deadline", "notes", "rows", "warnings"])
+        && text(data.client, 0, 120)
+        && (data.deadline == "" || calendarDate(data.deadline))
+        && text(data.notes, 0, 4000)
+        && data.rows is list && data.rows.size() <= 500
+        && data.warnings is list && data.warnings.size() <= 30;
     }
 
     match /users/{uid}/orders/{documentId} {

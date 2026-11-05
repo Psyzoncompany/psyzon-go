@@ -1,0 +1,40 @@
+"use client";
+
+import { useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, ClipboardList, Plus, Printer, Sparkles, Trash2, X } from "lucide-react";
+import { getAuth } from "firebase/auth";
+import Modal from "./Modal";
+import ProductionSheets from "./ProductionSheets";
+import { parseProductionOrder, sampleProductionOrder, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
+
+export default function ProductionChecklist({ value, title, source, onChange }: { value?: Checklist | null; title: string; source: string; onChange: (value: Checklist | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [raw, setRaw] = useState(source);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const updateRow = (id: string, patch: Partial<ProductionRow>) => value && onChange({ ...value, rows: value.rows.map((row) => row.id === id ? { ...row, ...patch } : row) });
+  const organize = async (ai: boolean) => {
+    setBusy(true); setError("");
+    try {
+      let result: Checklist;
+      if (ai) {
+        const token = await getAuth().currentUser?.getIdToken();
+        if (!token) throw new Error("Entre novamente para organizar com IA.");
+        const response = await fetch("/api/production-checklist", { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify({ text: raw }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Não foi possível organizar com IA.");
+        result = validateProductionChecklist(data.checklist);
+      } else result = parseProductionOrder(raw);
+      onChange({ ...result, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || "" });
+      setOpen(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível organizar a lista."); }
+    finally { setBusy(false); }
+  };
+  return <section className="production-checklist">
+    <div className="checklist-toolbar"><div><ClipboardList size={18} /><b>Checklist de produção</b>{value && <span>{value.rows.length} peças · {value.rows.filter((row) => row.done).length} conferidas</span>}</div><div><button className="secondary" onClick={() => { setRaw(source); setError(""); setOpen(true); }}>{value ? "Colar outra lista" : "Colar pedido"}</button>{value && <button className="primary" onClick={() => window.print()}><Printer size={16} /> PDF / Imprimir A4</button>}</div></div>
+    {!value && <p className="form-help">Cole a mensagem do cliente. A lista fica separada por modelo e tamanho, com uma marcação por peça.</p>}
+    {value && <><div className="checklist-meta"><label>Cliente / pedido<input value={value.client} maxLength={120} onChange={(event) => onChange({ ...value, client: event.target.value })} /></label><label>Entrega<input type="date" value={value.deadline} onChange={(event) => onChange({ ...value, deadline: event.target.value })} /></label></div>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<div className="checklist-table-wrap"><table className="checklist-table"><thead><tr><th>OK</th><th>Modelo</th><th>Tamanho</th><th>Nome na peça</th><th><span className="sr-only">Excluir</span></th></tr></thead><tbody>{value.rows.map((row, index) => <tr key={row.id} className={row.done ? "done" : ""}><td><input type="checkbox" checked={row.done} onChange={(event) => updateRow(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${index + 1}: ${row.name}`} /></td><td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { model: event.target.value })} /></td><td><input value={row.size} maxLength={40} aria-label={`Tamanho da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { size: event.target.value })} /></td><td><input value={row.name} maxLength={160} aria-label={`Nome da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { name: event.target.value })} /></td><td><button aria-label={`Excluir peça ${index + 1}`} onClick={() => onChange({ ...value, rows: value.rows.filter((item) => item.id !== row.id) })}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => onChange({ ...value, rows: [...value.rows, { id: crypto.randomUUID(), model: value.rows.at(-1)?.model || "Geral", size: "P", name: "Sem nome", done: false }] })}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div><label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={3} onChange={(event) => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label><p className="form-help">Confira nomes e quantidades antes de imprimir. Use “Salvar como PDF” na janela de impressão.</p>{typeof document !== "undefined" && createPortal(<div className="production-print-root"><ProductionSheets checklist={value} /></div>, document.body)}</>}
+    {open && <Modal titleId="checklist-title" busy={busy} close={() => setOpen(false)}><header><h2 id="checklist-title">Organizar pedido</h2><button disabled={busy} onClick={() => setOpen(false)} aria-label="Fechar"><X size={20} /></button></header><div className="checklist-import"><p>Cole o pedido recebido no WhatsApp. Você poderá corrigir a lista antes de imprimir.</p><label>Lista do pedido<textarea value={raw} maxLength={30000} rows={16} onChange={(event) => setRaw(event.target.value)} placeholder="MASCULINA - 8 UNIDADES…" /></label><button className="secondary" disabled={busy} onClick={() => setRaw(sampleProductionOrder)}>Usar exemplo JERFESSON</button>{value && <p className="form-help">Ao organizar outra lista, o checklist atual será substituído.</p>}{error && <p className="form-error" role="alert">{error}</p>}<button className="primary" disabled={busy || !raw.trim()} onClick={() => void organize(false)}><Check size={16} /> Organizar lista</button><button className="secondary" disabled={busy || !raw.trim()} onClick={() => void organize(true)}><Sparkles size={16} />{busy ? "Organizando…" : "Organizar com IA"}</button><p className="form-help">A organização por IA usa apenas o texto colado e pede sua revisão. A organização padrão funciona sem IA.</p></div></Modal>}
+  </section>;
+}

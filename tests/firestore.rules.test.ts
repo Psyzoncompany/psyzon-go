@@ -86,6 +86,40 @@ test("unknown fields are rejected", async () => {
   await assertFails(setDoc(doc(db, "users/user-a/orders/order-1"), { ...validOrder(), admin: true }));
 });
 
+test("owners can adjust and remove customer cards without changing historical orders", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const reference = doc(db, "users/user-a/customers/ana");
+  await assertSucceeds(setDoc(reference, { name: "ANA", phone: "", totalAdjustment: -100, pendingAdjustment: 200, archived: false }));
+  await assertSucceeds(updateDoc(reference, { archived: true }));
+  await assertFails(updateDoc(reference, { pendingAdjustment: "200" }));
+  await assertFails(updateDoc(reference, { totalAdjustment: -100000001 }));
+  await assertFails(updateDoc(reference, { archived: "yes" }));
+  await assertFails(updateDoc(doc(environment.authenticatedContext("user-b").firestore(), "users/user-a/customers/ana"), { archived: false }));
+});
+
+test("one-time payable and receivable bills require valid due dates and settle correctly", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const reference = doc(db, "users/user-a/bills/supply");
+  const bill = { description: "Material", amount: 100, account: "business", billingType: "once", direction: "payable", dueDate: "2026-11-20", dueDay: 20, category: "Material", createdAt: Timestamp.now() };
+  await assertSucceeds(setDoc(reference, bill));
+  await assertSucceeds(updateDoc(reference, { settled: true, lastPaidMonth: "2026-11" }));
+  await assertSucceeds(setDoc(doc(db, "users/user-a/bills/receivable"), { ...bill, direction: "receivable" }));
+  await assertFails(setDoc(doc(db, "users/user-a/bills/invalid"), { ...bill, direction: "other" }));
+  const { dueDate: _dueDate, ...withoutDate } = bill;
+  await assertFails(setDoc(doc(db, "users/user-a/bills/missing-date"), withoutDate));
+});
+
+test("order photos and production checklists are restricted to the owner and expected formats", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const photo = "data:image/jpeg;base64,/9j/AAAA";
+  await assertSucceeds(setDoc(doc(db, "users/user-a/orders/photo"), { ...validOrder(), photoData: photo }));
+  await assertFails(updateDoc(doc(db, "users/user-a/orders/photo"), { photoData: "https://example.com/image.svg" }));
+  const note = { title: "Produção", content: "", category: "Produção", pinned: false, materials: [], updatedAt: Timestamp.now(), checklist: { client: "JERFESSON", deadline: "", notes: "", warnings: [], rows: [{ id: "1", model: "Masculina", size: "P", name: "Enzo", done: false }] } };
+  await assertSucceeds(setDoc(doc(db, "users/user-a/notes/checklist"), note));
+  await assertFails(updateDoc(doc(db, "users/user-a/notes/checklist"), { checklist: { ...note.checklist, rows: Array(501).fill({}) } }));
+  await assertFails(getDoc(doc(environment.authenticatedContext("user-b").firestore(), "users/user-a/orders/photo")));
+});
+
 test("invalid financial values and quantities are rejected", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   await assertFails(setDoc(doc(db, "users/user-a/orders/order-1"), { ...validOrder(), total: -1 }));

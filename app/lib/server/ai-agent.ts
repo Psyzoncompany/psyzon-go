@@ -19,14 +19,14 @@ function uniqueKeys(values: Array<string | undefined>) {
   return [...new Set(values.flatMap((value) => (value ?? "").split(/[;,\n]/)).map((value) => value.trim()).filter(Boolean))];
 }
 
-export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env): ProviderCandidate[] {
+export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env, outputSchema?: Record<string, unknown>): ProviderCandidate[] {
   const deepSeekKeys = uniqueKeys([env.DEEPSEEK_API_KEY, env.DEEPSEEK_API_KEY_2, env.DEEPSEEK_API_KEY_3, env.DEEPSEEK_API_KEYS]);
   const groqKeys = uniqueKeys([env.GROQ_API_KEY, env.GROQ_API_KEY_2, env.GROQ_API_KEY_3, env.GROQ_API_KEYS]);
   const geminiKeys = uniqueKeys([env.GEMINI_API_KEY, env.GEMINI_API_KEY_2, env.GEMINI_API_KEY_3, env.GEMINI_API_KEY_4, env.GEMINI_API_KEY_5, env.GEMINI_API_KEYS]);
   return [
     ...deepSeekKeys.map((key, index) => ({ id: `deepseek-${index + 1}`, family: "deepseek" as const, label: `DeepSeek ${index + 1}`, provider: new DeepSeekProvider(key, env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-pro") })),
     ...groqKeys.map((key, index) => ({ id: `groq-${index + 1}`, family: "groq" as const, label: `Groq ${index + 1}`, provider: new GroqProvider(key, env.GROQ_MODEL?.trim() || "openai/gpt-oss-120b") })),
-    ...geminiKeys.map((key, index) => ({ id: `gemini-${index + 1}`, family: "gemini" as const, label: `Gemini ${index + 1}`, provider: new GeminiProvider(key, env.GEMINI_MODEL?.trim() || "gemini-3.6-flash") })),
+    ...geminiKeys.map((key, index) => ({ id: `gemini-${index + 1}`, family: "gemini" as const, label: `Gemini ${index + 1}`, provider: new GeminiProvider(key, env.GEMINI_MODEL?.trim() || "gemini-3.6-flash", outputSchema) })),
   ];
 }
 

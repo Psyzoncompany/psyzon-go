@@ -1,7 +1,28 @@
 # PSYZON GO
 
-Controle financeiro e produtivo em tempo real para a PSYZON Company. O projeto
+Controle de produção, clientes, despesas mensais e contas a pagar e receber para a PSYZON Company. O projeto
 usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
+
+## Operação diária
+
+- Os botões de voltar/avançar do navegador e do mouse navegam entre as telas.
+- Em Clientes, o lápis edita total comprado e saldo pendente. Os ajustes continuam
+  recebendo os valores de novos pedidos. A lixeira remove o cadastro da lista e
+  preserva pedidos e recebíveis históricos.
+- O Financeiro concentra contas mensais, únicas e parceladas, a pagar ou receber,
+  e despesas pagas por mês. As telas de saldo empresarial/pessoal, movimentações
+  avulsas, conexão bancária e assistente geral foram retiradas da interface.
+- Na criação ou edição de pedido, anexe uma foto JPG, PNG ou WebP de até 10 MB.
+  A foto é reduzida para até 1.200 pixels e salva com o pedido no Firestore.
+- Em Bloco de notas → Checklist de produção → Colar pedido, cole a lista recebida.
+  “Organizar lista” funciona localmente; “Organizar com IA” usa os provedores do
+  servidor pelo endpoint autenticado `/api/production-checklist`. Revise a tabela,
+  marque peças conferidas e use “PDF / Imprimir A4”. O progresso é salvo na nota.
+  O exemplo JERFESSON contém 16 peças, incluindo uma sem nome. Listas maiores
+  ganham páginas de continuação; nomes repetidos e totais divergentes geram avisos.
+
+Ao publicar esta versão, publique também `firestore.rules`: os campos de ajuste,
+foto e checklist dependem das regras atualizadas. Não é necessário Cloud Storage.
 
 ## Prerequisites
 
@@ -29,11 +50,11 @@ Authentication, ative o Cloud Firestore e publique as regras presentes em
 O aplicativo não usa Realtime Database nem Cloud Storage nesta etapa. As regras
 do Firestore garantem que cada conta Google acesse somente os próprios dados.
 
-## PSYZON AI e provedores
+## Provedores de IA e integrações legadas
 
-A PSYZON AI possui página dedicada, painel flutuante, histórico por usuário,
-anexos de texto, ditado por voz, respostas estruturadas e ferramentas controladas
-para consultar pedidos, clientes e financeiro. O modo inicial é somente leitura.
+O assistente geral foi removido da interface. O organizador de produção reutiliza
+os provedores existentes, sem ferramentas para consultar ou alterar o financeiro.
+As rotas e os registros antigos de integração permanecem preservados no servidor.
 
 Configure os valores sensíveis apenas no ambiente do servidor:
 
@@ -46,7 +67,7 @@ Configure os valores sensíveis apenas no ambiente do servidor:
 - `MERCADO_PAGO_WEBHOOK_SECRET`: assinatura secreta configurada no webhook.
 - `MERCADO_PAGO_OWNER_FIREBASE_UID`: UID Firebase do proprietário autorizado.
 
-Na configuração da PSYZON AI, **Automático** usa a ordem DeepSeek → Groq → Gemini. Também é possível priorizar um modelo específico; se ele falhar, os demais provedores configurados são testados automaticamente.
+O organizador tenta DeepSeek, Groq e Gemini conforme as chaves disponíveis no servidor.
 
 Não use o prefixo `NEXT_PUBLIC_` nessas variáveis. O endpoint de notificações do
 Mercado Pago é `/api/webhooks/mercadopago`. A integração valida a assinatura,

@@ -1,552 +1,258 @@
 "use client";
 
-import {
-  Bold,
-  Calculator,
-  Clock3,
-  Copy,
-  Download,
-  FileText,
-  FilePlus2,
-  Files,
-  List,
-  NotebookPen,
-  Pin,
-  Plus,
-  Printer,
-  Redo2,
-  Search,
-  Settings2,
-  Shirt,
-  SmilePlus,
-  Trash2,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Link2, List, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
-import { addDoc, collection, deleteDoc, doc, getFirestore, serverTimestamp, updateDoc } from "firebase/firestore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
+import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
+import NoteDialog from "./notes/NoteDialog";
+import MaterialCalculator from "./notes/MaterialCalculator";
+import "./notes/notes.css";
+export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-export type NoteCategory = "Geral" | "Produção" | "Clientes" | "Compras" | "Modelagem";
+type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string }[]; customers?: { id: string; name: string }[]; privateValues?: boolean };
+type Filter = "all" | "pinned" | "archive" | "trash";
+type Overlay = { draft: NoteDraft; time: number };
+const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
+const rawNote = (n: BusinessNote): StoredNote => ({ title: n.title, content: n.content, category: n.category, pinned: n.pinned, materials: n.materials || [] });
+const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(value) : "Agora";
+// One client queue per signed-in user also protects rapid unmount/remount navigation.
+type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
+const queues = new Map<string, QueueEntry>();
 
-export type BusinessNote = {
-  id: string;
-  title: string;
-  content: string;
-  category: NoteCategory;
-  pinned: boolean;
-  materials?: NoteMaterial[];
-  createdAt?: unknown;
-  updatedAt?: unknown;
-};
-
-export type NoteMaterial = {
-  id: string;
-  fabricType: FabricType;
-  color: string;
-  collarColor?: string;
-  fabricKg: number;
-  fabricCost: number;
-  collarType: CollarType;
-  ribanaKg: number;
-  ribanaCost: number;
-  ribanaPricePerKg: number;
-  poloUnits: number;
-  poloPricePerUnit?: number;
-  poloCost?: number;
-  totalCost: number;
-  supplier: "Costa Rica" | "Atual Têxtil";
-};
-
-type Draft = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & { materials: NoteMaterial[] };
-type SaveState = "saved" | "saving" | "error";
-type FabricType = "PV" | "PP" | "PIQUET";
-type CollarType = "common" | "polo";
-type Supplier = NoteMaterial["supplier"];
-
-const categories: Array<NoteCategory | "Todos"> = ["Todos", "Geral", "Produção", "Clientes", "Compras", "Modelagem"];
-const emptyDraft: Draft = { title: "", content: "", category: "Geral", pinned: false, materials: [] };
-const materialSeparator = "\n\n────────────────────\n\n";
-
-function timestampValue(value: unknown) {
-  if (value && typeof value === "object" && "toMillis" in value && typeof value.toMillis === "function") return value.toMillis();
-  return 0;
-}
-
-function formatUpdatedAt(value: unknown) {
-  const millis = timestampValue(value);
-  if (!millis) return "Agora";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(millis));
-}
-
-function formatKg(value: number) {
-  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function materialSupplier(material: NoteMaterial): Supplier {
-  return material.supplier === "Atual Têxtil" ? "Atual Têxtil" : "Costa Rica";
-}
-
-function materialCollarColor(material: NoteMaterial) {
-  return material.collarColor?.trim() || material.color;
-}
-
-function materialNoteText(material: NoteMaterial, index: number) {
-  const collarLines = material.collarType === "common"
-    ? `🟩 Ribana – ${materialCollarColor(material)}\n⚖️ Quantidade: ${formatKg(material.ribanaKg)} kg`
-    : `👕 Gola polo + punho – ${materialCollarColor(material)}\n🔢 Quantidade: ${material.poloUnits.toLocaleString("pt-BR")} unidades`;
-  return `🧵 MATERIAL ${index + 1}\n🏭 Fornecedor: ${materialSupplier(material)}\n\n🟢 Malha ${material.fabricType} – ${material.color}\n⚖️ Quantidade: ${formatKg(material.fabricKg)} kg\n\n${collarLines}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
-}
-
-function organizeMaterialList(content: string, materials: NoteMaterial[]) {
-  const materialHeadings = [...content.matchAll(/🧵\s*\*?MATERIAL\s+\d+\*?/gi)];
-  if (!materials.length || materialHeadings.length !== materials.length) return { content, materials };
-
-  const prefix = content.slice(0, materialHeadings[0].index).trimEnd();
-  const entries = materialHeadings.map((heading, index) => {
-    const start = heading.index;
-    const end = materialHeadings[index + 1]?.index ?? content.length;
-    const block = content.slice(start, end).replace(/\s*─{5,}\s*$/, "").trim();
-    return { block, material: { ...materials[index], supplier: materialSupplier(materials[index]) }, originalIndex: index };
-  });
-
-  entries.sort((left, right) => {
-    const supplierDifference = Number(materialSupplier(left.material) === "Atual Têxtil") - Number(materialSupplier(right.material) === "Atual Têxtil");
-    return supplierDifference || left.originalIndex - right.originalIndex;
-  });
-
-  const organizedBlocks = entries.map(({ block, material }, index) => {
-    const numberedBlock = block.replace(/(🧵\s*\*?MATERIAL\s+)\d+(\*?)/i, `$1${index + 1}$2`);
-    const supplierLine = `🏭 Fornecedor: ${materialSupplier(material)}`;
-    if (/🏭\s*Fornecedor\s*:/i.test(numberedBlock)) return numberedBlock.replace(/🏭\s*Fornecedor\s*:[^\n]*/i, supplierLine);
-    return numberedBlock.replace(/(🧵\s*\*?MATERIAL\s+\d+\*?)/i, `$1\n${supplierLine}`);
-  });
-  const organizedContent = [prefix, organizedBlocks.join(materialSeparator)].filter(Boolean).join("\n\n");
-  return { content: organizedContent, materials: entries.map(({ material }) => material) };
-}
-
-function nextMaterialNumber(content: string) {
-  const numbers = [...content.matchAll(/🧵\s*\*?MATERIAL\s+(\d+)/gi)].map((match) => Number(match[1]));
-  return (numbers.length ? Math.max(...numbers) : 0) + 1;
-}
-
-function normalizeKgInText(content: string) {
-  return content.replace(/(Quantidade:\s*)([\d.,]+)(\s*kg)/gi, (_match, prefix: string, raw: string, suffix: string) => {
-    const value = Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
-    return Number.isFinite(value) ? `${prefix}${formatKg(value)}${suffix}` : `${prefix}${raw}${suffix}`;
-  });
-}
-
-function includeMaterialCostLines(content: string, materials: NoteMaterial[]) {
-  let materialIndex = 0;
-  return content.replace(/🧵\s*\*?MATERIAL\s+\d+\*?[\s\S]*?(?=\n{2,}─{5,}\n{2,}🧵\s*\*?MATERIAL\s+\d+|🧵\s*\*?MATERIAL\s+\d+|$)/gi, (block) => {
-    const material = materials[materialIndex++];
-    if (!material) return block;
-    const withoutOldCost = block.replace(/\n*💰\s*Custo total do material:[^\n]*/gi, "").trimEnd();
-    return `${withoutOldCost}\n\n💰 Custo total do material: ${formatCurrency(material.totalCost)}`;
-  });
-}
-
-function toDraft(note: BusinessNote): Draft {
-  const materials = Array.isArray(note.materials) ? note.materials.map((material) => ({ ...material, collarColor: materialCollarColor(material), poloPricePerUnit: material.poloPricePerUnit ?? 2.5, poloCost: material.poloCost ?? 0, supplier: materialSupplier(material) })) : [];
-  const hasMaterialText = /🧵\s*\*?MATERIAL\s+\d+/i.test(note.content);
-  const baseContent = materials.length && !hasMaterialText
-    ? [note.content.trim(), materials.map(materialNoteText).join(materialSeparator)].filter(Boolean).join("\n\n")
-    : note.content;
-  const content = materials.length ? includeMaterialCostLines(baseContent, materials) : baseContent;
-  const organized = organizeMaterialList(normalizeKgInText(content), materials);
-  return { title: note.title, content: organized.content, category: note.category, pinned: note.pinned, materials: organized.materials };
-}
-
-function titleCaseColor(value: string) {
-  const normalized = value.trim().toLocaleLowerCase("pt-BR");
-  return normalized ? normalized.charAt(0).toLocaleUpperCase("pt-BR") + normalized.slice(1) : "Sem cor";
-}
-
-function evaluateExpression(value: string) {
-  const expression = value.replace(/,/g, ".").replace(/×/g, "*").replace(/÷/g, "/").replace(/\s/g, "");
-  const normalized = expression.startsWith("-") ? `0${expression}` : expression;
-  if (!normalized || !/^\d+(?:\.\d+)?(?:[+\-*/]\d+(?:\.\d+)?)*$/.test(normalized)) throw new Error("Conta inválida");
-  const tokens = normalized.match(/\d+(?:\.\d+)?|[+\-*/]/g) ?? [];
-  const values: number[] = [Number(tokens[0])];
-  const operators: string[] = [];
-
-  for (let index = 1; index < tokens.length; index += 2) {
-    const operator = tokens[index];
-    const nextValue = Number(tokens[index + 1]);
-    if (operator === "*" || operator === "/") {
-      const previous = values.pop() ?? 0;
-      values.push(operator === "*" ? previous * nextValue : previous / nextValue);
-    } else {
-      operators.push(operator);
-      values.push(nextValue);
-    }
-  }
-
-  return values.slice(1).reduce((total, number, index) => operators[index] === "+" ? total + number : total - number, values[0]);
-}
-
-export default function NotesWorkspace({ uid, notes }: { uid: string; notes: BusinessNote[] }) {
-  const initialNote = [...notes].sort((left, right) => Number(right.pinned) - Number(left.pinned) || timestampValue(right.updatedAt) - timestampValue(left.updatedAt))[0];
-  const initialDraft: Draft = initialNote ? toDraft(initialNote) : emptyDraft;
-  const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
-  const [draft, setDraft] = useState<Draft>(initialDraft);
+export default function NotesWorkspace({ uid, notes, orders = [], customers = [], privateValues = false }: Props) {
+  const [selectedId, setSelectedId] = useState("");
+  const [overlays, setOverlays] = useState<Record<string, Overlay>>({});
+  const [statuses, setStatuses] = useState<Record<string, SaveStatus>>({});
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<(typeof categories)[number]>("Todos");
-  const [saveState, setSaveState] = useState<SaveState>("saved");
-  const [editorNotice, setEditorNotice] = useState("");
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [calculatorOpen, setCalculatorOpen] = useState(false);
-  const [calculatorTab, setCalculatorTab] = useState<"tecido" | "geral">("tecido");
-  const [priceSettingsOpen, setPriceSettingsOpen] = useState(false);
-  const [expression, setExpression] = useState("");
-  const [calculatorError, setCalculatorError] = useState("");
-  const [fabricMode, setFabricMode] = useState<"kg" | "pieces">("pieces");
-  const [supplier, setSupplier] = useState<Supplier>("Costa Rica");
-  const [fabricType, setFabricType] = useState<FabricType>("PV");
-  const [fabricColor, setFabricColor] = useState("");
-  const [collarType, setCollarType] = useState<CollarType>("common");
-  const [sameCollarColor, setSameCollarColor] = useState(true);
-  const [collarColor, setCollarColor] = useState("");
-  const [fabricValue, setFabricValue] = useState("100");
-  const [waste, setWaste] = useState("0");
-  const [pricePerKg, setPricePerKg] = useState("43.90");
-  const [ribanaPricePerKg, setRibanaPricePerKg] = useState("53.00");
-  const [poloPricePerUnit, setPoloPricePerUnit] = useState("2.50");
-  const [poloQuantity, setPoloQuantity] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const timerRef = useRef<number | undefined>(undefined);
-  const lastSavedRef = useRef(JSON.stringify(initialDraft));
+  const [category, setCategory] = useState("Todas");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [sort, setSort] = useState<"recent" | "title">("recent");
+  const [sidebar, setSidebar] = useState(true);
+  const [mobileEditor, setMobileEditor] = useState(false);
+  const [modal, setModal] = useState<"new" | "export" | "link" | null>(null);
+  const [calculator, setCalculator] = useState<NoteMaterial | "new" | null>(null);
+  const [menu, setMenu] = useState(false);
+  const [activeBlock, setActiveBlock] = useState("");
+  const [notice, setNotice] = useState("");
+  const [storageError, setStorageError] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [recoveries, setRecoveries] = useState<Record<string, Recovery<StoredNote>>>({});
+  const [, refreshHistory] = useState(0);
+  const alive = useRef(false), propsRef = useRef(notes), selectedRef = useRef(selectedId);
+  const overlaysRef = useRef(overlays), queueRef = useRef<NoteSaveQueue<StoredNote> | null>(null);
+  const baseline = useRef<Record<string, string>>({});
+  const normalized = useRef(new Map<string, { signature: string; draft: NoteDraft }>());
+  const draftFor = (note: BusinessNote) => {
+    const signature = JSON.stringify(rawNote(note));
+    const cached = normalized.current.get(note.id);
+    if (cached?.signature === signature) return cached.draft;
+    const draft = toDraft(note); normalized.current.set(note.id, { signature, draft }); return draft;
+  };
+  const history = useRef<Record<string, { undo: NoteDraft[]; redo: NoteDraft[]; typingAt: number }>>({});
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const editorRef = useRef<HTMLDivElement>(null);
+  propsRef.current = notes; selectedRef.current = selectedId; overlaysRef.current = overlays;
+  const notify = (message: string) => { setNotice(message); clearTimeout(noticeTimer.current); noticeTimer.current = setTimeout(() => setNotice(""), 4500); };
 
-  const sortedNotes = useMemo(() => [...notes].sort((left, right) => Number(right.pinned) - Number(left.pinned) || timestampValue(right.updatedAt) - timestampValue(left.updatedAt)), [notes]);
-  const filteredNotes = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase("pt-BR");
-    return sortedNotes.filter((note) => {
-      const materialTerms = note.materials?.map((material) => `${material.fabricType} ${material.color}`).join(" ") ?? "";
-      return (category === "Todos" || note.category === category) && (!term || `${note.title} ${note.content} ${materialTerms}`.toLocaleLowerCase("pt-BR").includes(term));
-    });
-  }, [category, search, sortedNotes]);
-  const materialsTotal = useMemo(() => draft.materials.reduce((total, material) => total + material.totalCost, 0), [draft.materials]);
   useEffect(() => {
-    if (!selectedId) return;
-    const serialized = JSON.stringify(draft);
-    if (serialized === lastSavedRef.current) return;
-    setSaveState("saving");
-    window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(async () => {
-      try {
-        await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", selectedId), { ...draft, updatedAt: serverTimestamp() });
-        lastSavedRef.current = serialized;
-        setSaveState("saved");
-      } catch (error) {
-        console.error("Note autosave failed", error);
-        setSaveState("error");
+    alive.current = true;
+    const key = recoveryKey(uid);
+    const readRecoveries = (): Record<string, Recovery<StoredNote>> => { try { return JSON.parse(localStorage.getItem(key) || "{}"); } catch { return {}; } };
+    let entry = queues.get(uid);
+    if (!entry) {
+      const created: QueueEntry = { queue: undefined as unknown as NoteSaveQueue<StoredNote> };
+      created.queue = new NoteSaveQueue<StoredNote>(
+        async (id, value) => { await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...value, updatedAt: serverTimestamp() }); },
+        (id, value) => created.recover?.(id, value),
+        (id, status) => created.report?.(id, status),
+      );
+      entry = created; queues.set(uid, entry);
+    }
+    entry.recover = (id, value) => {
+        try {
+          const records = readRecoveries();
+          if (value) records[id] = { value, base: baseline.current[id] || records[id]?.base || "", time: Date.now() };
+          else delete records[id];
+          if (Object.keys(records).length) localStorage.setItem(key, JSON.stringify(records)); else localStorage.removeItem(key);
+        } catch { if (alive.current) setStorageError(true); }
+      };
+    entry.report = (id, status) => { if (alive.current) setStatuses(current => ({ ...current, [id]: status })); };
+    const queue = entry.queue;
+    const recovered = readRecoveries();
+    const pending = queue.pendingValues();
+    for (const item of pending) delete recovered[item.id];
+    setRecoveries(recovered); setStatuses(queue.getStatuses());
+    if (pending.length) setOverlays(current => ({ ...current, ...Object.fromEntries(pending.map(item => [item.id, { draft: toDraft({ id: item.id, ...item.value }), time: Date.now() }])) }));
+    queueRef.current = queue;
+    const flush = () => { void queue.flushAll(); };
+    const visibility = () => { if (document.visibilityState === "hidden") flush(); };
+    const online = () => { void queue.flushAll(); };
+    window.addEventListener("pagehide", flush); window.addEventListener("online", online); document.addEventListener("visibilitychange", visibility);
+    return () => { alive.current = false; flush(); window.removeEventListener("pagehide", flush); window.removeEventListener("online", online); document.removeEventListener("visibilitychange", visibility); clearTimeout(noticeTimer.current); };
+  }, [uid]);
+
+  const allNotes = useMemo(() => {
+    const known = new Map(notes.map(n => [n.id, { id: n.id, draft: overlays[n.id]?.draft || draftFor(n), time: overlays[n.id]?.time || millis(n.updatedAt) }]));
+    for (const [id, item] of Object.entries(overlays)) if (!known.has(id)) known.set(id, { id, ...item });
+    return [...known.values()].sort((a, b) => Number(b.draft.pinned) - Number(a.draft.pinned) || (sort === "title" ? a.draft.title.localeCompare(b.draft.title, "pt-BR") : b.time - a.time));
+  }, [notes, overlays, sort]);
+  const visibleNotes = useMemo(() => allNotes.filter(n => {
+    const status = n.draft.document.status;
+    const inSection = filter === "trash" ? status === "trash" : filter === "archive" ? status === "archive" : status === "active" && (filter !== "pinned" || n.draft.pinned);
+    const term = search.trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const haystack = `${n.draft.title} ${plainText(n.draft)} ${n.draft.materials.map(m => `${m.supplier} ${m.fabricType} ${m.color} ${m.collarColor}`).join(" ")}`.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    return inSection && (category === "Todas" || n.draft.category === category) && (!term || haystack.includes(term));
+  }), [allNotes, filter, search, category]);
+  useEffect(() => {
+    if (!selectedId || !visibleNotes.some(n => n.id === selectedId)) setSelectedId(visibleNotes[0]?.id || "");
+  }, [visibleNotes, selectedId]);
+  // An acknowledged server snapshot can replace a local overlay. Never replace pending edits.
+  useEffect(() => {
+    setOverlays(current => {
+      const next = { ...current }; let changed = false;
+      for (const note of notes) {
+        if (next[note.id] && !queueRef.current?.isPending(note.id) && JSON.stringify(rawNote(note)) === JSON.stringify(serializeDraft(next[note.id].draft))) { delete next[note.id]; changed = true; }
       }
-    }, 650);
-    return () => window.clearTimeout(timerRef.current);
-  }, [draft, selectedId, uid]);
+      return changed ? next : current;
+    });
+  }, [notes, statuses]);
+  const current = allNotes.find(n => n.id === selectedId);
+  const draft = current?.draft;
+  const status = statuses[selectedId] || "saved";
+  const locked = draft?.document.status === "trash";
+  const groups = supplierGroups(draft?.materials || []);
+  const total = (draft?.materials || []).reduce((sum, m) => sum + m.totalCost, 0);
+  const displayMoney = (value: number) => privateValues ? "••••" : currency(value);
 
-  const selectNote = (note: BusinessNote) => {
-    const nextDraft = toDraft(note);
-    setSelectedId(note.id);
-    setDraft(nextDraft);
-    lastSavedRef.current = JSON.stringify(nextDraft);
-    setSaveState("saved");
-  };
-
-  const createNote = async () => {
-    const nextDraft: Draft = {
-      title: "Nova anotação",
-      content: "",
-      category: "Geral",
-      pinned: false,
-      materials: [],
-    };
-    const reference = await addDoc(collection(getFirestore(getApps()[0]), "users", uid, "notes"), { ...nextDraft, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    setSelectedId(reference.id);
-    setDraft(nextDraft);
-    lastSavedRef.current = JSON.stringify(nextDraft);
-    setSaveState("saved");
-  };
-
-  const deleteNote = async () => {
-    if (!selectedId || !window.confirm(`Excluir a anotação “${draft.title || "Sem título"}”?`)) return;
-    const nextNote = sortedNotes.find((note) => note.id !== selectedId);
-    await deleteDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", selectedId));
-    if (nextNote) selectNote(nextNote);
-    else {
-      setSelectedId("");
-      setDraft(emptyDraft);
-      lastSavedRef.current = "";
+  const stage = (id: string, value: NoteDraft) => {
+    const serialized = serializeDraft(value);
+    if (serialized.title.length > 200 || serialized.content.length > 100000 || value.materials.length > 100) { notify("Limite da anotação atingido. Crie outra nota para continuar."); return; }
+    if (!queueRef.current?.isPending(id)) {
+      const remote = propsRef.current.find(n => n.id === id);
+      baseline.current[id] = remote ? JSON.stringify(rawNote(remote)) : "";
     }
+    const next = { ...overlaysRef.current, [id]: { draft: value, time: Date.now() } };
+    overlaysRef.current = next; setOverlays(next); queueRef.current?.stage(id, serialized);
   };
-
-  const insertAtCursor = (text: string) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return setDraft((current) => ({ ...current, content: `${current.content}${text}` }));
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    setDraft((current) => ({ ...current, content: `${current.content.slice(0, start)}${text}${current.content.slice(end)}` }));
-    window.requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + text.length, start + text.length);
-    });
+  const change = (mutate: (draft: NoteDraft) => NoteDraft, typing = false) => {
+    const id = selectedRef.current;
+    const existing = overlaysRef.current[id]?.draft || (propsRef.current.find(n => n.id === id) ? draftFor(propsRef.current.find(n => n.id === id)!) : undefined);
+    if (!existing) return;
+    const next = mutate(existing);
+    const h = history.current[id] ||= { undo: [], redo: [], typingAt: 0 };
+    if (!typing || Date.now() - h.typingAt > 700) { h.undo.push(existing); if (h.undo.length > 40) h.undo.shift(); }
+    h.redo = []; h.typingAt = typing ? Date.now() : 0;
+    stage(id, next); refreshHistory(v => v + 1);
   };
-
-  const showEditorNotice = (message: string) => {
-    setEditorNotice(message);
-    window.setTimeout(() => setEditorNotice(""), 2200);
+  const undo = (redo = false) => {
+    if (!draft || locked) return;
+    const h = history.current[selectedId]; if (!h) return;
+    const next = (redo ? h.redo : h.undo).pop(); if (!next) return;
+    (redo ? h.undo : h.redo).push(draft); h.typingAt = 0;
+    stage(selectedId, next); refreshHistory(v => v + 1);
   };
-
-  const wrapSelection = (prefix: string, suffix = prefix) => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = draft.content.slice(start, end) || "texto";
-    const replacement = `${prefix}${selected}${suffix}`;
-    setDraft((current) => ({ ...current, content: `${current.content.slice(0, start)}${replacement}${current.content.slice(end)}` }));
-    window.requestAnimationFrame(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
-    });
-  };
-
-  const supplierOrderText = () => {
-    const content = exportedMaterials();
-    if (!draft.materials.length) return content;
-    return [content, `💰 VALOR TOTAL DO PEDIDO: ${formatCurrency(materialsTotal)}`].filter(Boolean).join("\n\n");
-  };
-
-  const exportedMaterials = () => {
-    return draft.content
-      .split("\n")
-      .filter((line) => !/\b(?:valor|custo total|preço)\b/i.test(line))
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  };
-
-  const copyMaterials = async () => {
-    await navigator.clipboard.writeText(supplierOrderText());
-    setExportMenuOpen(false);
-    showEditorNotice("Pedido de malha copiado com o valor total");
-  };
-
-  const downloadText = () => {
-    const file = new Blob([exportedMaterials()], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(file);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${draft.title || "anotacao"}.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setExportMenuOpen(false);
-    showEditorNotice("Arquivo TXT exportado");
-  };
-
-  const duplicateLastMaterial = () => {
-    const material = draft.materials.at(-1);
-    if (!material) {
-      setCalculatorTab("tecido");
-      setCalculatorOpen(true);
-      return;
-    }
-    const duplicatedNumber = nextMaterialNumber(draft.content);
-    setDraft((current) => {
-      const duplicate = { ...material, id: crypto.randomUUID() };
-      const separator = current.content.trim() ? materialSeparator : "";
-      const organized = organizeMaterialList(`${current.content.trimEnd()}${separator}${materialNoteText(duplicate, duplicatedNumber - 1)}`, [...current.materials, duplicate]);
-      return { ...current, content: organized.content, materials: organized.materials };
-    });
-    showEditorNotice(`MATERIAL ${duplicatedNumber} duplicado`);
-  };
-
-  const updateNoteContent = (content: string) => {
-    setDraft((current) => {
-      const blocks = [...content.matchAll(/🧵\s*\*?MATERIAL\s+(\d+)\*?([\s\S]*?)(?=🧵\s*\*?MATERIAL\s+\d+\*?|$)/gi)];
-      const materials = blocks.map((match, index) => {
-        const block = match[2];
-        const fallback: NoteMaterial = { id: crypto.randomUUID(), fabricType: "PV", color: "Sem cor", collarColor: "Sem cor", fabricKg: 0, fabricCost: 0, collarType: /Gola polo/i.test(block) ? "polo" : "common", ribanaKg: 0, ribanaCost: 0, ribanaPricePerKg: 53, poloUnits: 0, poloPricePerUnit: 2.5, poloCost: 0, totalCost: 0, supplier: /Atual Têxtil/i.test(block) ? "Atual Têxtil" : "Costa Rica" };
-        const material = current.materials[index] ?? fallback;
-        const fabric = block.match(/🟢\s*(?:\*)?Malha\s+(PV|PP|PIQUET)\s*[–-]\s*([^\n*]+)/i);
-        const collar = block.match(/(?:🟩\s*Ribana|👕\s*Gola polo(?:\s*\+\s*punho)?)\s*[–-]\s*([^\n*]+)/i);
-        const quantities = [...block.matchAll(/(?:⚖️|🔢)\s*Quantidade:\s*([\d.,]+)/gi)].map((match) => {
-          const raw = match[1];
-          return Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw);
-        });
-        const fabricKg = Number.isFinite(quantities[0]) ? Math.max(0, quantities[0]) : material.fabricKg;
-        const fabricPrice = material.fabricKg > 0 ? material.fabricCost / material.fabricKg : 43.9;
-        const ribanaKg = material.collarType === "common" && Number.isFinite(quantities[1]) ? Math.max(0, quantities[1]) : material.ribanaKg;
-        const poloUnits = material.collarType === "polo" && Number.isFinite(quantities[1]) ? Math.max(0, Math.round(quantities[1])) : material.poloUnits;
-        const fabricCost = fabricKg * fabricPrice;
-        const ribanaCost = material.collarType === "common" ? ribanaKg * material.ribanaPricePerKg : 0;
-        const poloPrice = material.poloPricePerUnit ?? 2.5;
-        const poloCost = material.collarType === "polo" ? poloUnits * poloPrice : 0;
-        return { ...material, fabricType: (fabric?.[1] as FabricType | undefined) ?? material.fabricType, color: fabric?.[2]?.trim() || material.color, collarColor: collar?.[1]?.trim() || materialCollarColor(material), fabricKg, ribanaKg, poloUnits, poloPricePerUnit: poloPrice, poloCost, fabricCost, ribanaCost, totalCost: fabricCost + ribanaCost + poloCost };
-      });
-      return { ...current, content: includeMaterialCostLines(content, materials), materials };
-    });
-  };
-
-  const calculate = () => {
+  const choose = (id: string) => { if (selectedId) void queueRef.current?.flush(selectedId); setSelectedId(id); setMobileEditor(true); setCalculator(null); setMenu(false); setActiveBlock(""); };
+  const section = (next: Filter) => { if (selectedId) void queueRef.current?.flush(selectedId); setFilter(next); setSearch(""); setCategory("Todas"); setMobileEditor(false); setCalculator(null); setMenu(false); };
+  const create = async (templateIndex: number) => {
+    if (creating) return;
+    setCreating(true);
     try {
-      const result = evaluateExpression(expression);
-      if (!Number.isFinite(result)) throw new Error("Conta inválida");
-      setExpression(String(Number(result.toFixed(4))).replace(".", ","));
-      setCalculatorError("");
-    } catch {
-      setCalculatorError("Confira a conta e tente novamente.");
-    }
+      if (selectedId) void queueRef.current?.flush(selectedId);
+      const template = templates[templateIndex];
+      const next = newDraft(templateIndex ? template.title : "Nova anotação"); next.category = template.category;
+      if (template.lines.length) next.document = readDocument(template.lines.join("\n"));
+      const id = makeId();
+      await setDoc(doc(collection(getFirestore(getApps()[0]), "users", uid, "notes"), id), { ...serializeDraft(next), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const updated = { ...overlaysRef.current, [id]: { draft: next, time: Date.now() } }; overlaysRef.current = updated; setOverlays(updated);
+      setFilter("all"); setSearch(""); setCategory("Todas"); setSelectedId(id); setMobileEditor(true); setModal(null); setActiveBlock("");
+    } catch { notify("Não foi possível criar a anotação. Confira a conexão e tente novamente."); }
+    finally { setCreating(false); }
   };
-
-  const numericFabricValue = Math.max(0, Number(fabricValue.replace(",", ".")) || 0);
-  const numericWaste = Math.min(90, Math.max(0, Number(waste.replace(",", ".")) || 0));
-  const efficiency = 1 - numericWaste / 100;
-  const estimatedPieces = Math.floor(numericFabricValue * 4.2 * efficiency);
-  const requiredKg = efficiency > 0 ? numericFabricValue / 4.2 / efficiency : 0;
-  const numericPrice = Math.max(0, Number(pricePerKg.replace(",", ".")) || 0);
-  const numericRibanaPrice = Math.max(0, Number(ribanaPricePerKg.replace(",", ".")) || 0);
-  const numericPoloPrice = Math.max(0, Number(poloPricePerUnit.replace(",", ".")) || 0);
-  const calculatedOrderKg = fabricMode === "pieces" ? requiredKg : numericFabricValue;
-  const totalFabricCost = calculatedOrderKg > 0 && numericPrice > 0 ? calculatedOrderKg * numericPrice : 0;
-  const plannedPieces = fabricMode === "pieces" ? Math.ceil(numericFabricValue) : estimatedPieces;
-  const numericPoloUnits = poloQuantity === null ? plannedPieces : Math.max(0, Math.round(Number(poloQuantity.replace(",", ".")) || 0));
-  const ribanaKg = calculatedOrderKg * 0.05;
-  const ribanaCost = collarType === "common" ? ribanaKg * numericRibanaPrice : 0;
-  const poloCost = collarType === "polo" ? numericPoloUnits * numericPoloPrice : 0;
-  const totalOrderCost = totalFabricCost + ribanaCost + poloCost;
-  const costPerPiece = plannedPieces > 0 ? totalOrderCost / plannedPieces : 0;
-  const missingCollarColor = !sameCollarColor && !collarColor.trim();
-  const addMaterialToNote = () => {
-    const color = titleCaseColor(fabricColor);
-    if (!numericFabricValue || !selectedId || !fabricColor.trim() || missingCollarColor) return;
-    const nextNumber = nextMaterialNumber(draft.content);
-    const material: NoteMaterial = {
-      id: crypto.randomUUID(),
-      fabricType,
-      color,
-      collarColor: sameCollarColor ? color : titleCaseColor(collarColor),
-      fabricKg: calculatedOrderKg,
-      fabricCost: totalFabricCost,
-      collarType,
-      ribanaKg: collarType === "common" ? ribanaKg : 0,
-      ribanaCost,
-      ribanaPricePerKg: numericRibanaPrice,
-      poloUnits: collarType === "polo" ? numericPoloUnits : 0,
-      poloPricePerUnit: numericPoloPrice,
-      poloCost,
-      totalCost: totalOrderCost,
-      supplier,
-    };
-    setDraft((current) => {
-      const separator = current.content.trim() ? materialSeparator : "";
-      const organized = organizeMaterialList(`${current.content.trimEnd()}${separator}${materialNoteText(material, nextNumber - 1)}`, [...current.materials, material]);
-      return { ...current, content: organized.content, materials: organized.materials };
-    });
-    setCalculatorOpen(false);
-    showEditorNotice(`MATERIAL ${nextNumber} adicionado e calculado`);
+  const changeBlock = (id: string, update: Partial<TextBlock>, typing = false) => change(d => ({ ...d, document: { ...d.document, blocks: d.document.blocks.map(b => b.id === id ? { ...b, ...update } : b) } }), typing);
+  const addBlock = (type: TextBlock["type"] = "paragraph") => {
+    const added = block("", type);
+    change(d => { const index = d.document.blocks.findIndex(b => b.id === activeBlock); const next = [...d.document.blocks]; next.splice(index < 0 ? next.length : index + 1, 0, added); return { ...d, document: { ...d.document, blocks: next } }; });
+    setActiveBlock(added.id);
+    requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${added.id}"]`)?.focus());
   };
+  const formatBlock = (type: TextBlock["type"] | "bold") => {
+    const target = draft?.document.blocks.find(b => b.id === activeBlock);
+    if (!target) { addBlock(type === "bold" ? "paragraph" : type); return; }
+    changeBlock(target.id, type === "bold" ? { bold: !target.bold } : { type: target.type === type ? "paragraph" : type });
+  };
+  const recover = (id: string, useLocal: boolean) => {
+    const record = recoveries[id];
+    if (useLocal && record) { stage(id, toDraft({ id, ...record.value })); choose(id); notify("Rascunho recuperado. Salvando…"); }
+    else { try { const records = JSON.parse(localStorage.getItem(recoveryKey(uid)) || "{}"); delete records[id]; localStorage.setItem(recoveryKey(uid), JSON.stringify(records)); } catch { setStorageError(true); } }
+    setRecoveries(current => { const next = { ...current }; delete next[id]; return next; });
+  };
+  const copySupplier = async (supplier: string) => { if (!draft) return; try { await navigator.clipboard.writeText(exportNote(draft, { supplier, prices: true })); notify(`Pedido de ${supplier} copiado com o total.`); } catch { notify("Não foi possível copiar. Use Exportar para selecionar o texto."); } };
+  const activeCount = allNotes.filter(n => n.draft.document.status === "active").length;
 
-  return (
-    <div className="notes-workspace">
-      <div className="page-heading compact notes-heading">
-        <div><span className="eyebrow">CENTRAL DE ANOTAÇÕES</span><h1>Bloco de notas</h1><p>Produção, clientes, compras e modelagem salvos em tempo real.</p></div>
-        <button className="primary" onClick={() => createNote()}><FilePlus2 size={18} /> Nova anotação</button>
-      </div>
-
-      <section className="notes-page-navigation panel" aria-label="Páginas do bloco de notas">
-        <div className="notes-page-controls">
-          <div className="notes-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar páginas…" aria-label="Buscar páginas" /></div>
-          <label className="notes-category-filter"><span>Categoria</span><select value={category} onChange={(event) => setCategory(event.target.value as (typeof categories)[number])} aria-label="Filtrar páginas por categoria">{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
-          <span className="notes-page-summary">{filteredNotes.length} {filteredNotes.length === 1 ? "página" : "páginas"}</span>
+  return <div className={`apple-notes ${sidebar ? "" : "an-sidebar-hidden"} ${mobileEditor ? "an-mobile-editor" : ""} ${calculator ? "an-has-calculator" : ""}`}>
+    <aside className="an-list-panel" aria-label="Lista de anotações">
+      <header><h1>Anotações</h1><button className="an-icon blue" onClick={() => setModal("new")} aria-label="Nova anotação" title="Nova anotação"><FilePlus2 size={21} /></button></header>
+      <div className="an-search"><Search size={17} /><input aria-label="Buscar anotações" placeholder="Buscar" value={search} onChange={e => setSearch(e.target.value)} /><kbd>⌕</kbd></div>
+      <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button></div>
+      <div className="an-list-filters"><select aria-label="Filtrar por categoria" value={category} onChange={e => setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select aria-label="Ordenar anotações" value={sort} onChange={e => setSort(e.target.value as "recent" | "title")}><option value="recent">Recentes</option><option value="title">Título A–Z</option></select></div>
+      <div className="an-note-list"><h2>{filter === "trash" ? "Lixeira" : filter === "archive" ? "Arquivo" : filter === "pinned" ? "Fixadas" : "Suas anotações"}<span>{visibleNotes.length}</span></h2>{visibleNotes.map(note => <button className={`an-note-row ${selectedId === note.id ? "selected" : ""}`} key={note.id} aria-current={selectedId === note.id ? "page" : undefined} onClick={() => choose(note.id)}><span className="an-note-row-title">{note.draft.title || "Sem título"}{note.draft.pinned && <Pin size={12} />}</span><span className="an-preview">{plainText(note.draft).trim() || note.draft.materials.map(m => `${m.fabricType} · ${m.color}`).join(", ") || "Anotação vazia"}</span><small>{labelDate(note.time)} <span>· {note.draft.category}</span></small></button>)}{!visibleNotes.length && <div className="an-list-empty"><NotebookPen size={24} /><p>{search ? "Nenhuma anotação encontrada." : filter === "trash" ? "A lixeira está vazia." : "Nenhuma anotação por aqui."}</p>{filter === "all" && <button className="an-link" onClick={() => setModal("new")}>Criar anotação</button>}</div>}</div>
+      <footer><button className={filter === "archive" ? "selected" : ""} onClick={() => section("archive")}><Archive size={17} />Arquivo<span>{allNotes.filter(n => n.draft.document.status === "archive").length || ""}</span></button><button className={filter === "trash" ? "selected" : ""} onClick={() => section("trash")}><Trash2 size={17} />Lixeira<span>{allNotes.filter(n => n.draft.document.status === "trash").length || ""}</span></button></footer>
+    </aside>
+    <section className="an-editor-panel" aria-label="Editor da anotação">
+      <header className="an-editor-topbar"><div><button className="an-icon an-mobile-back" aria-label="Voltar às anotações" onClick={() => { setMobileEditor(false); void queueRef.current?.flushAll(); }}><ArrowLeft size={19} /></button><button className="an-icon an-desktop-toggle" aria-label={sidebar ? "Recolher lista de notas" : "Mostrar lista de notas"} onClick={() => setSidebar(!sidebar)}><PanelLeft size={19} /></button><span className="an-breadcrumb">Anotações <span>›</span> <b>{draft?.category || "Todas"}</b></span></div><div>{draft && <><span className={`an-save-status ${status}`} role="status"><i />{status === "saved" ? "Salvo" : status === "saving" ? "Salvando…" : "Falha ao salvar"}</span>{status === "error" && <button className="an-link" onClick={() => { setStatuses(v => ({ ...v, [selectedId]: "saving" })); void queueRef.current?.flush(selectedId); }}>Tentar novamente</button>}<button className="an-icon" onClick={() => setModal("export")} aria-label="Exportar anotação" title="Exportar"><Download size={19} /></button><div className="an-menu-wrap"><button className="an-icon" onClick={() => setMenu(!menu)} aria-label="Mais ações da anotação" aria-expanded={menu}><MoreHorizontal size={21} /></button>{menu && <><button className="an-menu-dismiss" aria-label="Fechar menu" onClick={() => setMenu(false)} /><div className="an-menu">{!locked && <><button onClick={() => { change(d => ({ ...d, pinned: !d.pinned })); setMenu(false); }}><Pin size={16} />{draft.pinned ? "Desafixar" : "Fixar anotação"}</button><button onClick={() => { change(d => ({ ...d, document: { ...d.document, status: d.document.status === "archive" ? "active" : "archive" } })); setMenu(false); }}><Archive size={16} />{draft.document.status === "archive" ? "Desarquivar" : "Arquivar"}</button><button onClick={() => { setModal("link"); setMenu(false); }}><Link2 size={16} />Vincular cliente ou pedido</button><button className="danger" onClick={() => { change(d => ({ ...d, document: { ...d.document, status: "trash" } })); setMenu(false); notify("Anotação movida para a lixeira. Você pode restaurá-la."); }}><Trash2 size={16} />Mover para a lixeira</button></>}{locked && <button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}><RotateCcw size={16} />Restaurar anotação</button>}</div></>}</div></>}</div></header>
+      {storageError && <div className="an-banner error" role="alert">O navegador não conseguiu guardar o rascunho local. Aguarde a confirmação “Salvo” antes de fechar.</div>}
+      {Object.entries(recoveries).map(([id, record]) => { const remote = notes.find(n => n.id === id); const conflict = remote && record.base && JSON.stringify(rawNote(remote)) !== record.base; return <div className="an-banner" role="status" key={id}><span><b>Rascunho disponível: {record.value.title || "Sem título"}</b><small>{conflict ? "A versão online também mudou. Escolha qual conteúdo manter." : "Uma edição anterior ficou pendente de salvamento."}</small></span><button onClick={() => recover(id, true)}>Recuperar rascunho</button><button onClick={() => recover(id, false)}>Manter versão online</button></div>; })}
+      {draft ? <div className="an-document-scroll" ref={editorRef}><article className="an-document" key={selectedId}>
+        {locked && <div className="an-banner"><span>Esta anotação está na lixeira.</span><button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}>Restaurar</button></div>}
+        <p className="an-document-date">{current?.time ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(current.time) : "Nova anotação"}</p>
+        <input className="an-title" aria-label="Título da anotação" maxLength={200} placeholder="Sem título" value={draft.title} disabled={locked} onChange={e => change(d => ({ ...d, title: e.target.value }), true)} />
+        <div className="an-properties"><label className="an-category"><select aria-label="Categoria da anotação" value={draft.category} disabled={locked} onChange={e => change(d => ({ ...d, category: e.target.value as NoteDraft["category"] }))}>{categories.map(c => <option key={c}>{c}</option>)}</select><ChevronDown size={12} /></label><button className="an-property-link" disabled={locked} onClick={() => setModal("link")}><Link2 size={13} />{orders.find(o => o.id === draft.document.orderId)?.customer || customers.find(c => c.id === draft.document.customerId)?.name || (draft.document.orderId ? "Pedido vinculado" : draft.document.customerId ? "Cliente vinculado" : "Vincular pedido")}</button>{draft.pinned && <Pin size={13} />}</div>
+        {!locked && <div className="an-format-toolbar" role="toolbar" aria-label="Formatação da anotação"><button className="an-icon" title="Negrito (Ctrl+B)" aria-label="Negrito" aria-pressed={!!draft.document.blocks.find(b => b.id === activeBlock)?.bold} onMouseDown={e => e.preventDefault()} onClick={() => formatBlock("bold")}><Bold size={18} /></button><button className="an-icon" title="Título" aria-label="Título de seção" onMouseDown={e => e.preventDefault()} onClick={() => formatBlock("heading")}><Heading2 size={19} /></button><button className="an-icon" title="Lista" aria-label="Lista" onMouseDown={e => e.preventDefault()} onClick={() => formatBlock("bullet")}><List size={19} /></button><button className="an-icon" title="Checklist" aria-label="Checklist" onMouseDown={e => e.preventDefault()} onClick={() => formatBlock("check")}><CheckSquare size={18} /></button><span /><button className="an-icon" disabled={!history.current[selectedId]?.undo.length} aria-label="Desfazer" onClick={() => undo()}><Undo2 size={17} /></button><button className="an-icon" disabled={!history.current[selectedId]?.redo.length} aria-label="Refazer" onClick={() => undo(true)}><Redo2 size={17} /></button><button className="an-add-material" onClick={() => setCalculator("new")}><Plus size={17} />Material</button></div>}
+        <div className={`an-blocks ${locked ? "readonly" : ""}`} onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b") { e.preventDefault(); formatBlock("bold"); } if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); undo(e.shiftKey); } }}>
+          {draft.document.blocks.map((b, index) => <div className={`an-text-block ${b.type} ${b.done ? "done" : ""} ${b.bold ? "bold" : ""}`} key={b.id}>{b.type === "check" ? <button className="an-check-circle" role="checkbox" aria-checked={!!b.done} aria-label={`Concluir: ${b.text || "tarefa"}`} disabled={locked} onClick={() => changeBlock(b.id, { done: !b.done })}>{b.done ? <Check size={13} /> : null}</button> : b.type === "bullet" ? <span className="an-bullet">•</span> : null}<EditableBlock value={b.text} id={b.id} readOnly={locked} placeholder={index === 0 ? "Comece a escrever…" : ""} onFocus={() => setActiveBlock(b.id)} onChange={text => changeBlock(b.id, { text }, true)} onEnter={(before, after) => { setActiveBlock(b.id); const added = block(after, b.type === "heading" ? "paragraph" : b.type); change(d => { const blocks = d.document.blocks.map(item => item.id === b.id ? { ...item, text: before } : item); blocks.splice(index + 1, 0, added); return { ...d, document: { ...d.document, blocks } }; }); requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${added.id}"]`)?.focus()); }} onRemoveEmpty={() => { if (draft.document.blocks.length <= 1 || b.text) return; change(d => ({ ...d, document: { ...d.document, blocks: d.document.blocks.filter(v => v.id !== b.id) } })); const previous = draft.document.blocks[Math.max(0, index - 1)]; requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${previous.id}"]`)?.focus()); }} /></div>)}
         </div>
-        <div className="notes-page-tabs">
-          {filteredNotes.map((note) => <button key={note.id} className={selectedId === note.id ? "active" : ""} onClick={() => selectNote(note)} title={note.title || "Sem título"}><NotebookPen size={15} /><span><b>{note.title || "Sem título"}</b><small>{note.category} · {formatUpdatedAt(note.updatedAt)}</small></span>{note.pinned ? <Pin size={11} /> : null}</button>)}
-          {!filteredNotes.length && <span className="notes-page-empty">Nenhuma página encontrada.</span>}
-        </div>
-      </section>
+        {!locked && <button className="an-new-line" onClick={() => addBlock()}><Plus size={14} />Adicionar linha</button>}
+        {!!draft.materials.length && <section className="an-materials" aria-label="Materiais da anotação"><header><h2>Materiais</h2><span>{draft.materials.length} {draft.materials.length === 1 ? "item" : "itens"}</span></header>{groups.map(group => <div className="an-supplier" key={group.supplier}><h3>{group.supplier}</h3>{group.materials.map(material => <div className="an-material" key={material.id}><div className="an-material-info"><span className="an-material-mark"><Circle size={16} /></span><div><b>Malha {material.fabricType}</b><small>{material.color} · {decimal(material.fabricKg)} kg</small><small>{material.collarType === "common" ? `Ribana · ${material.collarColor || material.color} · ${decimal(material.ribanaKg)} kg` : `Gola polo + punho · ${material.collarColor || material.color} · ${material.poloUnits} conjuntos`}</small></div></div><div className="an-material-right"><b>{displayMoney(material.totalCost)}</b>{!locked && <div><button aria-label={`Editar material ${material.color}`} title="Editar material" onClick={() => setCalculator(material)}>Editar</button><button aria-label={`Duplicar material ${material.color}`} title="Duplicar material" onClick={() => change(d => ({ ...d, materials: [...d.materials, { ...material, id: makeId() }] }))}><Copy size={14} /></button><button className="danger" aria-label={`Remover material ${material.color}`} title="Remover material (pode desfazer)" onClick={() => change(d => ({ ...d, materials: d.materials.filter(m => m.id !== material.id) }))}><X size={15} /></button></div>}</div></div>)}<div className="an-supplier-total"><span>Subtotal · {group.supplier}</span><b>{displayMoney(group.materials.reduce((sum, m) => sum + m.totalCost, 0))}</b></div><button className="an-link" onClick={() => copySupplier(group.supplier)}><Copy size={15} />Copiar pedido deste fornecedor</button></div>)}<div className="an-material-grand-total"><div><b>Total de materiais</b><small>Estimativa de compra</small></div><strong>{displayMoney(total)}</strong></div></section>}
+        {!locked && !draft.materials.length && <button className="an-material-empty" onClick={() => setCalculator("new")}><Calculator size={18} /><span><b>Planejar materiais</b><small>Calcule tecido, ribana e conjuntos polo nesta anotação.</small></span><Plus size={17} /></button>}
+        <footer className="an-document-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"} · {groups.length} {groups.length === 1 ? "fornecedor" : "fornecedores"}</span>{!locked && <button onClick={() => setCalculator("new")}><Calculator size={16} />Calculadora</button>}</footer>
+      </article></div> : <div className="an-empty-document"><NotebookPen size={40} strokeWidth={1.2} /><h2>{filter === "trash" ? "Lixeira vazia" : "Um espaço para suas ideias"}</h2><p>{filter === "trash" ? "As anotações excluídas ficam aqui para restauração." : "Organize compras, produção e clientes em um só lugar."}</p><button className="an-primary" onClick={() => setModal("new")}><Plus size={17} />Nova anotação</button></div>}
+    </section>
+    {calculator && <MaterialCalculator key={typeof calculator === "string" ? "new" : calculator.id} uid={uid} material={typeof calculator === "string" ? undefined : calculator} close={() => setCalculator(null)} add={material => { change(d => ({ ...d, materials: d.materials.some(m => m.id === material.id) ? d.materials.map(m => m.id === material.id ? material : m) : [...d.materials, material] })); setCalculator(null); notify("Material atualizado."); }} />}
+    {notice && <div className="an-toast" role="status"><CheckCheck size={17} />{notice}<button onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={15} /></button></div>}
+    {modal === "new" && <NoteDialog title="Nova anotação" close={() => { if (!creating) setModal(null); }}><p className="an-dialog-description">Comece em branco ou escolha um modelo da confecção.</p><div className="an-templates">{templates.map((template, index) => <button key={template.title} disabled={creating} onClick={() => create(index)}><span><FileText size={21} /></span><div><b>{template.title}</b><small>{index ? template.category : "Texto livre, listas e ideias"}</small></div><Plus size={17} /></button>)}</div>{creating && <p className="an-dialog-description" role="status">Criando anotação…</p>}</NoteDialog>}
+    {modal === "export" && draft && <ExportDialog draft={draft} close={() => setModal(null)} notify={notify} />}
+    {modal === "link" && draft && <NoteDialog title="Vincular à anotação" close={() => setModal(null)}><div className="an-link-form"><label>Pedido<select value={draft.document.orderId} onChange={e => change(d => ({ ...d, document: { ...d.document, orderId: e.target.value } }))}><option value="">Sem pedido vinculado</option>{orders.map(o => <option key={o.id} value={o.id}>{o.customer} · {o.product}</option>)}</select></label><label>Cliente<select value={draft.document.customerId} onChange={e => change(d => ({ ...d, document: { ...d.document, customerId: e.target.value } }))}><option value="">Sem cliente vinculado</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><p className="an-help">O vínculo organiza a anotação. Os valores permanecem como estimativa de materiais.</p><button className="an-primary" onClick={() => setModal(null)}>Concluir</button></div></NoteDialog>}
+  </div>;
+}
 
-      <div className="notes-layout">
-        <section className="note-editor notion-editor panel">
-          {selectedId ? <>
-            {editorNotice && <div className="editor-notice">{editorNotice}</div>}
-            <div className="notion-document">
-              <input className="notion-title-input" value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Sem título" aria-label="Título da página" />
-              <div className="notion-properties">
-                <label><span>Categoria</span><select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as NoteCategory }))} aria-label="Categoria da página">{categories.slice(1).map((item) => <option key={item}>{item}</option>)}</select></label>
-                <div className={`notion-save-property ${saveState}`}><span>Status</span><b><i />{saveState === "saving" ? "Salvando…" : saveState === "error" ? "Falha ao salvar" : "Salvo em tempo real"}</b></div>
-                <div><span>Materiais</span><b>{draft.materials.length}</b></div>
-                <div className="notion-cost-property"><span>Custo interno</span><b>{formatCurrency(materialsTotal)}</b></div>
-              </div>
-              <div className="notion-toolbar" role="toolbar" aria-label="Ferramentas do editor">
-                <button onClick={() => wrapSelection("**")} aria-label="Negrito" title="Negrito"><Bold size={15} /></button>
-                <button onClick={() => insertAtCursor("🧵 ")} aria-label="Emoji" title="Emoji"><SmilePlus size={15} /></button>
-                <button onClick={() => insertAtCursor("• ")} aria-label="Lista" title="Lista"><List size={15} /></button>
-                <button onClick={() => insertAtCursor("☐ ")} aria-label="Caixa de seleção" title="Caixa de seleção"><FileText size={15} /></button>
-                <button onClick={() => insertAtCursor(`${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date())} — `)} aria-label="Data e hora" title="Data e hora"><Clock3 size={15} /></button>
-                <button onClick={() => { textareaRef.current?.focus(); document.execCommand("undo"); }} aria-label="Desfazer" title="Desfazer"><Undo2 size={15} /></button>
-                <button onClick={() => { textareaRef.current?.focus(); document.execCommand("redo"); }} aria-label="Refazer" title="Refazer"><Redo2 size={15} /></button>
-                <span />
-                <button className="notion-material-action" onClick={() => { setCalculatorTab("tecido"); setCalculatorOpen(true); }}><Calculator size={15} /> Calcular material</button>
-                <button onClick={duplicateLastMaterial} aria-label="Duplicar último material" title="Duplicar último material"><Files size={15} /></button>
-                <div className="note-export-wrap"><button className={exportMenuOpen ? "active" : ""} onClick={() => setExportMenuOpen((current) => !current)} aria-expanded={exportMenuOpen} aria-label="Exportar" title="Exportar"><Download size={15} /></button>{exportMenuOpen && <div className="note-export-menu"><button onClick={downloadText}><FileText size={15} /> TXT</button><button onClick={() => { setExportMenuOpen(false); window.print(); }}><Printer size={15} /> PDF / Imprimir</button></div>}</div>
-                <button onClick={copyMaterials} aria-label="Copiar pedido de malha com valor total" title="Copiar pedido de malha com valor total"><Copy size={15} /></button>
-                <button className={draft.pinned ? "active" : ""} onClick={() => setDraft((current) => ({ ...current, pinned: !current.pinned }))} aria-label={draft.pinned ? "Desafixar página" : "Fixar página"} title="Fixar página"><Pin size={15} /></button>
-                <button className="danger" onClick={deleteNote} aria-label="Excluir página" title="Excluir página"><Trash2 size={15} /></button>
-              </div>
-              <textarea className="notion-text-editor" ref={textareaRef} value={draft.content} onChange={(event) => updateNoteContent(event.target.value)} onKeyDown={(event) => { if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase("pt-BR") === "b") { event.preventDefault(); wrapSelection("**"); } }} placeholder={'Comece a escrever…\n\nUse a calculadora para inserir materiais diretamente nesta página.'} aria-label="Conteúdo da página" spellCheck />
-              <div className="note-print-export" aria-hidden="true"><h1>{draft.title || "Sem título"}</h1><pre>{exportedMaterials()}</pre></div>
-              <div className="notion-writing-help"><span><b>Texto livre</b> · o cálculo entra aqui e pode ser editado como TXT</span><span>{draft.content.length.toLocaleString("pt-BR")} caracteres</span></div>
-            </div>
-            <footer className="notion-editor-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material vinculado" : "materiais vinculados"}</span><span>O total entra apenas no pedido de malha copiado; TXT e PDF seguem sem valores.</span></footer>
-          </> : <div className="note-editor-empty"><NotebookPen size={35} /><h2>Comece uma página</h2><p>Crie uma anotação livre para organizar sua confecção.</p><button className="primary" onClick={() => createNote()}><Plus size={17} /> Criar primeira anotação</button></div>}
-        </section>
-      </div>
+function EditableBlock({ value, id, readOnly, placeholder, onChange, onFocus, onEnter, onRemoveEmpty }: { value: string; id: string; readOnly?: boolean; placeholder: string; onChange: (value: string) => void; onFocus: () => void; onEnter: (before: string, after: string) => void; onRemoveEmpty: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ref.current && ref.current.innerText !== value) ref.current.textContent = value; }, [value]);
+  const paste = (e: ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault(); const text = e.clipboardData.getData("text/plain");
+    const selection = window.getSelection();
+    if (selection?.rangeCount && ref.current?.contains(selection.anchorNode)) { const range = selection.getRangeAt(0); range.deleteContents(); const node = document.createTextNode(text); range.insertNode(node); range.setStartAfter(node); range.collapse(true); selection.removeAllRanges(); selection.addRange(range); onChange(ref.current.innerText); }
+  };
+  return <div ref={ref} data-block-id={id} className="an-editable" role="textbox" aria-label="Texto da anotação" aria-multiline="true" aria-readonly={!!readOnly} contentEditable={!readOnly} suppressContentEditableWarning data-placeholder={placeholder} onFocus={onFocus} onInput={e => onChange(e.currentTarget.innerText)} onPaste={paste} onKeyDown={e => { if (readOnly) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const selection = window.getSelection(); const range = selection?.rangeCount ? selection.getRangeAt(0) : null; if (range && ref.current?.contains(range.startContainer)) { const before = range.cloneRange(); before.selectNodeContents(ref.current); before.setEnd(range.startContainer, range.startOffset); const after = range.cloneRange(); after.selectNodeContents(ref.current); after.setStart(range.endContainer, range.endOffset); onEnter(before.toString(), after.toString()); } else onEnter(value, ""); } if (e.key === "Backspace" && !e.currentTarget.innerText) { e.preventDefault(); onRemoveEmpty(); } }} />;
+}
 
-      <button className="notes-calculator-fab" onClick={() => setCalculatorOpen(true)} aria-label="Abrir calculadora"><Calculator size={22} /><span>Calculadora</span></button>
-
-      {calculatorOpen && <div className="calculator-backdrop">
-        <button className="calculator-dismiss-layer" onClick={() => setCalculatorOpen(false)} aria-label="Fechar calculadora clicando fora" />
-        <aside className="calculator-panel" role="dialog" aria-modal="true" aria-label="Calculadora da confecção">
-          <header><div><span><Calculator size={19} /></span><div><b>Calculadora da confecção</b><small>Planejamento rápido sem sair das notas</small></div></div><button onClick={() => setCalculatorOpen(false)} aria-label="Fechar calculadora"><X size={18} /></button></header>
-          <div className="calculator-tabs"><button className={calculatorTab === "tecido" ? "active" : ""} onClick={() => setCalculatorTab("tecido")}><Shirt size={16} /> Tecido e peças</button><button className={calculatorTab === "geral" ? "active" : ""} onClick={() => setCalculatorTab("geral")}><Calculator size={16} /> Calculadora</button></div>
-          {calculatorTab === "tecido" ? <div className="fabric-calculator">
-            <section className="calculator-input-group calculator-planning-group">
-              <div className="fabric-rate"><Shirt size={20} /><span><small>RENDIMENTO PADRÃO</small><b>1 kg = 4,2 camisas</b></span></div>
-              <div className="fabric-mode"><button className={fabricMode === "pieces" ? "active" : ""} onClick={() => setFabricMode("pieces")}>Quero produzir</button><button className={fabricMode === "kg" ? "active" : ""} onClick={() => setFabricMode("kg")}>Tenho tecido</button></div>
-              <button className={`calculator-settings-toggle ${priceSettingsOpen ? "active" : ""}`} onClick={() => setPriceSettingsOpen((current) => !current)} aria-expanded={priceSettingsOpen}><Settings2 size={16} /><span><b>Configurar valores</b><small>Malha, ribana e conjunto polo</small></span><strong>{priceSettingsOpen ? "Fechar" : "Editar"}</strong></button>
-              {priceSettingsOpen && <div className="price-settings" aria-label="Configuração de valores"><label>Valor da malha por kg (R$)<input type="number" min="0" step="0.01" value={pricePerKg} onChange={(event) => setPricePerKg(event.target.value)} placeholder="Informe o valor" /></label><label>Valor da ribana por kg (R$)<input type="number" min="0" step="0.01" value={ribanaPricePerKg} onChange={(event) => setRibanaPricePerKg(event.target.value)} /></label><label>Gola polo + punho por unidade (R$)<input type="number" min="0" step="0.01" value={poloPricePerUnit} onChange={(event) => setPoloPricePerUnit(event.target.value)} /></label></div>}
-              <div className="supplier-selector"><small>SELECIONE O FORNECEDOR</small><div><button className={supplier === "Costa Rica" ? "active" : ""} onClick={() => setSupplier("Costa Rica")} aria-pressed={supplier === "Costa Rica"}>Costa Rica</button><button className={supplier === "Atual Têxtil" ? "active" : ""} onClick={() => setSupplier("Atual Têxtil")} aria-pressed={supplier === "Atual Têxtil"}>Atual Têxtil</button></div></div>
-            </section>
-            <section className="calculator-input-group calculator-material-group">
-              <div className="material-options">
-                <div className="option-selector"><small>TIPO DE MALHA</small><div>{(["PV", "PP", "PIQUET"] as FabricType[]).map((type) => <button key={type} className={fabricType === type ? "active" : ""} onClick={() => setFabricType(type)} aria-pressed={fabricType === type}>{type}</button>)}</div></div>
-                <label>Cor da malha<input value={fabricColor} onChange={(event) => setFabricColor(event.target.value)} placeholder="Ex.: Azul royal" /></label>
-              </div>
-              <div className="option-selector collar-selector"><small>TIPO DE GOLA</small><div><button className={collarType === "common" ? "active" : ""} onClick={() => setCollarType("common")} aria-pressed={collarType === "common"}>Gola comum</button><button className={collarType === "polo" ? "active" : ""} onClick={() => setCollarType("polo")} aria-pressed={collarType === "polo"}>Gola polo</button></div></div>
-              <div className="same-collar-color"><input id="same-collar-color" type="checkbox" checked={sameCollarColor} onChange={(event) => setSameCollarColor(event.target.checked)} /><label htmlFor="same-collar-color"><b>{collarType === "polo" ? "A gola + punho são da mesma cor da camisa?" : "A gola é da mesma cor da camisa?"}</b><small>Usar a cor da malha</small></label></div>
-              {!sameCollarColor && <label className="collar-color-field">{collarType === "polo" ? "Cor da gola + punho" : "Cor da ribana"}<input value={collarColor} onChange={(event) => setCollarColor(event.target.value)} placeholder="Ex.: Branco" /></label>}
-              <label>{fabricMode === "kg" ? "Quantidade de tecido (kg)" : "Quantidade de camisas"}<input type="number" min="0" step="0.1" value={fabricValue} onChange={(event) => setFabricValue(event.target.value)} /></label>
-              {collarType === "polo" && <label className="polo-quantity-field">Quantidade de conjuntos (gola + punho)<input type="number" min="0" step="1" value={poloQuantity ?? String(plannedPieces)} onChange={(event) => setPoloQuantity(event.target.value)} /></label>}
-              <div className="fabric-row single"><label>Margem de perda (%)<input type="number" min="0" max="90" step="1" value={waste} onChange={(event) => setWaste(event.target.value)} /></label></div>
-            </section>
-            <section className="calculator-input-group calculator-results-group">
-              <div className="fabric-result"><small>{fabricMode === "kg" ? "PRODUÇÃO ESTIMADA" : "TECIDO NECESSÁRIO"}</small><strong>{fabricMode === "kg" ? `${estimatedPieces} camisas` : `${formatKg(requiredKg)} kg`}</strong><p>{numericWaste ? `Já considerando ${numericWaste}% de perda.` : "Cálculo com rendimento integral do tecido."}</p></div>
-              <div className="collar-result"><span>{collarType === "common" ? "Ribana necessária" : "Conjuntos gola polo + punho"}</span><b>{collarType === "common" ? `${formatKg(ribanaKg)} kg` : `${numericPoloUnits} unidades`}</b><small>{collarType === "common" ? `5% da malha · ${formatCurrency(numericRibanaPrice)}/kg · custo ${formatCurrency(ribanaCost)}` : `${formatCurrency(numericPoloPrice)}/unidade · custo ${formatCurrency(poloCost)}`}</small></div>
-              {(ribanaCost > 0 || poloCost > 0 || totalFabricCost > 0) && <div className="cost-summary">{collarType === "common" && <div className="cost-result ribana"><span>Valor total da ribana</span><b>{formatCurrency(ribanaCost)}</b></div>}{collarType === "polo" && <div className="cost-result polo"><span>Valor total da gola + punho</span><b>{formatCurrency(poloCost)}</b></div>}{totalFabricCost > 0 && <><div className="cost-result"><span>Valor total da malha</span><b>{formatCurrency(totalFabricCost)}</b></div><div className="cost-result"><span>Custo estimado por camisa</span><b>{formatCurrency(costPerPiece)}</b></div><div className="cost-result total"><span>Custo total do pedido</span><b>{formatCurrency(totalOrderCost)}</b></div></>}</div>}
-              <button className="calculator-copy supplier-export" onClick={addMaterialToNote} disabled={!numericFabricValue || !selectedId || !fabricColor.trim() || missingCollarColor}><FilePlus2 size={16} /> Adicionar como MATERIAL {nextMaterialNumber(draft.content)}</button>
-            </section>
-          </div> : <div className="general-calculator">
-            <div className="calculator-display"><small>CONTA</small><strong>{expression || "0"}</strong>{calculatorError && <span>{calculatorError}</span>}</div>
-            <div className="calculator-keys">{["C", "⌫", "÷", "×", "7", "8", "9", "−", "4", "5", "6", "+", "1", "2", "3", "=", "0", ","].map((key) => <button key={key} className={["÷", "×", "−", "+", "="].includes(key) ? "operator" : ""} onClick={() => { if (key === "C") { setExpression(""); setCalculatorError(""); } else if (key === "⌫") setExpression((current) => current.slice(0, -1)); else if (key === "=") calculate(); else { const value = key === "−" ? "-" : key; setExpression((current) => `${current}${value}`); setCalculatorError(""); } }}>{key}</button>)}</div>
-          </div>}
-        </aside>
-      </div>}
-    </div>
-  );
+function ExportDialog({ draft, close, notify }: { draft: NoteDraft; close: () => void; notify: (text: string) => void }) {
+  const [prices, setPrices] = useState(false), [supplier, setSupplier] = useState("");
+  const text = exportNote(draft, { prices, ...(supplier ? { supplier } : {}) });
+  const printRef = useRef<HTMLIFrameElement | null>(null);
+  useEffect(() => () => { printRef.current?.remove(); }, []);
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" })); const link = document.createElement("a"); link.href = url; link.download = `${(draft.title || "anotacao").replace(/[^\p{L}\p{N}\s_-]/gu, "").slice(0, 100) || "anotacao"}.txt`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); notify("TXT exportado.");
+  };
+  const print = () => {
+    printRef.current?.remove();
+    const frame = document.createElement("iframe"); frame.title = "Impressão da anotação"; frame.style.cssText = "position:fixed;width:0;height:0;border:0;";
+    const escaped = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    frame.onload = () => { frame.contentWindow?.focus(); frame.contentWindow?.print(); };
+    frame.srcdoc = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Anotação Psyzon</title><style>@page{size:A4;margin:18mm}body{font:14px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#111}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}</style></head><body><pre>${escaped}</pre></body></html>`;
+    document.body.appendChild(frame); printRef.current = frame;
+  };
+  return <NoteDialog title="Exportar anotação" close={close} wide><div className="an-export-options"><label>Conteúdo<select value={supplier} onChange={e => setSupplier(e.target.value)}><option value="">Anotação completa</option>{supplierGroups(draft.materials).map(g => <option key={g.supplier} value={g.supplier}>Pedido · {g.supplier}</option>)}</select></label><label className="an-check-label"><input type="checkbox" checked={prices} onChange={e => setPrices(e.target.checked)} />Incluir valores dos materiais</label><p className="an-help">A prévia abaixo mostra exatamente o conteúdo exportado. As observações são preservadas.</p></div><textarea className="an-export-preview" aria-label="Prévia da exportação" readOnly value={text} /><footer className="an-export-actions"><button onClick={async () => { try { await navigator.clipboard.writeText(text); notify("Conteúdo copiado."); } catch { notify("Selecione o texto da prévia para copiar."); } }}><Copy size={16} />Copiar</button><button onClick={download}><Download size={16} />Baixar TXT</button><button className="an-primary" onClick={print}><Printer size={16} />PDF / Imprimir</button></footer></NoteDialog>;
 }

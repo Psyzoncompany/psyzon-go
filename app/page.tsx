@@ -951,10 +951,10 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className={`content ${view === "ai" ? "ai-content" : ""}`}>
+        <section className={`content ${view === "ai" ? "ai-content" : view === "notas" ? "notes-content" : ""}`}>
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} transactions={businessTransactions} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} personalBalance={personalBalance} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} setView={setView} updateStatus={updateStatus} />}
           {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={setEditingOrder} />}
-          {view === "notas" && <NotesWorkspace uid={uid} notes={notes} />}
+          {view === "notas" && <NotesWorkspace key={uid} uid={uid} notes={notes} orders={orders} customers={derivedCustomers} privateValues={privateValues} />}
           {view === "clientes" && <Customers customers={derivedCustomers} orders={orders} displayMoney={displayMoney} setModal={(kind: CreateKind) => openCreate(kind, "business")} />}
           {view === "financeiro" && <Finance user={user} notify={showToast} transactions={businessTransactions} bills={bills.filter((bill) => bill.account === "business")} orders={activeOrders} businessBalance={businessBalance} businessIncome={businessIncome} businessExpense={businessExpense} pending={pending} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "business")} openMercadoPagoImport={() => setMercadoPagoImportOpen(true)} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
           {view === "pessoal" && <PersonalFinance transactions={personalTransactions} bills={bills.filter((bill) => bill.account === "personal")} balance={personalBalance} income={personalIncome} expense={personalExpense} displayMoney={displayMoney} openCreate={(kind: CreateKind) => openCreate(kind, "personal")} payBill={payBill} deleteBill={deleteBill} editBill={setEditingBill} editTransaction={setEditingTransaction} deleteTransaction={deleteTransaction} />}
@@ -964,7 +964,7 @@ export default function HomePage() {
       </main>
 
       {view !== "notas" && view !== "ai" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
-      {view !== "ai" && <button className={`ai-floating-button ${aiPanelOpen ? "active" : ""}`} onClick={() => setAiPanelOpen((current) => !current)} aria-label={aiPanelOpen ? "Fechar PSYZON AI" : "Abrir PSYZON AI"} aria-expanded={aiPanelOpen}><span><Sparkles size={22} /></span><span><b>PSYZON AI</b><small>Pergunte sobre sua empresa</small></span></button>}
+      {view !== "ai" && view !== "notas" && <button className={`ai-floating-button ${aiPanelOpen ? "active" : ""}`} onClick={() => setAiPanelOpen((current) => !current)} aria-label={aiPanelOpen ? "Fechar PSYZON AI" : "Abrir PSYZON AI"} aria-expanded={aiPanelOpen}><span><Sparkles size={22} /></span><span><b>PSYZON AI</b><small>Pergunte sobre sua empresa</small></span></button>}
       {aiPanelOpen && <div className="ai-floating-panel"><PSYZONAIWorkspace mode="panel" getIdToken={getAIIdToken} onClose={() => setAiPanelOpen(false)} onOpenFull={() => { setView("ai"); setAiPanelOpen(false); }} onNavigate={navigateFromAI} /></div>}
       <nav className="mobile-nav">
         {mobileNavItems.slice(0, 2).map((item) => <NavButton key={item.id} item={item} active={view === item.id} onClick={() => setView(item.id)} />)}

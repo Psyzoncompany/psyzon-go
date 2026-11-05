@@ -10,11 +10,11 @@ export type NoteMaterial = {
   poloCost?: number; totalCost: number; supplier: string;
   fabricPricePerKg?: number; yieldPerKg?: number; ribanaPercent?: number;
 };
-export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; createdAt?: unknown; updatedAt?: unknown };
+export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; productionPhotoData?: string; createdAt?: unknown; updatedAt?: unknown };
 export type TextBlock = { id: string; type: "paragraph" | "heading" | "bullet" | "check"; text: string; bold?: boolean; done?: boolean };
 export type NoteDocument = { version: 2; blocks: TextBlock[]; status: "active" | "archive" | "trash"; orderId: string; customerId: string; productionChecklist?: ProductionChecklist | null };
-export type NoteDraft = Pick<BusinessNote, "title" | "category" | "pinned"> & { document: NoteDocument; materials: NoteMaterial[] };
-export type StoredNote = Pick<BusinessNote, "title" | "content" | "category" | "pinned"> & { materials: NoteMaterial[] };
+export type NoteDraft = Pick<BusinessNote, "title" | "category" | "pinned" | "productionPhotoData"> & { document: NoteDocument; materials: NoteMaterial[] };
+export type StoredNote = Pick<BusinessNote, "title" | "content" | "category" | "pinned" | "productionPhotoData"> & { materials: NoteMaterial[] };
 export const documentPrefix = "psyzon-note@2\n";
 export const makeId = () => {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -58,10 +58,10 @@ export function readDocument(content: string, materials: NoteMaterial[] = []): N
 }
 export function toDraft(note: BusinessNote): NoteDraft {
   const materials = (note.materials ?? []).map(m => ({ ...m, collarColor: m.collarColor || m.color, supplier: m.supplier || "Costa Rica" }));
-  return { title: note.title, category: note.category, pinned: note.pinned, materials, document: readDocument(note.content, materials) };
+  return { title: note.title, category: note.category, pinned: note.pinned, materials, document: readDocument(note.content, materials), ...(typeof note.productionPhotoData === "string" ? { productionPhotoData: note.productionPhotoData } : {}) };
 }
 export function serializeDraft(draft: NoteDraft): StoredNote {
-  return { title: draft.title, category: draft.category, pinned: draft.pinned, content: documentPrefix + JSON.stringify(draft.document), materials: draft.materials };
+  return { title: draft.title, category: draft.category, pinned: draft.pinned, content: documentPrefix + JSON.stringify(draft.document), materials: draft.materials, ...(typeof draft.productionPhotoData === "string" ? { productionPhotoData: draft.productionPhotoData } : {}) };
 }
 export const plainText = (draft: NoteDraft) => draft.document.blocks.map(b => `${b.type === "check" ? b.done ? "☑ " : "☐ " : b.type === "bullet" ? "• " : ""}${b.text}`).join("\n");
 export function recalculateMaterial(m: NoteMaterial): NoteMaterial {

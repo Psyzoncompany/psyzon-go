@@ -20,6 +20,9 @@ usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
   marque peças conferidas e use “PDF / Imprimir A4”. O progresso é salvo na nota.
   O exemplo JERFESSON contém 16 peças, incluindo uma sem nome. Listas maiores
   ganham páginas de continuação; nomes repetidos e totais divergentes geram avisos.
+  Em “Foto do produto no PDF”, anexe a referência visual para aparecer no cabeçalho
+  das folhas. A foto do pedido vinculado é usada automaticamente e pode ser trocada
+  ou removida na anotação.
 
 Ao publicar esta versão, publique também `firestore.rules`: os campos de ajuste,
 foto e checklist dependem das regras atualizadas. Não é necessário Cloud Storage.

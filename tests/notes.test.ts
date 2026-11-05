@@ -18,6 +18,20 @@ test("production checklists survive queued saves, archive and restore without dr
   assert.equal(restored.document.blocks[0].text, "Conferir tecido antes do corte.");
 });
 
+test("product photos persist separately from checklist text and can be removed", () => {
+  const draft = newDraft("Pedido com foto");
+  draft.document.productionChecklist = parseProductionOrder(sampleProductionOrder);
+  draft.productionPhotoData = "data:image/jpeg;base64," + "A".repeat(120000);
+  const saved = serializeDraft(draft);
+  assert.ok(saved.content.length < 100000);
+  assert.equal(saved.productionPhotoData, draft.productionPhotoData);
+  const restored = toDraft({ id: "photo-note", ...saved });
+  assert.equal(restored.productionPhotoData, draft.productionPhotoData);
+  assert.equal(restored.document.productionChecklist?.rows.length, 16);
+  restored.productionPhotoData = "";
+  assert.equal(serializeDraft(restored).productionPhotoData, "");
+});
+
 const material: NoteMaterial = { id: "pv-1", supplier: "Atual Têxtil", fabricType: "PV", color: "Azul celeste", collarColor: "Branco", fabricKg: 3.93, fabricCost: 172.527, collarType: "common", ribanaKg: .2, ribanaCost: 10.6, ribanaPricePerKg: 53, poloUnits: 0, totalCost: 183.127 };
 test("legacy migration preserves notes, checklists and stored financial precision", () => {
   const note = { id: "old", title: "Compra", category: "Compras" as const, pinned: true, materials: [material], content: "Confirmar preço e valor do frete com João.\n\n🧵 MATERIAL 1\n🏭 Fornecedor: Atual Têxtil\n\n🟢 Malha PV – Azul celeste\n⚖️ Quantidade: 3,93 kg\n\n🟩 Ribana – Branco\n⚖️ Quantidade: 0,20 kg\n\n💰 Custo total do material: R$ 183,13\nObservação extra: conferir lote!\n☐ Conferir entrega" };

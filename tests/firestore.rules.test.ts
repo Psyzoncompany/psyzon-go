@@ -116,6 +116,9 @@ test("order photos and production checklists are restricted to the owner and exp
   await assertFails(updateDoc(doc(db, "users/user-a/orders/photo"), { photoData: "https://example.com/image.svg" }));
   const note = { title: "Produção", content: "", category: "Produção", pinned: false, materials: [], updatedAt: Timestamp.now(), checklist: { client: "JERFESSON", deadline: "", notes: "", warnings: [], rows: [{ id: "1", model: "Masculina", size: "P", name: "Enzo", done: false }] } };
   await assertSucceeds(setDoc(doc(db, "users/user-a/notes/checklist"), note));
+  await assertSucceeds(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: photo }));
+  await assertFails(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: "https://example.com/photo.svg" }));
+  await assertSucceeds(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: "" }));
   await assertFails(updateDoc(doc(db, "users/user-a/notes/checklist"), { checklist: { ...note.checklist, rows: Array(501).fill({}) } }));
   await assertFails(getDoc(doc(environment.authenticatedContext("user-b").firestore(), "users/user-a/orders/photo")));
 });

@@ -129,6 +129,14 @@ const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL
 let appCheckInitialized = false;
 let authInstance: Auth | null = null;
 
+const financialVisibilityKey = (uid: string) => `psy-financial-visibility:${uid}`;
+
+function financialValuesHidden(uid?: string) {
+  if (!uid) return true;
+  try { return localStorage.getItem(financialVisibilityKey(uid)) !== "visible"; }
+  catch { return true; }
+}
+
 function ensureAppCheck(app: FirebaseApp) {
   const siteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
   if (typeof window === "undefined" || !siteKey || appCheckInitialized) return;
@@ -266,7 +274,7 @@ export default function HomePage() {
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
       unsubscribers = [];
-      setPrivateValues(true);
+      setPrivateValues(financialValuesHidden(nextUser?.uid));
       setPrivacyTarget(null);
       setUser(nextUser);
       setUid(nextUser?.uid ?? "");
@@ -461,9 +469,15 @@ export default function HomePage() {
 
   const closePrivacy = () => setPrivacyTarget(null);
   const requestPrivacy = (hide: boolean) => setPrivacyTarget(hide);
+  const confirmPrivacy = () => {
+    if (privacyTarget === null || !uid || clientAuth(getApps()[0]).currentUser?.uid !== uid) return;
+    try { localStorage.setItem(financialVisibilityKey(uid), privacyTarget ? "hidden" : "visible"); }
+    catch { /* Keep the manual choice for this tab when storage is unavailable. */ }
+    setPrivateValues(privacyTarget);
+    closePrivacy();
+  };
 
   const signOutGoogle = async () => {
-    setPrivateValues(true);
     closePrivacy();
     if (!isFirebaseConfigured) return;
     await signOut(clientAuth(getApps()[0]));
@@ -939,7 +953,7 @@ export default function HomePage() {
           </div>
           <div className="top-actions">
             <button className={`floating-mode-action ${floatingActive ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingActive ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingActive}><PictureInPicture2 size={18} /><span>{floatingActive ? "Flutuante ativo" : "Modo flutuante"}</span></button>
-            <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-label={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"} title={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+            <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-haspopup="dialog" aria-label={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"} title={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>
             {notificationsOpen && <div className="notification-panel"><header><div><b>Notificações</b><small>{notifications.length ? `${notifications.length} item(ns) precisam de atenção` : "Tudo em dia por aqui"}</small></div><button onClick={() => setNotificationsOpen(false)} aria-label="Fechar notificações"><X size={16} /></button></header><div>{notifications.length ? notifications.map((item) => <button className="notification-item" key={item.id} onClick={() => openNotification(item)}><span className={item.tone}>{item.tone === "danger" ? <AlertTriangle size={15} /> : <Bell size={15} />}</span><span><b>{item.title}</b><small>{item.detail}</small></span><ChevronRight size={15} /></button>) : <div className="notification-empty"><Check size={20} /><b>Nenhuma pendência próxima</b><small>Pedidos e contas aparecerão aqui.</small></div>}</div></div>}
@@ -971,7 +985,7 @@ export default function HomePage() {
 
 
 
-      {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={() => { setPrivateValues(privacyTarget); closePrivacy(); }} />}
+      {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={confirmPrivacy} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );

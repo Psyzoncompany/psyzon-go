@@ -1392,6 +1392,17 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 /* Compact working area and manual accounts. */
 .modal-dismiss { position: absolute; inset: 0; width: 100%; border: 0; background: transparent; cursor: default; }
 .modal-backdrop > .modal { position: relative; z-index: 1; }
+.compact-modal-backdrop { align-items: center; justify-content: center; padding: 16px; background: rgba(10, 15, 25, .30); }
+.modal.compact-modal { width: min(340px, 100%); height: auto; max-height: calc(100dvh - 32px); padding: 15px 17px; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 16px 48px rgba(10, 15, 25, .25); animation: none; }
+.compact-modal header { min-height: 0; gap: 8px; border: 0; }
+.compact-modal h2 { font-size: 16px; }
+.compact-modal header button { width: 28px; height: 28px; flex-shrink: 0; }
+.compact-modal form { gap: 10px; }
+.compact-modal .form-help { margin: 0; font-size: 11px; }
+.compact-modal label { font-size: 11px; }
+.compact-modal input { font-size: 16px; letter-spacing: .18em; }
+.compact-modal .form-error { margin: 0; }
+.compact-modal form footer { margin: 0; padding: 0; border: 0; }
 .order-photo-field { padding: 12px; border: 1px dashed var(--border); border-radius: 10px; }
 .order-photo-field label > span { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .order-photo-field input[type="file"] { height: auto; padding: 8px; }

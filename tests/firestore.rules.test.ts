@@ -74,6 +74,24 @@ test("history records are owner-only and validate orders, bills, and material pu
   await assertSucceeds(deleteDoc(doc(owner, path, "fabric")));
 });
 
+test("a task can be completed and reopened by its owner with valid timestamps", async () => {
+  const owner = environment.authenticatedContext("user-a").firestore();
+  const other = environment.authenticatedContext("user-b").firestore();
+  const path = "users/user-a/tasks/first";
+  const task = doc(owner, path);
+  const value = { title: "Pedir estampas", completed: false, createdAt: serverTimestamp(), completedAt: null };
+  await assertSucceeds(setDoc(task, value));
+  await assertFails(updateDoc(task, { completed: true }));
+  await assertSucceeds(updateDoc(task, { completed: true, completedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(task, { title: "Separar estampas" }));
+  await assertFails(updateDoc(task, { title: "" }));
+  await assertFails(updateDoc(task, { createdAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(task, { completed: false, completedAt: null }));
+  await assertFails(getDoc(doc(other, path)));
+  await assertFails(updateDoc(doc(other, path), { title: "Outro usuário" }));
+  await assertSucceeds(deleteDoc(task));
+});
+
 test("a user can create, read, update and delete only their own valid order", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   const reference = doc(db, "users/user-a/orders/order-1");

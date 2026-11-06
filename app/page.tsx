@@ -10,10 +10,11 @@ import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
-import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import { millis } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
+import type { Task } from "./notes/task-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
@@ -118,6 +119,7 @@ type AppNotification = {
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
+const TasksWorkspace = dynamic(() => import("./notes/TasksWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -127,7 +129,7 @@ const firebaseConfig = {
 };
 
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
-type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries";
+type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
@@ -222,6 +224,8 @@ export default function HomePage() {
   const [dtfConnection, setDtfConnection] = useState<"connecting" | "live" | "error">("connecting");
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [historyConnection, setHistoryConnection] = useState<"connecting" | "live" | "error">("connecting");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [taskConnection, setTaskConnection] = useState<"connecting" | "live" | "error">("connecting");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
@@ -292,6 +296,8 @@ export default function HomePage() {
       setDtfConnection("connecting");
       setHistoryEntries([]);
       setHistoryConnection("connecting");
+      setTasks([]);
+      setTaskConnection("connecting");
 
       if (!nextUser) {
         setOrders([]);
@@ -354,6 +360,13 @@ export default function HomePage() {
         }, (error) => {
           console.error("History synchronization failed", error);
           setHistoryConnection("error");
+        }),
+        onSnapshot(collection(db, "users", nextUser.uid, "tasks"), (snapshot) => {
+          setTasks(toList<Task>(snapshot));
+          setTaskConnection("live");
+        }, (error) => {
+          console.error("Task synchronization failed", error);
+          setTaskConnection("error");
         }),
       ];
     });
@@ -504,7 +517,8 @@ export default function HomePage() {
     if (!uid) return;
     if (dtfConnection !== "live") return showToast("Aguarde a sincronização dos pedidos DTF para resetar os dados.");
     if (historyConnection !== "live") return showToast("Aguarde a sincronização do histórico para resetar os dados.");
-    if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações, anotações e histórico desta conta?")) return;
+    if (taskConnection !== "live") return showToast("Aguarde a sincronização dos afazeres para resetar os dados.");
+    if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações, anotações, afazeres e histórico desta conta?")) return;
     setResetting(true);
     try {
       const records = [
@@ -515,6 +529,7 @@ export default function HomePage() {
         ...bills.map((item) => ["bills", item.id] as const),
         ...notes.map((item) => ["notes", item.id] as const),
         ...historyEntries.map((item) => ["historyEntries", item.id] as const),
+        ...tasks.map((item) => ["tasks", item.id] as const),
       ];
       for (let start = 0; start < records.length; start += 450) {
         const batch = writeBatch(getFirestore(getApps()[0]));
@@ -528,6 +543,7 @@ export default function HomePage() {
       setBills([]);
       setNotes([]);
       setHistoryEntries([]);
+      setTasks([]);
       showToast("Todos os dados foram removidos");
     } catch (error) {
       console.error("Reset failed", error);
@@ -541,6 +557,7 @@ export default function HomePage() {
   const dtfLinks = useMemo(() => dtfOrders.map(order => [order, ...readDtfPrints(order.printsData)]), [dtfOrders]);
   const visibleCustomers = balances.filter((customer) => !customer.archived);
   const { pending, toPay: payable, debtors } = financialSummary(balances, bills, calendarDate.slice(0, 7));
+  const nextPayables = view === "inicio" ? nextMonthPayables(bills, calendarDate.slice(0, 7)) : undefined;
   const orderBalances = orderReceivables(balances, orders);
   const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
   const activeOrders = productionOrders.filter(order => order.status !== "Entregue");
@@ -758,6 +775,24 @@ export default function HomePage() {
       if (!snapshot.exists()) throw new Error("Este metro DTF já foi removido.");
       transaction.update(reference, { printsData: changeDtfPrints(snapshot.data().printsData, change), updatedAt: serverTimestamp() });
     });
+  };
+
+  const saveTask = async (title: string, id?: string) => {
+    if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
+    const clean = title.trim();
+    if (!clean || clean.length > 200) throw new Error("Escreva uma tarefa de até 200 caracteres.");
+    if (id) await updateDoc(userDocument(uid, "tasks", id), { title: clean });
+    else await addDoc(userCollection(uid, "tasks"), { title: clean, completed: false, createdAt: serverTimestamp(), completedAt: null });
+  };
+
+  const toggleTask = async (id: string, completed: boolean) => {
+    if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
+    await updateDoc(userDocument(uid, "tasks", id), { completed, completedAt: completed ? serverTimestamp() : null });
+  };
+
+  const deleteTask = async (id: string) => {
+    if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
+    await deleteDoc(userDocument(uid, "tasks", id));
   };
 
   const saveHistory = async (input: HistoryInput, id?: string) => {
@@ -1002,7 +1037,7 @@ export default function HomePage() {
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
         <nav>
-          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (view === "materiais" && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
+          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
         </nav>
         <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
@@ -1027,10 +1062,11 @@ export default function HomePage() {
         </header>
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace
@@ -1048,11 +1084,11 @@ export default function HomePage() {
         </section>
       </main>
 
-      {view !== "notas" && view !== "historico" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "notas" && view !== "historico" && view !== "afazeres" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
       <nav className="mobile-nav">
-        {mobileNavItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (view === "materiais" && item.id === "notas")} onClick={() => setView(item.id)} />)}
+        {mobileNavItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}
       </nav>
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
@@ -1106,7 +1142,7 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -1116,7 +1152,7 @@ function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, 
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}
     <div className="metric-grid">
       <Metric icon={WalletCards} label="A pagar" value={displayTotal(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
-      <Metric icon={CircleDollarSign} label="A receber" value={displayTotal(pending)} detail={<><span>{debtorsCount} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
+      <Metric icon={CircleDollarSign} label="A receber" value={displayTotal(pending)} detail={<span className="metric-detail-stack"><span>{debtorsCount} clientes pendentes</span><span className="next-payables"><span>A pagar em {nextPayables.label}</span><b>{displayTotal(nextPayables.total)}</b></span></span>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={`${orders.length} pedidos`} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
 
     </div>

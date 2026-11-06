@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
@@ -13,7 +13,7 @@ import "./notes/notes.css";
 import ProductionChecklist from "./ProductionChecklist";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
+type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
 type Filter = "all" | "pinned" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -23,7 +23,7 @@ const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { 
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
 const queues = new Map<string, QueueEntry>();
 
-export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openNote, onCompleteMaterials }: Props) {
+export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials }: Props) {
   const initialNote = notes.find(note => note.id === initialNoteId);
   const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
   const [overlays, setOverlays] = useState<Record<string, Overlay>>({});
@@ -218,7 +218,8 @@ export default function NotesWorkspace({ uid, notes, orders = [], customers = []
     <aside className="an-list-panel" aria-label="Lista de anotações">
       <header><h1>Anotações</h1><button className="an-icon blue" onClick={() => setModal("new")} aria-label="Nova anotação" title="Nova anotação"><FilePlus2 size={21} /></button></header>
       <div className="an-search"><Search size={17} /><input aria-label="Buscar anotações" placeholder="Buscar" value={search} onChange={e => setSearch(e.target.value)} /><kbd>⌕</kbd></div>
-      <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button><button onClick={openMaterials}><Layers size={13} /> Materiais</button></div>
+      <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button></div>
+      <div className="an-shortcuts"><button onClick={openMaterials}><Layers size={15} /> Materiais</button><button onClick={openTasks}><ListChecks size={15} /> Afazeres</button></div>
       <div className="an-list-filters"><select aria-label="Filtrar por categoria" value={category} onChange={e => setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select aria-label="Ordenar anotações" value={sort} onChange={e => setSort(e.target.value as "recent" | "title")}><option value="recent">Recentes</option><option value="title">Título A–Z</option></select></div>
       <div className="an-note-list"><h2>{filter === "trash" ? "Lixeira" : filter === "archive" ? "Arquivo" : filter === "pinned" ? "Fixadas" : "Suas anotações"}<span>{visibleNotes.length}</span></h2>{visibleNotes.map(note => <button className={`an-note-row ${selectedId === note.id ? "selected" : ""}`} key={note.id} aria-current={selectedId === note.id ? "page" : undefined} onClick={() => choose(note.id)}><span className="an-note-row-title">{note.draft.title || "Sem título"}{note.draft.pinned && <Pin size={12} />}</span><span className="an-preview">{plainText(note.draft).trim() || note.draft.materials.map(m => `${m.fabricType} · ${m.color}`).join(", ") || "Anotação vazia"}</span><small>{labelDate(note.time)} <span>· {note.draft.category}</span></small></button>)}{!visibleNotes.length && <div className="an-list-empty"><NotebookPen size={24} /><p>{search ? "Nenhuma anotação encontrada." : filter === "trash" ? "A lixeira está vazia." : "Nenhuma anotação por aqui."}</p>{filter === "all" && <button className="an-link" onClick={() => setModal("new")}>Criar anotação</button>}</div>}</div>
       <footer><button className={filter === "archive" ? "selected" : ""} onClick={() => section("archive")}><Archive size={17} />Arquivo<span>{allNotes.filter(n => n.draft.document.status === "archive").length || ""}</span></button><button className={filter === "trash" ? "selected" : ""} onClick={() => section("trash")}><Trash2 size={17} />Lixeira<span>{allNotes.filter(n => n.draft.document.status === "trash").length || ""}</span></button></footer>

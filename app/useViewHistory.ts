@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export const views = ["inicio", "producao", "dtf", "notas", "materiais", "clientes", "financeiro", "historico", "mais"] as const;
+export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "clientes", "financeiro", "historico", "mais"] as const;
 export type View = (typeof views)[number];
 
 export function viewFromHash(hash: string): View {

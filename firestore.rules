@@ -190,6 +190,19 @@ service cloud.firestore {
       allow update: if owns(uid) && validHistoryEntry(request.resource.data) && unchanged("source");
     }
 
+    function validTask(data) {
+      let fields = ["title", "completed", "createdAt", "completedAt"];
+      return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+        && text(data.title, 1, 200) && data.completed is bool && data.createdAt is timestamp
+        && (data.completed ? data.completedAt is timestamp : data.completedAt == null);
+    }
+
+    match /users/{uid}/tasks/{documentId} {
+      allow get, list, delete: if owns(uid);
+      allow create: if owns(uid) && validTask(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if owns(uid) && validTask(request.resource.data) && unchanged("createdAt");
+    }
+
     match /users/{uid}/orders/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validOrder(request.resource.data);

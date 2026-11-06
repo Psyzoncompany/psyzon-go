@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
+import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerReceipt, financialSummary, nextMonthPayables, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
@@ -33,6 +33,25 @@ test("zero adjustments are respected, invalid balances rejected, and deletion su
 });
 
 const bill = (overrides: Partial<Bill> = {}): Bill => ({ id: "rent", description: "Aluguel", amount: 500, account: "business", billingType: "fixed", dueDay: 31, category: "Estrutura", ...overrides });
+
+test("the next-month payable forecast rolls over the year and respects due dates and remaining installments", () => {
+  const installment = bill({ billingType: "installment", totalInstallments: 3, paidInstallments: 2, amount: 100 });
+  const once = bill({ billingType: "once", dueDate: "2027-01-10", amount: 40.25 });
+  const result = nextMonthPayables([
+    bill(),
+    once,
+    { ...once, dueDate: "2026-12-01" },
+    { ...once, settled: true },
+    { ...once, direction: "receivable" },
+    installment,
+    { ...installment, lastPaidMonth: "2026-12" },
+    { ...installment, paidInstallments: 1 },
+    { ...installment, paidInstallments: 3 },
+    { ...installment, lastPaidMonth: "2027-01" },
+  ], "2026-12");
+  assert.deepEqual(result, { label: "janeiro de 2027", total: 740.25 });
+  assert.equal(viewFromHash("#afazeres"), "afazeres");
+});
 
 test("history separates order dates in Bahia, open due dates, actual payments, and manual counts", () => {
   const order: Order = { id: "camisas", customer: "Ana", product: "Camisas", quantity: 16, total: 800, paid: 800, dueDate: "2026-11-09", status: "Entregue", createdAt: "2026-11-01T01:30:00Z" };

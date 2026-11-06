@@ -28,6 +28,9 @@
 .an-segment button { flex: 1; min-width: 0; min-height: 29px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 12px; font-weight: 570; color: var(--muted); }
 .an-segment button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 1px 3px #00000012; }
 .an-segment button span { color: var(--faint); font-size: 10px; }
+.an-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 0 12px 10px; }
+.an-shortcuts button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 35px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--blue); font-size: 12px; font-weight: 650; cursor: pointer; }
+.an-shortcuts button:hover { background: var(--blue-soft); }
 .an-list-filters { display: flex; gap: 6px; padding: 13px 17px 7px; }
 .an-list-filters select { width: 50%; min-width: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; outline: none; padding: 4px 0; }
 .an-note-list { overflow-y: auto; min-height: 0; flex: 1; padding: 6px 10px 20px; }

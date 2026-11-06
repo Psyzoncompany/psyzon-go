@@ -1,18 +1,20 @@
 "use client";
 
-import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Link2, List, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
-import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getFirestore, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import NoteDialog from "./notes/NoteDialog";
 import MaterialCalculator from "./notes/MaterialCalculator";
+import MaterialsWorkspace from "./notes/MaterialsWorkspace";
+import { updatePurchasedMaterials } from "./notes/materials-model";
 import "./notes/notes.css";
 import ProductionChecklist from "./ProductionChecklist";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string };
+type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openNote: (id?: string) => void };
 type Filter = "all" | "pinned" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -22,7 +24,7 @@ const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { 
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
 const queues = new Map<string, QueueEntry>();
 
-export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "" }: Props) {
+export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openNote }: Props) {
   const initialNote = notes.find(note => note.id === initialNoteId);
   const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
   const [overlays, setOverlays] = useState<Record<string, Overlay>>({});
@@ -195,17 +197,43 @@ export default function NotesWorkspace({ uid, notes, orders = [], customers = []
   const copySupplier = async (supplier: string) => { if (!draft) return; try { await navigator.clipboard.writeText(exportNote(draft, { supplier, prices: true })); notify(`Pedido de ${supplier} copiado.`); } catch { notify("Não foi possível copiar. Use Exportar para selecionar o texto."); } };
   const activeCount = allNotes.filter(n => n.draft.document.status === "active").length;
 
+  async function completeMaterials(id: string, materialIds: string[], completed: boolean) {
+    const queue = queueRef.current;
+    await queue?.flush(id);
+    if (queue?.isPending(id)) throw new Error("A anotação ainda tem alterações pendentes. Salve antes de concluir a compra.");
+    const db = getFirestore(getApps()[0]);
+    const reference = doc(db, "users", uid, "notes", id);
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("Esta anotação foi removida.");
+      const note = snapshot.data() as BusinessNote;
+      const purchasedMaterialIds = updatePurchasedMaterials(note.materials ?? [], note.purchasedMaterialIds, materialIds, completed);
+      transaction.update(reference, { purchasedMaterialIds });
+    });
+  }
+
+  if (materialsOpen) {
+    const purchases = new Map(notes.map(note => [note.id, note.purchasedMaterialIds]));
+    const clientByOrder = new Map(orders.map(order => [order.id, order.customer]));
+    const clientById = new Map(customers.map(customer => [customer.id, customer.name]));
+    const materialOrders = allNotes.filter(note => note.draft.materials.length && note.draft.document.status !== "trash").map(({ id, draft: note }) => ({
+      id, title: note.title || "Anotação sem título", materials: note.materials, purchasedIds: purchases.get(id),
+      client: clientByOrder.get(note.document.orderId) || clientById.get(note.document.customerId) || "",
+    }));
+    return <MaterialsWorkspace orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
+  }
+
   return <div className={`apple-notes ${showChecklist ? "an-production-mode" : ""} ${sidebar ? "" : "an-sidebar-hidden"} ${mobileEditor ? "an-mobile-editor" : ""} ${calculator ? "an-has-calculator" : ""}`}>
     <aside className="an-list-panel" aria-label="Lista de anotações">
       <header><h1>Anotações</h1><button className="an-icon blue" onClick={() => setModal("new")} aria-label="Nova anotação" title="Nova anotação"><FilePlus2 size={21} /></button></header>
       <div className="an-search"><Search size={17} /><input aria-label="Buscar anotações" placeholder="Buscar" value={search} onChange={e => setSearch(e.target.value)} /><kbd>⌕</kbd></div>
-      <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button></div>
+      <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button><button onClick={openMaterials}><Layers size={13} /> Materiais</button></div>
       <div className="an-list-filters"><select aria-label="Filtrar por categoria" value={category} onChange={e => setCategory(e.target.value)}><option>Todas</option>{categories.map(c => <option key={c}>{c}</option>)}</select><select aria-label="Ordenar anotações" value={sort} onChange={e => setSort(e.target.value as "recent" | "title")}><option value="recent">Recentes</option><option value="title">Título A–Z</option></select></div>
       <div className="an-note-list"><h2>{filter === "trash" ? "Lixeira" : filter === "archive" ? "Arquivo" : filter === "pinned" ? "Fixadas" : "Suas anotações"}<span>{visibleNotes.length}</span></h2>{visibleNotes.map(note => <button className={`an-note-row ${selectedId === note.id ? "selected" : ""}`} key={note.id} aria-current={selectedId === note.id ? "page" : undefined} onClick={() => choose(note.id)}><span className="an-note-row-title">{note.draft.title || "Sem título"}{note.draft.pinned && <Pin size={12} />}</span><span className="an-preview">{plainText(note.draft).trim() || note.draft.materials.map(m => `${m.fabricType} · ${m.color}`).join(", ") || "Anotação vazia"}</span><small>{labelDate(note.time)} <span>· {note.draft.category}</span></small></button>)}{!visibleNotes.length && <div className="an-list-empty"><NotebookPen size={24} /><p>{search ? "Nenhuma anotação encontrada." : filter === "trash" ? "A lixeira está vazia." : "Nenhuma anotação por aqui."}</p>{filter === "all" && <button className="an-link" onClick={() => setModal("new")}>Criar anotação</button>}</div>}</div>
       <footer><button className={filter === "archive" ? "selected" : ""} onClick={() => section("archive")}><Archive size={17} />Arquivo<span>{allNotes.filter(n => n.draft.document.status === "archive").length || ""}</span></button><button className={filter === "trash" ? "selected" : ""} onClick={() => section("trash")}><Trash2 size={17} />Lixeira<span>{allNotes.filter(n => n.draft.document.status === "trash").length || ""}</span></button></footer>
     </aside>
     <section className="an-editor-panel" aria-label="Editor da anotação">
-      <header className="an-editor-topbar"><div><button className="an-icon an-mobile-back" aria-label="Voltar às anotações" onClick={() => { setMobileEditor(false); void queueRef.current?.flushAll(); }}><ArrowLeft size={19} /></button><button className="an-icon an-desktop-toggle" aria-label={sidebar ? "Recolher lista de notas" : "Mostrar lista de notas"} onClick={() => setSidebar(!sidebar)}><PanelLeft size={19} /></button><span className="an-breadcrumb">Anotações <span>›</span> <b>{draft?.category || "Todas"}</b></span></div><div>{draft && <><span className={`an-save-status ${status}`} role="status"><i />{status === "saved" ? "Salvo" : status === "saving" ? "Salvando…" : "Falha ao salvar"}</span>{status === "error" && <button className="an-link" onClick={() => { setStatuses(v => ({ ...v, [selectedId]: "saving" })); void queueRef.current?.flush(selectedId); }}>Tentar novamente</button>}<button className="an-icon" onClick={() => setModal("export")} aria-label="Exportar anotação" title="Exportar"><Download size={19} /></button><div className="an-menu-wrap"><button className="an-icon" onClick={() => setMenu(!menu)} aria-label="Mais ações da anotação" aria-expanded={menu}><MoreHorizontal size={21} /></button>{menu && <><button className="an-menu-dismiss" aria-label="Fechar menu" onClick={() => setMenu(false)} /><div className="an-menu">{!locked && <><button onClick={() => { change(d => ({ ...d, pinned: !d.pinned })); setMenu(false); }}><Pin size={16} />{draft.pinned ? "Desafixar" : "Fixar anotação"}</button><button onClick={() => { change(d => ({ ...d, document: { ...d.document, status: d.document.status === "archive" ? "active" : "archive" } })); setMenu(false); }}><Archive size={16} />{draft.document.status === "archive" ? "Desarquivar" : "Arquivar"}</button><button onClick={() => { setModal("link"); setMenu(false); }}><Link2 size={16} />Vincular cliente ou pedido</button><button className="danger" onClick={() => { change(d => ({ ...d, document: { ...d.document, status: "trash" } })); setMenu(false); notify("Anotação movida para a lixeira. Você pode restaurá-la."); }}><Trash2 size={16} />Mover para a lixeira</button></>}{locked && <button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}><RotateCcw size={16} />Restaurar anotação</button>}</div></>}</div></>}</div></header>
+      <header className="an-editor-topbar"><div><button className="an-icon an-mobile-back" aria-label="Voltar às anotações" onClick={() => { setMobileEditor(false); void queueRef.current?.flushAll(); }}><ArrowLeft size={19} /></button><button className="an-icon an-desktop-toggle" aria-label={sidebar ? "Recolher lista de notas" : "Mostrar lista de notas"} onClick={() => setSidebar(!sidebar)}><PanelLeft size={19} /></button><button className="an-icon" onClick={openMaterials} aria-label="Abrir página Materiais" title="Materiais"><Layers size={17} /></button><span className="an-breadcrumb">Anotações <span>›</span> <b>{draft?.category || "Todas"}</b></span></div><div>{draft && <><span className={`an-save-status ${status}`} role="status"><i />{status === "saved" ? "Salvo" : status === "saving" ? "Salvando…" : "Falha ao salvar"}</span>{status === "error" && <button className="an-link" onClick={() => { setStatuses(v => ({ ...v, [selectedId]: "saving" })); void queueRef.current?.flush(selectedId); }}>Tentar novamente</button>}<button className="an-icon" onClick={() => setModal("export")} aria-label="Exportar anotação" title="Exportar"><Download size={19} /></button><div className="an-menu-wrap"><button className="an-icon" onClick={() => setMenu(!menu)} aria-label="Mais ações da anotação" aria-expanded={menu}><MoreHorizontal size={21} /></button>{menu && <><button className="an-menu-dismiss" aria-label="Fechar menu" onClick={() => setMenu(false)} /><div className="an-menu">{!locked && <><button onClick={() => { change(d => ({ ...d, pinned: !d.pinned })); setMenu(false); }}><Pin size={16} />{draft.pinned ? "Desafixar" : "Fixar anotação"}</button><button onClick={() => { change(d => ({ ...d, document: { ...d.document, status: d.document.status === "archive" ? "active" : "archive" } })); setMenu(false); }}><Archive size={16} />{draft.document.status === "archive" ? "Desarquivar" : "Arquivar"}</button><button onClick={() => { setModal("link"); setMenu(false); }}><Link2 size={16} />Vincular cliente ou pedido</button><button className="danger" onClick={() => { change(d => ({ ...d, document: { ...d.document, status: "trash" } })); setMenu(false); notify("Anotação movida para a lixeira. Você pode restaurá-la."); }}><Trash2 size={16} />Mover para a lixeira</button></>}{locked && <button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}><RotateCcw size={16} />Restaurar anotação</button>}</div></>}</div></>}</div></header>
       {storageError && <div className="an-banner error" role="alert">O navegador não conseguiu guardar o rascunho local. Aguarde a confirmação “Salvo” antes de fechar.</div>}
       {Object.entries(recoveries).map(([id, record]) => { const remote = notes.find(n => n.id === id); const conflict = remote && record.base && JSON.stringify(rawNote(remote)) !== record.base; return <div className="an-banner" role="status" key={id}><span><b>Rascunho disponível: {record.value.title || "Sem título"}</b><small>{conflict ? "A versão online também mudou. Escolha qual conteúdo manter." : "Uma edição anterior ficou pendente de salvamento."}</small></span><button onClick={() => recover(id, true)}>Recuperar rascunho</button><button onClick={() => recover(id, false)}>Manter versão online</button></div>; })}
       {draft ? <div className="an-document-scroll" ref={editorRef}><article className="an-document" key={selectedId}>

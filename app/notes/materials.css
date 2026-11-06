@@ -1,0 +1,75 @@
+.materials-workspace { min-width: 0; }
+.materials-back, .materials-note-link { display: inline-flex; align-items: center; gap: 6px; padding: 5px 0; border: 0; background: none; color: var(--blue); font-size: 11px; font-weight: 650; cursor: pointer; }
+.materials-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 16px; }
+.materials-heading h1 { margin: 0; font-size: clamp(24px, 2.6vw, 33px); letter-spacing: -.04em; }
+.materials-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.materials-heading > button { flex-shrink: 0; }
+.materials-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 15px; }
+.materials-totals article { display: grid; gap: 5px; min-width: 0; padding: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 11px; }
+.materials-totals small, .materials-totals span { color: var(--muted); font-size: 10px; }
+.materials-totals strong { font-size: clamp(15px, 2vw, 22px); overflow-wrap: anywhere; }
+.materials-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.materials-tabs { display: inline-flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-subtle); }
+.materials-tabs button { padding: 6px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: 11px; }
+.materials-tabs button[aria-pressed="true"] { background: var(--blue-soft); color: var(--blue); font-weight: 700; }
+.materials-tabs span { margin-left: 3px; font-size: 10px; }
+.materials-search { display: flex; align-items: center; gap: 7px; flex: 1 1 210px; max-width: 410px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--muted); }
+.materials-search svg { flex-shrink: 0; }
+.materials-search input { width: 100%; min-width: 0; min-height: 34px; border: 0; background: transparent; color: var(--text); font-size: 11px; }
+.materials-toolbar select, .materials-export-options select { max-width: 100%; min-height: 36px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font-size: 11px; }
+.materials-orders { display: grid; gap: 9px; }
+.materials-order, .materials-empty { background: var(--card); border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+.materials-order > header { display: flex; align-items: center; gap: 8px; padding: 11px 12px; }
+.materials-order > header > div { min-width: 0; flex: 1; }
+.materials-order h2 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.materials-order header p { margin: 4px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.materials-order header strong { font-size: 13px; text-align: right; }
+.materials-note-link { flex-shrink: 0; padding: 5px; border-radius: 5px; background: var(--blue-soft); }
+.materials-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; }
+.materials-table th { color: var(--muted); background: var(--card-subtle); font-weight: 650; }
+.materials-table th, .materials-table td { padding: 8px 12px; border-block-start: 1px solid var(--border); overflow-wrap: anywhere; }
+.materials-table small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.materials-order footer { display: flex; justify-content: flex-end; padding: 9px 12px; border-top: 1px solid var(--border); }
+.materials-order footer label { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 11px; font-weight: 650; cursor: pointer; }
+.materials-order footer input, .materials-export-options input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
+.materials-empty { padding: 28px 10px; color: var(--muted); text-align: center; }
+.materials-empty svg { color: var(--blue); }
+.materials-empty h2 { margin: 7px 0; color: var(--text); font-size: 15px; }
+.materials-empty p, .materials-feedback { font-size: 11px; }
+.materials-feedback { color: var(--green); }
+.materials-workspace .an-dialog > header > button { padding: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.materials-export-options { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; padding: 12px 16px 9px; }
+.materials-export-options label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.materials-export-options label:has(input) { display: flex; align-items: center; min-height: 36px; }
+.materials-export-options p { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 11px; }
+.materials-export-preview { display: block; width: calc(100% - 32px); min-height: 175px; margin: 0 16px; padding: 10px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; background: var(--card-subtle); color: var(--text); font: inherit; font-size: 12px; line-height: 1.55; }
+.materials-export-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; }
+.materials-export-actions + .materials-feedback { margin: 0 16px 10px; }
+.materials-report { display: none; }
+@media screen and (max-width: 600px) {
+  .materials-heading { align-items: flex-start; }
+  .materials-heading p { font-size: 11px; }
+  .materials-heading .primary { gap: 4px; padding-inline: 7px; }
+  .materials-totals { gap: 6px; }
+  .materials-totals article { padding: 7px; }
+  .materials-totals span { display: none; }
+  .materials-totals article:nth-child(2) span { display: block; }
+  .materials-order .materials-table th, .materials-order .materials-table td { padding: 7px 5px; }
+  .materials-order .materials-table :is(th, td):first-child { padding-left: 10px; }
+}
+@media print {
+  @page materials-list { size: A4; margin: 11mm; }
+  html:has(.materials-report), body:has(.materials-report) { margin: 0; background: white; color: #17233b; zoom: 1 !important; }
+  body:has(.materials-report) > *:not(.materials-report) { display: none !important; }
+  .materials-report { page: materials-list; display: block; font-family: Arial, sans-serif; color-scheme: light; print-color-adjust: exact; }
+  .materials-report header { display: flex; align-items: center; gap: 4mm; padding-bottom: 4mm; border-bottom: 1px solid #b3bdcc; }
+  .materials-report h1 { margin: 0; font-size: 20pt; }
+  .materials-report p { margin: 2mm 0; color: #455366; font-size: 9pt; }
+  .materials-report h2 { margin: 5mm 0 2mm; font-size: 12pt; break-after: avoid; }
+  .materials-report .materials-table { font-size: 9pt; }
+  .materials-report .materials-table th, .materials-report .materials-table td { padding: 2mm; border-color: #dce3ef; }
+  .materials-report .materials-table th { background: #edf2fa; color: #263956; }
+  .materials-report .materials-table small { color: #455366; font-size: 8pt; }
+  .materials-report .materials-table tr { break-inside: avoid; }
+  .materials-report footer { display: flex; justify-content: space-between; margin-top: 4mm; padding: 3mm 0; border-top: 1px solid #b3bdcc; font-size: 10pt; break-inside: avoid; }
+}

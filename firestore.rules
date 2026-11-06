@@ -145,13 +145,14 @@ service cloud.firestore {
     }
 
     function validNote(data) {
-      return data.keys().hasOnly(["title", "content", "category", "pinned", "materials", "createdAt", "updatedAt", "checklist", "productionPhotoData"])
+      return data.keys().hasOnly(["title", "content", "category", "pinned", "materials", "purchasedMaterialIds", "createdAt", "updatedAt", "checklist", "productionPhotoData"])
         && data.keys().hasAll(["title", "content", "category", "pinned", "materials", "updatedAt"])
         && text(data.title, 0, 200)
         && text(data.content, 0, 100000)
         && data.category in ["Geral", "Produção", "Clientes", "Compras", "Modelagem"]
         && data.pinned is bool
         && data.materials is list && data.materials.size() <= 100
+        && (!("purchasedMaterialIds" in data) || (data.purchasedMaterialIds is list && data.purchasedMaterialIds.size() <= 100))
         && (!("productionPhotoData" in data) || (text(data.productionPhotoData, 0, 450000) && (data.productionPhotoData == "" || data.productionPhotoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))))
         && (!("checklist" in data) || data.checklist == null || validChecklist(data.checklist))
         && validCreatedAt(data)

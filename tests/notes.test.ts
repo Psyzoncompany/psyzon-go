@@ -3,6 +3,7 @@ import test from "node:test";
 import { block, calculateMaterial, exportNote, newDraft, readDocument, recalculateMaterial, serializeDraft, toDraft, type NoteMaterial } from "../app/notes-model";
 import { NoteSaveQueue } from "../app/notes-save-queue";
 import { parseProductionOrder, sampleProductionOrder } from "../app/production-checklist";
+import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
 
 test("production checklists survive queued saves, archive and restore without dropping text", () => {
   const draft = newDraft("JERFESSON");
@@ -33,6 +34,28 @@ test("product photos persist separately from checklist text and can be removed",
 });
 
 const material: NoteMaterial = { id: "pv-1", supplier: "Atual Têxtil", fabricType: "PV", color: "Azul celeste", collarColor: "Branco", fabricKg: 3.93, fabricCost: 172.527, collarType: "common", ribanaKg: .2, ribanaCost: 10.6, ribanaPricePerKg: 53, poloUnits: 0, totalCost: 183.127 };
+test("completing a materials order covers only the items checked and leaves new materials pending", () => {
+  const next = { ...material, id: "pv-2" };
+  const orders = [{ id: "note", title: "Compra", client: "Ana", materials: [material, next], purchasedIds: updatePurchasedMaterials([material, next], ["deleted"], [material.id], true) }];
+  assert.deepEqual(orders[0].purchasedIds, [material.id]);
+  assert.deepEqual(splitMaterialOrders(orders, false)[0].materials, [next]);
+  assert.deepEqual(splitMaterialOrders(orders, true)[0].materials, [material]);
+  assert.deepEqual(updatePurchasedMaterials([material, next], orders[0].purchasedIds, [material.id], false), []);
+});
+
+test("the materials report separates kilos and polo sets and safely exports prices", () => {
+  const polo: NoteMaterial = { ...material, id: "polo", collarType: "polo", poloUnits: 10, poloPricePerUnit: 2.5, poloCost: 25, supplier: "Costa Rica" };
+  const lines = materialLines({ id: "note", title: '=SUM(1,2) "quoted"', client: "Ana", materials: [material, polo] });
+  const totals = materialTotals(lines);
+  assert.equal(totals.kg, 8.06);
+  assert.equal(totals.sets, 10);
+  assert.equal(totals.cost.toFixed(2), "380.65");
+  assert.match(materialsText(lines, "Materiais", true), /Gola polo \+ punho · Branco · 10 conj\./);
+  assert.doesNotMatch(materialsText(lines, "Materiais", false), /R\$/);
+  assert.match(materialsCsv(lines, true), /"'=SUM\(1,2\) ""quoted"""/);
+  assert.match(materialsCsv(lines, true), /"3,93";"kg";"43,90"/);
+  assert.doesNotMatch(materialsCsv(lines, false), /Valor unitário/);
+});
 test("legacy migration preserves notes, checklists and stored financial precision", () => {
   const note = { id: "old", title: "Compra", category: "Compras" as const, pinned: true, materials: [material], content: "Confirmar preço e valor do frete com João.\n\n🧵 MATERIAL 1\n🏭 Fornecedor: Atual Têxtil\n\n🟢 Malha PV – Azul celeste\n⚖️ Quantidade: 3,93 kg\n\n🟩 Ribana – Branco\n⚖️ Quantidade: 0,20 kg\n\n💰 Custo total do material: R$ 183,13\nObservação extra: conferir lote!\n☐ Conferir entrega" };
   const draft = toDraft(note);

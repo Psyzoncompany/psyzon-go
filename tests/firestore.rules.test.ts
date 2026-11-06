@@ -162,6 +162,19 @@ test("order photos and production checklists are restricted to the owner and exp
   await assertFails(getDoc(doc(environment.authenticatedContext("user-b").firestore(), "users/user-a/orders/photo")));
 });
 
+test("owners can mark materials bought without replacing the note", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const note = doc(db, "users/user-a/notes/purchase");
+  await assertSucceeds(setDoc(note, { title: "Compra", content: "Texto preservado", category: "Compras", pinned: false, materials: [{ id: "material-1" }], updatedAt: Timestamp.now() }));
+  await assertSucceeds(updateDoc(note, { purchasedMaterialIds: ["material-1"] }));
+  const data = (await assertSucceeds(getDoc(note))).data();
+  assert.equal(data?.content, "Texto preservado");
+  assert.deepEqual(data?.materials, [{ id: "material-1" }]);
+  await assertSucceeds(updateDoc(note, { purchasedMaterialIds: [] }));
+  await assertFails(updateDoc(note, { purchasedMaterialIds: "material-1" }));
+  await assertFails(updateDoc(doc(environment.authenticatedContext("user-b").firestore(), note.path), { purchasedMaterialIds: [] }));
+});
+
 test("invalid financial values and quantities are rejected", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   await assertFails(setDoc(doc(db, "users/user-a/orders/order-1"), { ...validOrder(), total: -1 }));

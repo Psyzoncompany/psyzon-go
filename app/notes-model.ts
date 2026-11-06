@@ -10,7 +10,7 @@ export type NoteMaterial = {
   poloCost?: number; totalCost: number; supplier: string;
   fabricPricePerKg?: number; yieldPerKg?: number; ribanaPercent?: number;
 };
-export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; productionPhotoData?: string; createdAt?: unknown; updatedAt?: unknown };
+export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; purchasedMaterialIds?: string[]; productionPhotoData?: string; createdAt?: unknown; updatedAt?: unknown };
 export type TextBlock = { id: string; type: "paragraph" | "heading" | "bullet" | "check"; text: string; bold?: boolean; done?: boolean };
 export type NoteDocument = { version: 2; blocks: TextBlock[]; status: "active" | "archive" | "trash"; orderId: string; customerId: string; productionChecklist?: ProductionChecklist | null; productionShirtColor?: string };
 export type NoteDraft = Pick<BusinessNote, "title" | "category" | "pinned" | "productionPhotoData"> & { document: NoteDocument; materials: NoteMaterial[] };

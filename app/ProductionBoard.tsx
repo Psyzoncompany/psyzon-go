@@ -1,11 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, ImageIcon, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
 import { dueLabel, dueTone, nextOrderStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
+import useProductionDrag from "./useProductionDrag";
 import "./production-board.css";
 
 type Props = {
@@ -35,8 +37,13 @@ function indexOrderNotes(notes: BusinessNote[]) {
 
 export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
   const board = useRef<HTMLDivElement>(null);
+  const drag = useProductionDrag(board, (id, stage) => {
+    const order = orders.find(item => item.id === id);
+    if (order && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
+  });
   const columns = useRef<Array<HTMLElement | null>>([]);
   const links = useMemo(() => indexOrderNotes(notes), [notes]);
   const customerIds = useMemo(() => new Map(customers.map(customer => [customerNameKey(customer.name), customer.id])), [customers]);
@@ -58,6 +65,19 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
     }
   }
 
+  function moveOrder(order: Order, status: OrderStatus) {
+    void run(order, () => updateStatus(order, status));
+  }
+
+  function toggleOrder(id: string) {
+    setExpanded(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function actionsFor(order: Order) {
     return {
       order,
@@ -65,12 +85,12 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
       busy: working.has(order.id),
       edit: () => editOrder(order),
       remove: () => void run(order, () => deleteOrder(order)),
-      move: (status: OrderStatus) => void run(order, () => updateStatus(order, status)),
+      move: (status: OrderStatus) => moveOrder(order, status),
       openNote,
     };
   }
 
-  return <section className="production-workspace">
+  return <section className="production-workspace" onPointerMove={drag.move} onPointerUp={drag.end} onPointerCancel={drag.end} onLostPointerCapture={drag.end}>
     <header className="production-heading">
       <div><h1>Produção</h1><p>{orders.length - delivered.length} em andamento <span>·</span> {delivered.length} {delivered.length === 1 ? "entregue" : "entregues"}</p></div>
       <button className="primary" onClick={onCreate}><Plus size={17} /> Novo pedido</button>
@@ -86,17 +106,17 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
         {productionStages.map((stage, index) => <option key={stage} value={index}>{stage} ({grouped.get(stage)?.length ?? 0})</option>)}
       </select>
     </label>
-    <div ref={board} className="production-kanban" role="region" aria-label="Quadro Kanban da produção">
+    <div ref={board} className="production-kanban" data-dragging={!!drag.dragged} role="region" aria-label="Quadro Kanban da produção">
       {productionStages.map((stage, index) => {
         const items = grouped.get(stage) ?? [];
-        return <section className="production-lane" data-stage={index} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
+        return <section className="production-lane" data-stage={index} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
           <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count">{items.length}</span></header>
-          {items.length ? items.map(order => <OrderCard key={order.id} {...actionsFor(order)} displayMoney={displayMoney} />) : <p className="production-lane-empty">Nenhum pedido nesta etapa.</p>}
+          {items.length ? items.map(order => <OrderCard key={order.id} {...actionsFor(order)} displayMoney={displayMoney} expanded={expanded.has(order.id)} toggle={() => toggleOrder(order.id)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <p className="production-lane-empty">Nenhum pedido nesta etapa.</p>}
         </section>;
       })}
     </div>
     <details className="production-delivered">
-      <summary><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count">{delivered.length}</span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
+      <summary data-production-drop="Entregue" data-drop-active={drag.dragged?.stage === "Entregue"}><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count">{delivered.length}</span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
       {delivered.length ? <ul>{delivered.map(order => {
         const actions = actionsFor(order);
         return <li key={order.id} className="production-delivered-row">
@@ -107,6 +127,7 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
+    {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
   </section>;
 }
 
@@ -130,25 +151,45 @@ function OrderPhoto({ order }: { order: Order }) {
     : <span className="production-photo-empty" aria-hidden="true"><ImageIcon size={18} /></span>;
 }
 
-function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMoney }: OrderActionsProps & { note?: BusinessNote; move: (status: OrderStatus) => void; openNote: Props["openNote"]; displayMoney: Props["displayMoney"] }) {
+function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMoney, expanded, toggle, dragging, startDrag }: OrderActionsProps & {
+  note?: BusinessNote;
+  move: (status: OrderStatus) => void;
+  openNote: Props["openNote"];
+  displayMoney: Props["displayMoney"];
+  expanded: boolean;
+  toggle: () => void;
+  dragging: boolean;
+  startDrag: (event: PointerEvent<HTMLElement>) => void;
+}) {
   const next = nextOrderStatus(order.status);
   const phone = (order.phone ?? "").replace(/\D/g, "");
   const contact = /^\d{8,15}$/.test(phone) ? `https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}` : null;
   const nextAction = next === "Entregue" ? "Marcar como entregue" : "Avançar etapa";
-  return <article className="production-order-card">
-    {order.photoData ? <OrderPhoto order={order} /> : <button type="button" className="production-add-photo" onClick={edit} disabled={busy}><Camera size={15} /> Adicionar foto</button>}
-    <div className="production-order-content">
-      <div className="production-order-top"><span>#{order.id.slice(0, 8).toUpperCase()}</span><OrderActions order={order} busy={busy} edit={edit} remove={remove} /></div>
-      <h3>{order.product}</h3>
-      <p>{order.customer} · {order.quantity} un.</p>
-      <span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span>
-      <div className="production-order-value"><strong>{displayMoney(order.total)}</strong><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></div>
-      <div className="production-order-links">
-        <NoteShortcut note={note} openNote={openNote} />
-        {order.status === "Pronto" && contact && <a href={contact} target="_blank" rel="noopener noreferrer" className="production-note-link"><MessageCircle size={15} /> Avisar</a>}
-      </div>
-      <label className="production-order-move"><span>Etapa</span><select aria-label={`Etapa do pedido de ${order.customer}`} disabled={busy} value={order.status} onChange={event => move(event.target.value as OrderStatus)}>{orderStatuses.map(status => <option key={status}>{status}</option>)}</select></label>
-      {next && <button type="button" className="production-next" onClick={() => move(next)} disabled={busy}>{nextAction}<ArrowRight size={14} /></button>}
+  const detailsId = `production-order-details-${order.id}`;
+  return <article className="production-order-card" data-moving={dragging}>
+    <header className="production-order-summary">
+      <span className="production-drag-handle" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={17} /></span>
+      <button type="button" className="production-order-toggle" aria-expanded={expanded} aria-controls={detailsId} onClick={toggle}>
+        <span className="production-order-summary-name">{order.customer}</span>
+        <span className="production-order-summary-meta"><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span>{order.quantity} un.</span></span>
+        <ChevronDown size={16} />
+      </button>
+    </header>
+    <div id={detailsId} hidden={!expanded} className="production-order-details">
+      {expanded && <>
+        {order.photoData ? <OrderPhoto order={order} /> : <button type="button" className="production-add-photo" onClick={edit} disabled={busy}><Camera size={15} /> Adicionar foto</button>}
+        <div className="production-order-content">
+          <div className="production-order-top"><span>#{order.id.slice(0, 8).toUpperCase()}</span><OrderActions order={order} busy={busy} edit={edit} remove={remove} /></div>
+          <h3>{order.product}</h3>
+          <div className="production-order-value"><strong>{displayMoney(order.total)}</strong><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></div>
+          <div className="production-order-links">
+            <NoteShortcut note={note} openNote={openNote} />
+            {order.status === "Pronto" && contact && <a href={contact} target="_blank" rel="noopener noreferrer" className="production-note-link"><MessageCircle size={15} /> Avisar</a>}
+          </div>
+          <label className="production-order-move"><span>Etapa</span><select aria-label={`Etapa do pedido de ${order.customer}`} disabled={busy} value={order.status} onChange={event => move(event.target.value as OrderStatus)}>{orderStatuses.map(status => <option key={status}>{status}</option>)}</select></label>
+          {next && <button type="button" className="production-next" onClick={() => move(next)} disabled={busy}>{nextAction}<ArrowRight size={14} /></button>}
+        </div>
+      </>}
     </div>
   </article>;
 }

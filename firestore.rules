@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
@@ -52,6 +52,7 @@ service cloud.firestore {
         && money(data.paid, true) && data.paid <= data.total
         && calendarDate(data.dueDate)
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
+        && (!("dtfStatus" in data) || data.dtfStatus in ["none", "pending", "requested"])
         && optionalText(data, "notes", 4000)
         && (!("photoData" in data) || (text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))))
         && validCreatedAt(data);
@@ -70,7 +71,7 @@ service cloud.firestore {
 
     function validDtfOrder(data) {
       let fields = ["title", "customerId", "customerName", "phone", "lengthCm", "widthCm", "priceCents", "paidCents", "dueDate", "stage", "artworkUrl", "notes", "photoData", "createdAt", "updatedAt"];
-      return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+      return data.keys().hasOnly(fields.concat(["printsData"])) && data.keys().hasAll(fields)
         && text(data.title, 1, 160)
         && text(data.customerId, 0, 1500)
         && text(data.customerName, data.customerId == "" ? 0 : 1, 120)
@@ -84,6 +85,7 @@ service cloud.firestore {
         && text(data.artworkUrl, 0, 2000) && (data.artworkUrl == "" || data.artworkUrl.matches('^https?://[^\\s]+$'))
         && text(data.notes, 0, 4000)
         && text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))
+        && optionalText(data, "printsData", 500000)
         && data.createdAt is timestamp && data.updatedAt == request.time;
     }
 

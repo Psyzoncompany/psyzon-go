@@ -43,6 +43,21 @@
 .dtf-order-description p, .dtf-order-specs span, .dtf-order-money span { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .dtf-link-tag { color: var(--blue); font-size: 9px; white-space: nowrap; }
 .dtf-link-tag::before { content: ' · '; }
+.dtf-prints-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 5px 7px; border: 0; border-radius: 6px; background: var(--blue-soft); color: var(--blue); font-size: 10px; font-weight: 700; cursor: pointer; }
+.dtf-prints-panel { padding-block: 14px 24px; }
+.dtf-prints-intro { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.dtf-prints-intro b { font-size: 13px; overflow-wrap: anywhere; }
+.dtf-prints-intro p, .dtf-prints-empty { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+.dtf-prints-intro > button { flex-shrink: 0; }
+.dtf-print-form { padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 9px; }
+.dtf-print-form h3 { margin: 0; font-size: 13px; }
+.dtf-print-list { list-style: none; margin: 0; padding: 0; }
+.dtf-print-list li { display: grid; grid-template-columns: 45px minmax(0, 1fr) auto auto; align-items: center; gap: 7px; padding-block: 8px; border-top: 1px solid var(--border); }
+.dtf-print-list .dtf-thumb { width: 45px; height: 45px; }
+.dtf-print-list b, .dtf-print-list small { display: block; font-size: 11px; overflow-wrap: anywhere; }
+.dtf-print-list small { margin-top: 4px; color: var(--muted); font-size: 10px; }
+.dtf-separated { display: inline-flex; align-items: center; gap: 4px; }
+.dtf-separated input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
 .dtf-order-specs, .dtf-order-money { display: grid; gap: 3px; min-width: 0; font-size: 13px; }
 .dtf-order-deadline { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11px; color: var(--muted); }
 .dtf-order-deadline svg { flex-shrink: 0; }

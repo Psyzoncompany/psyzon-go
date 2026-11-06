@@ -12,7 +12,7 @@ export type NoteMaterial = {
 };
 export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; productionPhotoData?: string; createdAt?: unknown; updatedAt?: unknown };
 export type TextBlock = { id: string; type: "paragraph" | "heading" | "bullet" | "check"; text: string; bold?: boolean; done?: boolean };
-export type NoteDocument = { version: 2; blocks: TextBlock[]; status: "active" | "archive" | "trash"; orderId: string; customerId: string; productionChecklist?: ProductionChecklist | null };
+export type NoteDocument = { version: 2; blocks: TextBlock[]; status: "active" | "archive" | "trash"; orderId: string; customerId: string; productionChecklist?: ProductionChecklist | null; productionShirtColor?: string };
 export type NoteDraft = Pick<BusinessNote, "title" | "category" | "pinned" | "productionPhotoData"> & { document: NoteDocument; materials: NoteMaterial[] };
 export type StoredNote = Pick<BusinessNote, "title" | "content" | "category" | "pinned" | "productionPhotoData"> & { materials: NoteMaterial[] };
 export const documentPrefix = "psyzon-note@2\n";

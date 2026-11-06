@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
-import { nextOrderStatus, normalizeOrderStatus, orderStatuses } from "../app/order-model";
-import { dtfForCustomer, dtfOverdue, dtfPending, dtfTotal, validateDtf, type DtfInput } from "../app/dtf-model";
+import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
+import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfTotal, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -112,4 +112,25 @@ test("DTF orders round fractional meters in cents and retain customer identity",
   assert.equal(dtfOverdue({ ...input, stage: "Entregue" }, "2026-11-06"), false);
   assert.throws(() => validateDtf({ ...input, paidCents: 129 }));
   assert.throws(() => validateDtf({ ...input, artworkUrl: "javascript:alert(1)" }));
+});
+
+test("the DTF deadline alert starts seven days out and stops when requested or delivered", () => {
+  const order: Pick<Order, "dtfStatus" | "dueDate" | "status"> = { dtfStatus: "pending", dueDate: "2026-11-13", status: "Produção" };
+  assert.equal(dtfAlertDays(order, "2026-11-05"), undefined);
+  assert.equal(dtfAlertDays(order, "2026-11-06"), 7);
+  assert.equal(dtfAlertDays(order, "2026-11-13"), 0);
+  assert.equal(dtfAlertDays(order, "2026-11-14"), -1);
+  assert.equal(dtfAlertDays({ ...order, dtfStatus: "requested" }, "2026-11-06"), undefined);
+  assert.equal(dtfAlertDays({ ...order, status: "Entregue" }, "2026-11-06"), undefined);
+  assert.equal(dtfAlertDays({ ...order, dtfStatus: undefined }, "2026-11-06"), undefined);
+});
+
+test("DTF prints preserve separation when their details are edited", () => {
+  const print: DtfPrint = { id: "logo-a", title: "Logo", customerId: "", customerName: "Avulso", quantity: 3, photoData: "", separated: false };
+  const first = changeDtfPrints(undefined, { type: "add", print });
+  const separated = changeDtfPrints(first, { type: "separate", id: print.id, separated: true });
+  const edited = changeDtfPrints(separated, { type: "edit", print: { ...print, quantity: 4 } });
+  assert.deepEqual(readDtfPrints(edited), [{ ...print, quantity: 4, separated: true }]);
+  assert.deepEqual(readDtfPrints(changeDtfPrints(edited, { type: "delete", id: print.id })), []);
+  assert.throws(() => changeDtfPrints(undefined, { type: "add", print: { ...print, photoData: "https://example.com/invalid.svg" } }));
 });

@@ -1416,6 +1416,13 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 .checklist-toolbar span { font-size: 11px; color: var(--muted); }
 .checklist-toolbar button { min-height: 34px; height: 34px; padding-inline: 11px; font-size: 11px; }
 .checklist-meta { display: grid; grid-template-columns: 1fr 180px; gap: 12px; margin-block: 15px; }
+.checklist-theme { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+.checklist-theme label { display: inline-flex; align-items: center; gap: 8px; color: var(--text); font-weight: 650; }
+.checklist-theme input { width: 40px; height: 26px; padding: 2px; border: 1px solid var(--border); border-radius: 5px; background: var(--card); cursor: pointer; }
+.dashboard-dtf-alert { width: 100%; display: flex; align-items: center; gap: 9px; margin-bottom: 12px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--yellow) 32%, var(--border)); border-radius: 9px; background: var(--yellow-soft); color: var(--yellow); text-align: left; cursor: pointer; }
+.dashboard-dtf-alert span { flex: 1; display: grid; gap: 3px; }
+.dashboard-dtf-alert b { font-size: 12px; }
+.dashboard-dtf-alert small { color: var(--text); font-size: 10px; }
 .checklist-meta label, .checklist-observations, .checklist-import label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted); }
 .checklist-meta input, .checklist-observations textarea, .checklist-import textarea { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--card); font: inherit; }
 .checklist-table-wrap { overflow-x: auto; }

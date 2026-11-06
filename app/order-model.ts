@@ -1,6 +1,8 @@
 export const productionStages = ["Orçamento", "Aguardando material", "Produção", "Pronto"] as const;
 export const orderStatuses = [...productionStages, "Entregue"] as const;
 export type OrderStatus = (typeof orderStatuses)[number];
+export const orderDtfStatus = { none: "Não precisa de DTF", pending: "Precisa pedir DTF", requested: "DTF já pedido" } as const;
+export type OrderDtfStatus = keyof typeof orderDtfStatus;
 
 export function normalizeOrderStatus(status: unknown): OrderStatus {
   if (status === "Aprovado") return "Aguardando material";
@@ -25,8 +27,15 @@ export type Order = {
   status: OrderStatus;
   notes?: string;
   photoData?: string;
+  dtfStatus?: OrderDtfStatus;
   createdAt?: unknown;
 };
+
+export function dtfAlertDays(order: Pick<Order, "dtfStatus" | "dueDate" | "status">, today: string) {
+  if (order.dtfStatus !== "pending" || order.status === "Entregue") return undefined;
+  const days = (Date.parse(`${order.dueDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000;
+  return Number.isFinite(days) && days <= 7 ? days : undefined;
+}
 
 export function dueLabel(dateString: string, status: OrderStatus, today = new Date()) {
   if (status === "Entregue") return "Entregue";

@@ -3,6 +3,7 @@ import test from "node:test";
 import { parseProductionOrder, productionPages, productionSummary, sampleProductionOrder, validateProductionChecklist } from "../app/production-checklist";
 import { organizeProductionWithAI } from "../app/lib/server/production-organizer";
 import type { ProviderCandidate } from "../app/lib/server/ai-agent";
+import { productionColorFromNotes, productionColorFromProduct, productionColorInk } from "../app/production-theme";
 
 test("JERFESSON has 16 shirts, eight per model, with one unnamed shirt", () => {
   const checklist = parseProductionOrder(sampleProductionOrder);
@@ -38,6 +39,20 @@ test("printing preserves every piece across columns and pages", () => {
   const pages = productionPages(rows);
   assert.ok(pages.length > 1);
   assert.deepEqual(pages.flat(2).map((row) => row.id).sort(), rows.map((row) => row.id).sort());
+});
+
+test("the print theme follows the shirt color and ignores artwork colors", () => {
+  assert.equal(productionColorFromProduct("CAMISETA IGREJA - PRETA")?.hex, "#18181b");
+  assert.equal(productionColorFromProduct("Camiseta Igreja - Azul Marinho")?.hex, "#172b4d");
+  assert.equal(productionColorFromNotes("Cor da estampa: verde\n**Cor da camisa:** branca")?.hex, "#ffffff");
+  assert.equal(productionColorFromNotes("Cor da estampa: azul"), undefined);
+  assert.equal(productionColorFromNotes("Cor: preta e branca"), undefined);
+  assert.equal(productionColorFromNotes("Cor da camisa: #FFDD00")?.hex, "#ffdd00");
+  const checklist = parseProductionOrder("Tamanho P (1)\nJoão\nCor da camisa: vermelha");
+  assert.equal(checklist.rows.length, 1);
+  assert.equal(productionColorFromNotes(checklist.notes)?.hex, "#bd252e");
+  assert.equal(productionColorInk("#18181b"), "#ffffff");
+  assert.equal(productionColorInk("#ffffff"), "#000000");
 });
 
 function candidate(output: unknown, family: "groq" | "deepseek" = "groq"): ProviderCandidate {

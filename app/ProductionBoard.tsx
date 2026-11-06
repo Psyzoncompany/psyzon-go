@@ -6,7 +6,7 @@ import { useMemo, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
-import { dueLabel, dueTone, nextOrderStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
+import { dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
 import useProductionDrag from "./useProductionDrag";
 import "./production-board.css";
 
@@ -181,6 +181,7 @@ function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMon
         <div className="production-order-content">
           <div className="production-order-top"><span>#{order.id.slice(0, 8).toUpperCase()}</span><OrderActions order={order} busy={busy} edit={edit} remove={remove} /></div>
           <h3>{order.product}</h3>
+          {order.dtfStatus && order.dtfStatus !== "none" && <span className={`due ${order.dtfStatus === "pending" ? "warning" : "normal"}`}>{orderDtfStatus[order.dtfStatus]}</span>}
           <div className="production-order-value"><strong>{displayMoney(order.total)}</strong><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></div>
           <div className="production-order-links">
             <NoteShortcut note={note} openNote={openNote} />

@@ -61,6 +61,9 @@ test("a user can create, read, update and delete only their own valid order", as
   await assertSucceeds(setDoc(reference, validOrder()));
   assert.equal((await assertSucceeds(getDoc(reference))).data()?.status, "Aprovado");
   await assertSucceeds(updateDoc(reference, { status: "Produção" }));
+  await assertSucceeds(updateDoc(reference, { dtfStatus: "pending" }));
+  await assertSucceeds(updateDoc(reference, { dtfStatus: "requested" }));
+  await assertFails(updateDoc(reference, { dtfStatus: true }));
   await assertSucceeds(deleteDoc(reference));
 });
 
@@ -84,6 +87,8 @@ test("DTF orders support linked and avulso work, exact cent rounding and owner-o
   await assertSucceeds(setDoc(doc(db, "users/user-a/dtfOrders/avulso"), { ...input, customerId: "", customerName: "", priceCents: 0, paidCents: 0 }));
   await assertSucceeds(getDocs(collection(db, "users/user-a/dtfOrders")));
   await assertSucceeds(updateDoc(ref, { stage: "Em impressão", updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { printsData: "[]", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { printsData: [], updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { paidCents: 129, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { stage: "Aprovado", updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { artworkUrl: "javascript:alert(1)", updatedAt: serverTimestamp() }));

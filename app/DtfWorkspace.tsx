@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, CalendarDays, Clipboard, FileImage, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { ArrowRight, CalendarDays, Clipboard, FileImage, Layers, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import Modal from "./Modal";
+import DtfPrints from "./DtfPrints";
 import OrderPhotoField from "./OrderPhotoField";
 import { customerNameKey, type Customer } from "./finance-model";
 import { millis } from "./notes-model";
-import { dtfArtworkLink, dtfCode, dtfDate, dtfForCustomer, dtfOverdue, dtfPending, dtfStages, dtfTotal, validateDtf, type DtfInput, type DtfOrder, type DtfStage } from "./dtf-model";
+import { dtfArtworkLink, dtfCode, dtfDate, dtfForCustomer, dtfOverdue, dtfPending, dtfStages, dtfTotal, readDtfPrints, validateDtf, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import "./dtf.css";
 
 type Connection = "connecting" | "live" | "error";
@@ -23,36 +24,40 @@ type Props = {
   onSave: (input: DtfInput, id?: string) => Promise<void>;
   onMove: (id: string, stage: DtfStage) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  onPrintChange: (id: string, change: DtfPrintChange) => Promise<void>;
 };
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const meterLabel = (lengthCm: number) => `${number.format(lengthCm / 100)} m`;
 const widthLabel = (widthCm: number) => widthCm ? `${number.format(widthCm)} cm` : "Largura livre";
 
-export default function DtfWorkspace({ orders, customers, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onDelete }: Props) {
+export default function DtfWorkspace({ orders, customers, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onDelete, onPrintChange }: Props) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<DtfStage | "all">("all");
   const [link, setLink] = useState("all");
   const [editor, setEditor] = useState<DtfOrder | "new" | null>(null);
   const [ticketId, setTicketId] = useState("");
+  const [printsId, setPrintsId] = useState("");
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
 
   const customer = customers.find(item => item.id === customerId);
   const names = new Map(customers.map(item => [item.id, item.name]));
+  const printsByOrder = useMemo(() => new Map(orders.map(order => [order.id, readDtfPrints(order.printsData)])), [orders]);
   const nameFor = (order: DtfOrder) => names.get(order.customerId) || order.customerName || "Sem cliente";
-  const scoped = customer ? orders.filter(order => dtfForCustomer(order, customer)) : customerId ? orders.filter(order => order.customerId === customerId) : orders;
+  const scoped = customerId ? orders.filter(order => [order, ...(printsByOrder.get(order.id) ?? [])].some(item => customer ? dtfForCustomer(item, customer) : item.customerId === customerId)) : orders;
   const linked = scoped.filter(order => link === "all" || Boolean(order.customerId) === (link === "linked"));
   const term = customerNameKey(query);
-  const filtered = linked.filter(order => (!term || customerNameKey(`${order.title} ${nameFor(order)} ${dtfCode(order.id)}`).includes(term)));
+  const filtered = linked.filter(order => !term || customerNameKey([order.title, nameFor(order), dtfCode(order.id), ...(printsByOrder.get(order.id) ?? []).flatMap(print => [print.title, names.get(print.customerId) || print.customerName])].join(" ")).includes(term));
   const visible = filtered.filter(order => stage === "all" || order.stage === stage).sort((a, b) =>
     Number(a.stage === "Entregue") - Number(b.stage === "Entregue") ||
     (a.dueDate || "9999").localeCompare(b.dueDate || "9999") || millis(b.updatedAt) - millis(a.updatedAt));
   const active = scoped.filter(order => order.stage !== "Entregue");
   const late = active.filter(order => dtfOverdue(order, today)).length;
   const queued = active.filter(order => order.stage === "Aguardando arte" || order.stage === "Em impressão").reduce((sum, order) => sum + order.lengthCm, 0);
-  const pending = scoped.filter(order => order.stage !== "Orçamento").reduce((sum, order) => sum + dtfPending(order), 0);
+  const pending = scoped.filter(order => order.stage !== "Orçamento" && (!customerId || (customer ? dtfForCustomer(order, customer) : order.customerId === customerId))).reduce((sum, order) => sum + dtfPending(order), 0);
   const ticket = scoped.find(order => order.id === ticketId);
+  const printsOrder = orders.find(order => order.id === printsId);
   const live = connection === "live";
 
   async function run(id: string, action: () => Promise<void>) {
@@ -66,7 +71,7 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
 
   return <section className="dtf-workspace">
     <header className="dtf-header">
-      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1><p>Organize a impressão, os prazos e os pagamentos.</p></div></div>
+      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1><p>Monte a lista de estampas de cada metro e acompanhe a separação.</p></div></div>
       <button className="primary" disabled={!live} onClick={() => setEditor("new")}><Plus size={17} /> Novo pedido DTF</button>
     </header>
     {customerId && <div className="dtf-customer-scope"><Link2 size={16} /> <strong>{customer?.name || "Cliente vinculado"}</strong><button type="button" onClick={clearCustomer}>Ver todos os pedidos <X size={14} /></button></div>}
@@ -93,6 +98,8 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
           const next = dtfStages[dtfStages.indexOf(order.stage) + 1];
           const overdue = dtfOverdue(order, today);
           const due = order.dueDate === today && order.stage !== "Entregue" ? "Entrega hoje" : dtfDate(order.dueDate);
+          const prints = printsByOrder.get(order.id) ?? [];
+          const remaining = prints.filter(print => !print.separated).length;
           return <article className="dtf-order" key={order.id}>
             <div className="dtf-thumb" aria-hidden="true">
               {order.photoData ? <Image unoptimized src={order.photoData} width={88} height={88} alt="" /> : <FileImage size={23} />}
@@ -100,6 +107,7 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
             <div className="dtf-order-description">
               <div><span className="dtf-code">#{dtfCode(order.id)}</span><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
               <h2>{order.title}</h2><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p>
+              <button className="dtf-prints-link" type="button" aria-label={`Estampas do metro ${order.title}`} onClick={() => setPrintsId(order.id)}><Layers size={14} /> {prints.length ? `${prints.length} ${prints.length === 1 ? "estampa" : "estampas"} · ${remaining} a separar` : "Adicionar estampas"}</button>
             </div>
             <div className="dtf-order-specs"><b>{meterLabel(order.lengthCm)}</b><span>{widthLabel(order.widthCm)}</span></div>
             <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}</span></div>
@@ -116,6 +124,7 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
     </section>
     {editor && <DtfEditor order={editor === "new" ? undefined : editor} customers={customers} customer={customer} displayMoney={displayMoney} onSave={onSave} onDelete={onDelete} close={() => setEditor(null)} />}
     {ticket && <DtfTicket order={ticket} customerName={nameFor(ticket)} close={() => setTicketId("")} />}
+    {printsOrder && <DtfPrints key={printsOrder.id} order={printsOrder} customers={customers} onChange={onPrintChange} close={() => setPrintsId("")} />}
   </section>;
 }
 
@@ -194,10 +203,12 @@ function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete,
 function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerName: string; close: () => void }) {
   const [notice, setNotice] = useState("");
   const link = dtfArtworkLink(order.artworkUrl);
+  const prints = readDtfPrints(order.printsData);
   const lines = [
     `Pedido #${dtfCode(order.id)} · ${order.title}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
     `Prazo: ${dtfDate(order.dueDate)}`, `Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`,
     ...(order.phone ? [`Contato: ${order.phone}`] : []), ...(link ? [`Arte: ${link}`] : []), ...(order.notes ? [`\nObservações\n${order.notes}`] : []),
+    ...(prints.length ? ["\nEstampas do metro", ...prints.map(print => `${print.separated ? "☑" : "☐"} ${print.title} · ${print.customerName || "Sem cliente"} · ${print.quantity} un.`)] : []),
   ];
   const ticketText = lines.join("\n");
 

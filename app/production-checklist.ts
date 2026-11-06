@@ -41,7 +41,7 @@ export function parseProductionOrder(text: string): ProductionChecklist {
     if (heading) { close("model"); model = heading[1]; size = "A confirmar"; if (heading[2]) expected.push({ label: model, count: Number(heading[2]), start: rows.length, level: "model" }); continue; }
     const sizeHeading = line.match(/^(?:tamanho\s+)?(XGG|GG|G\d|PP|P|M|G|\d+\s*anos?|sob medida|único)\s*(?:\((\d+)\)|[-–—|:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
     if (sizeHeading) { close("size"); size = sizeHeading[1].toLocaleUpperCase("pt-BR"); const count = sizeHeading[2] ?? sizeHeading[3]; if (count) expected.push({ label: `${model} / ${size}`, count: Number(count), start: rows.length, level: "size" }); continue; }
-    if (/^(observa[çc][õo]es?|aten[çc][ãa]o|cor|tecido|estampa)\s*:/i.test(line) || size === "A confirmar") { notes.push(line); continue; }
+    if (/^(observa[çc][õo]es?|aten[çc][ãa]o|cor(?: d[ao]s? [^:]+)?|malha|tecido|estampa)\s*:/i.test(line) || size === "A confirmar") { notes.push(line); continue; }
     const unnamed = line.match(/^(\d+)\s*(?:unidades?|un\.?)?\s*sem nome$/i);
     const quantity = unnamed ? Number(unnamed[1]) : 1;
     if (!quantity || rows.length + quantity > 500) throw new Error("A lista deve ter entre 1 e 500 peças.");

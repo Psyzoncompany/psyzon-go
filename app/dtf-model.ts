@@ -19,7 +19,53 @@ export type DtfInput = {
   photoData: string;
 };
 
-export type DtfOrder = DtfInput & { id: string; updatedAt?: unknown };
+export type DtfOrder = DtfInput & { id: string; updatedAt?: unknown; printsData?: string };
+export type DtfPrint = { id: string; title: string; customerId: string; customerName: string; quantity: number; photoData: string; separated: boolean };
+export type DtfPrintChange = { type: "add"; print: DtfPrint } | { type: "edit"; print: DtfPrint } | { type: "separate"; id: string; separated: boolean } | { type: "delete"; id: string };
+export const maxDtfPrints = 50;
+export const maxDtfPrintPhoto = 18000;
+
+function isDtfPrint(value: unknown): value is DtfPrint {
+  if (!value || typeof value !== "object") return false;
+  const print = value as DtfPrint;
+  return typeof print.id === "string" && /^[\w-]{1,64}$/.test(print.id)
+    && typeof print.title === "string" && !!print.title.trim() && print.title.length <= 160
+    && typeof print.customerId === "string" && print.customerId.length <= 1500
+    && typeof print.customerName === "string" && print.customerName.length <= 120
+    && Number.isInteger(print.quantity) && print.quantity >= 1 && print.quantity <= 10000
+    && typeof print.separated === "boolean" && typeof print.photoData === "string"
+    && (print.photoData === "" || (print.photoData.length <= maxDtfPrintPhoto && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(print.photoData)));
+}
+
+export function readDtfPrints(data?: string): DtfPrint[] {
+  if (!data) return [];
+  try {
+    const prints: unknown = JSON.parse(data);
+    return Array.isArray(prints) ? prints.slice(0, maxDtfPrints).filter(isDtfPrint) : [];
+  } catch { return []; }
+}
+
+export function changeDtfPrints(data: string | undefined, change: DtfPrintChange) {
+  const prints = readDtfPrints(data);
+  if (change.type === "add") {
+    if (prints.length >= maxDtfPrints) throw new Error(`Cada metro ou lote comporta até ${maxDtfPrints} estampas.`);
+    if (!isDtfPrint(change.print)) throw new Error("Confira o nome, a quantidade e a imagem da estampa.");
+    if (prints.some(print => print.id === change.print.id)) return data ?? "[]";
+    prints.push(change.print);
+  } else {
+    const id = change.type === "edit" ? change.print.id : change.id;
+    const index = prints.findIndex(print => print.id === id);
+    if (index < 0) throw new Error("Esta estampa já foi removida.");
+    if (change.type === "edit") {
+      if (!isDtfPrint(change.print)) throw new Error("Confira o nome, a quantidade e a imagem da estampa.");
+      prints[index] = { ...change.print, separated: prints[index].separated };
+    } else if (change.type === "separate") prints[index] = { ...prints[index], separated: change.separated };
+    else prints.splice(index, 1);
+  }
+  const result = JSON.stringify(prints);
+  if (new TextEncoder().encode(result).length > 500000) throw new Error("O lote atingiu o limite de imagens. Use referências mais leves ou abra outro lote.");
+  return result;
+}
 
 const totalCents = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => Math.floor((item.lengthCm * item.priceCents + 50) / 100);
 export const dtfTotal = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => totalCents(item) / 100;
@@ -35,9 +81,10 @@ export function dtfArtworkLink(value: string) {
   } catch { return ""; }
 }
 
-export function dtfForCustomer(order: DtfInput, customer: { id: string; name: string }) {
+export function dtfForCustomer(order: Pick<DtfInput, "customerId" | "customerName">, customer: { id: string; name: string }) {
   return order.customerId === customer.id || (order.customerId.startsWith("legacy-") && customerNameKey(order.customerName) === customerNameKey(customer.name));
 }
+
 
 export function validateDtf(input: DtfInput) {
   if (!input.title) throw new Error("Informe o nome do pedido.");

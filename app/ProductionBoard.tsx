@@ -42,7 +42,7 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
   const board = useRef<HTMLDivElement>(null);
   const drag = useProductionDrag(board, (id, stage) => {
     const order = orders.find(item => item.id === id);
-    if (order && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
+    if (order && !expanded.has(id) && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
   });
   const columns = useRef<Array<HTMLElement | null>>([]);
   const links = useMemo(() => indexOrderNotes(notes), [notes]);
@@ -168,7 +168,7 @@ function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMon
   const detailsId = `production-order-details-${order.id}`;
   return <article className="production-order-card" data-moving={dragging}>
     <header className="production-order-summary">
-      <span className="production-drag-handle" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={17} /></span>
+      {!expanded && <span className="production-drag-handle" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={17} /></span>}
       <button type="button" className="production-order-toggle" aria-expanded={expanded} aria-controls={detailsId} onClick={toggle}>
         <span className="production-order-summary-name">{order.customer}</span>
         <span className="production-order-summary-meta"><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span>{order.quantity} un.</span></span>

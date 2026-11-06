@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
+import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
@@ -78,6 +78,22 @@ test("one-time bills stay settled and completed installments do not reopen", () 
   assert.equal(billDueDate(once, "2027-01"), "2026-11-20");
   assert.equal(billIsSettled(bill({ billingType: "installment", totalInstallments: 2, paidInstallments: 2 }), "2027-01"), true);
   assert.equal(billIsSettled(bill({ billingType: "installment", totalInstallments: 2, paidInstallments: 1, lastPaidMonth: "2026-11" }), "2026-12"), false);
+});
+
+test("undoing a bill payment finds only its own expense and restores the previous installment", () => {
+  const paid = bill({ billingType: "installment", paidInstallments: 2, totalInstallments: 2, lastPaidMonth: "2026-11" });
+  const payment = { id: billPaymentId(paid.id, "2026-11"), type: "expense", source: "bill", billId: paid.id, transactionDate: "2026-11-06" };
+  const older = { ...payment, id: billPaymentId(paid.id, "2026-10"), transactionDate: "2026-10-06" };
+  const unrelated = { ...payment, source: "pluggy" };
+  assert.equal(currentBillExpense(paid, [unrelated, older, payment]), payment);
+  assert.equal(currentBillExpense(paid, [unrelated, older]), undefined);
+  const reversal = billReversal(paid, [unrelated, older, payment]);
+  assert.deepEqual(reversal, { lastPaidMonth: "2026-10", settled: false, paidInstallments: 1 });
+  assert.equal(financialSummary([], [{ ...paid, ...reversal }], "2026-11").toPay, paid.amount);
+  const once = { ...payment, id: billPaymentId(paid.id, "once") };
+  assert.equal(currentBillExpense(paid, [once]), once);
+  assert.equal(currentBillExpense(paid, [{ ...once, transactionDate: "2026-10-06" }]), undefined);
+  assert.equal(billIsSettled({ ...paid, billingType: "once", settled: true, ...billReversal({ ...paid, billingType: "once" }, [once]) }, "2026-11"), false);
 });
 
 test("browser history restores available pages and ignores removed views", () => {

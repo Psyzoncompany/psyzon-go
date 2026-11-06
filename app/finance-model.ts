@@ -108,6 +108,25 @@ export function billIsSettled(bill: Bill, month = localDateValue().slice(0, 7)) 
     : bill.lastPaidMonth === month || (bill.billingType === "installment" && (bill.paidInstallments ?? 0) >= (bill.totalInstallments ?? 1));
 }
 
+type BillExpense = { id: string; billId?: string; source?: string; type: string; transactionDate?: string };
+
+export const billPaymentId = (billId: string, period: string) => `bill-${billId}-${period}`;
+
+export function currentBillExpense<T extends BillExpense>(bill: Pick<Bill, "id" | "lastPaidMonth">, transactions: T[]) {
+  const linked = transactions.filter(item => item.type === "expense" && item.source === "bill" && item.billId === bill.id);
+  const period = bill.lastPaidMonth;
+  const monthly = period ? linked.find(item => item.id === billPaymentId(bill.id, period)) : undefined;
+  return monthly ?? linked.find(item => item.id === billPaymentId(bill.id, "once") && (!period || item.transactionDate?.slice(0, 7) === period));
+}
+
+export function billReversal(bill: Bill, transactions: BillExpense[]) {
+  const previous = transactions.flatMap(item => {
+    const period = item.transactionDate?.slice(0, 7);
+    return item.source === "bill" && item.billId === bill.id && period && /^\d{4}-\d{2}$/.test(period) && bill.lastPaidMonth && period < bill.lastPaidMonth ? [period] : [];
+  }).sort().at(-1);
+  return { lastPaidMonth: previous, settled: false, ...(bill.billingType === "installment" ? { paidInstallments: Math.max(0, (bill.paidInstallments ?? 0) - 1) } : {}) };
+}
+
 export function billDueDate(bill: Bill, month = localDateValue().slice(0, 7)) {
   if (bill.billingType === "once" && bill.dueDate) return bill.dueDate;
   const [year, monthNumber] = month.split("-").map(Number);

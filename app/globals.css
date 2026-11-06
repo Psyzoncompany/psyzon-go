@@ -1506,6 +1506,8 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
   .monthly-planned { padding: 0 17px 14px; color: var(--muted); font-size: 11px; }
   .finance-empty { margin: 0; padding: 22px 17px; color: var(--muted); font-size: 12px; }
   .settled-bills summary { padding: 16px; font-size: 12px; cursor: pointer; color: var(--muted); }
+  .settled-bills { margin-bottom: 14px; }
+  .bill-received-label { color: var(--green); font-size: 10px; }
   .form-error { padding: 10px 13px; border-radius: 8px; color: var(--red); background: var(--red-soft); font-size: 12px; }
   button:disabled { cursor: default; opacity: .55; }
   @media (max-width: 1200px) {

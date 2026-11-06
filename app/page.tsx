@@ -10,7 +10,8 @@ import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
-import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { millis } from "./notes-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
@@ -847,10 +848,11 @@ export default function HomePage() {
 
   const payBill = async (bill: Bill) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-    if (billIsSettled(bill)) return;
+    if (billIsSettled(bill)) return false;
     const receiving = bill.direction === "receivable";
-    if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return;
-    const month = localDateValue().slice(0, 7);
+    if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return false;
+    const paymentDate = localDateValue();
+    const month = paymentDate.slice(0, 7);
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const reference = userDocument(uid, "bills", bill.id);
       const snapshot = await transaction.get(reference);
@@ -860,10 +862,36 @@ export default function HomePage() {
       if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType) {
         throw new Error("A conta mudou. Confira os dados atualizados antes de confirmar.");
       }
-      transaction.set(userDocument(uid, "transactions", `bill-${bill.id}-${current.billingType === "once" ? "once" : month}`), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+      transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
       transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
     });
     showToast(receiving ? "Recebimento registrado" : "Pagamento registrado");
+    return true;
+  };
+
+  const undoBillPayment = async (bill: Bill) => {
+    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+    const expected = currentBillExpense(bill, transactions);
+    if (!window.confirm(`Desfazer o pagamento de “${bill.description}” e voltar a conta para A pagar?`)) return;
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const reference = userDocument(uid, "bills", bill.id);
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("Esta conta foi excluída.");
+      const current = { ...snapshot.data(), id: snapshot.id } as Bill;
+      if (current.direction === "receivable" || !billIsSettled(current) || current.lastPaidMonth !== bill.lastPaidMonth || current.billingType !== bill.billingType || current.paidInstallments !== bill.paidInstallments) {
+        throw new Error("A conta mudou. Confira os dados atualizados antes de desfazer.");
+      }
+      const periods = current.lastPaidMonth ? [current.lastPaidMonth, "once"] : ["once"];
+      const payments = await Promise.all(periods.map(period => transaction.get(userDocument(uid, "transactions", billPaymentId(bill.id, period)))));
+      const recorded = currentBillExpense(current, payments.flatMap(payment => payment.exists() ? [{ ...payment.data(), id: payment.id } as Transaction] : []));
+      if (recorded?.id !== expected?.id || millis(recorded?.createdAt) !== millis(expected?.createdAt)) {
+        throw new Error("O pagamento mudou. Confira os dados atualizados antes de desfazer.");
+      }
+      if (recorded) transaction.delete(userDocument(uid, "transactions", recorded.id));
+      const reversal = billReversal(current, transactions);
+      transaction.update(reference, { ...reversal, lastPaidMonth: reversal.lastPaidMonth ?? deleteField() });
+    });
+    showToast("Pagamento desfeito. Conta voltou para A pagar.");
   };
 
   const deleteBill = async (bill: Bill) => {
@@ -924,7 +952,7 @@ export default function HomePage() {
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openNote={id => setView("notas", id)} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
-          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
 
 
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}

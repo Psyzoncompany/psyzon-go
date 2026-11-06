@@ -321,6 +321,7 @@ button.metric-card:hover { border-color: color-mix(in srgb, var(--blue) 30%, var
 .customer-stats b { margin-top: 5px; font-size: 11px; }
 .customer-card footer { min-height: 42px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 8px; }
 .customer-card footer a { color: var(--green); display: flex; align-items: center; gap: 5px; font-weight: 650; text-decoration: none; }
+.customer-card .customer-dtf-link { color: var(--blue); display: flex; align-items: center; gap: 5px; padding: 5px; border: 0; border-radius: 6px; background: var(--blue-soft); font: inherit; font-weight: 700; cursor: pointer; }
 
 .account-grid { display: grid; grid-template-columns: 1.65fr 1fr; gap: 12px; margin-bottom: 15px; }
 .account-grid.single { grid-template-columns: minmax(0, 1fr); }
@@ -748,7 +749,7 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
   .progress-cell, .pending-cell { display: none; }
   .attention-card strong { display: none; }
   .floating-new { display: none; }
-  .mobile-nav { position: fixed; inset: auto 0 0; height: 70px; padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--card) 96%, transparent); backdrop-filter: blur(13px); display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; z-index: 50; }
+  .mobile-nav { position: fixed; inset: auto 0 0; height: 70px; padding: 7px 9px calc(7px + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--card) 96%, transparent); backdrop-filter: blur(13px); display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: end; z-index: 50; }
   .mobile-nav > button { height: 47px; color: var(--muted); display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; font-size: 8px; }
   .mobile-nav > button.active { color: var(--blue); font-weight: 700; }
   .mobile-nav .mobile-new { width: 47px; height: 47px; margin: -19px auto 0; border-radius: 50%; background: var(--blue); color: white; box-shadow: 0 7px 18px rgba(37, 99, 235, .3); }
@@ -1522,7 +1523,6 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
     .metric-grid { grid-template-columns: 1fr; }
     .monthly-expenses .section-title { gap: 8px; }
     .monthly-expenses .section-title h2 { font-size: 13px; }
-    .mobile-nav { grid-template-columns: repeat(6, minmax(0, 1fr)); }
     .mobile-nav > button { min-width: 0; padding-inline: 2px; font-size: 7.5px; }
   }
 }

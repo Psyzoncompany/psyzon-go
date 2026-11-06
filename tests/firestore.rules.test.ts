@@ -15,6 +15,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  serverTimestamp,
   setDoc,
   updateDoc,
 } from "firebase/firestore";
@@ -73,6 +74,26 @@ test("user A cannot read, create, update or delete user B documents", async () =
   await assertFails(setDoc(doc(db, "users/user-b/orders/order-2"), validOrder()));
   await assertFails(updateDoc(other, { status: "Pronto" }));
   await assertFails(deleteDoc(other));
+});
+
+test("DTF orders support linked and avulso work, exact cent rounding and owner-only access", async () => {
+  const db = environment.authenticatedContext("user-a").firestore();
+  const ref = doc(db, "users/user-a/dtfOrders/linked");
+  const input = { title: "Estampas", customerId: "ana", customerName: "Ana", phone: "", lengthCm: 125, widthCm: 58, priceCents: 102, paidCents: 128, dueDate: "", stage: "Aguardando arte", artworkUrl: "https://example.com/art", notes: "", photoData: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+  await assertSucceeds(setDoc(ref, input));
+  await assertSucceeds(setDoc(doc(db, "users/user-a/dtfOrders/avulso"), { ...input, customerId: "", customerName: "", priceCents: 0, paidCents: 0 }));
+  await assertSucceeds(getDocs(collection(db, "users/user-a/dtfOrders")));
+  await assertSucceeds(updateDoc(ref, { stage: "Em impressão", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { paidCents: 129, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { stage: "Aprovado", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { artworkUrl: "javascript:alert(1)", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { photoData: "https://example.com/photo.svg", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+  const other = environment.authenticatedContext("user-b").firestore();
+  await assertFails(getDoc(doc(other, ref.path)));
+  await assertFails(setDoc(doc(other, "users/user-a/dtfOrders/other"), input));
+  await assertFails(deleteDoc(doc(other, ref.path)));
+  await assertSucceeds(deleteDoc(ref));
 });
 
 test("users cannot list the root users collection or query all users through collectionGroup", async () => {

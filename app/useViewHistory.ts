@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export const views = ["inicio", "producao", "notas", "clientes", "financeiro", "mais"] as const;
+export const views = ["inicio", "producao", "dtf", "notas", "clientes", "financeiro", "mais"] as const;
 export type View = (typeof views)[number];
 
 export function viewFromHash(hash: string): View {
@@ -16,7 +16,9 @@ export function noteFromHash(hash: string) {
 }
 
 function locationFromHash(hash: string) {
-  return { view: viewFromHash(hash), noteId: noteFromHash(hash) };
+  const view = viewFromHash(hash);
+  const dtfCustomerId = view === "dtf" ? new URLSearchParams(hash.split("?")[1]).get("cliente") ?? "" : "";
+  return { view, noteId: noteFromHash(hash), dtfCustomerId };
 }
 
 export default function useViewHistory() {
@@ -28,11 +30,12 @@ export default function useViewHistory() {
     window.addEventListener("hashchange", restore);
     return () => { window.removeEventListener("popstate", restore); window.removeEventListener("hashchange", restore); };
   }, []);
-  const setView = useCallback((next: View, noteId?: string) => {
-    const hash = next === "notas" && noteId ? `#notas?nota=${encodeURIComponent(noteId)}` : `#${next}`;
+  const setView = useCallback((next: View, id?: string) => {
+    const key = next === "notas" ? "nota" : next === "dtf" ? "cliente" : "";
+    const hash = key && id ? `#${next}?${key}=${encodeURIComponent(id)}` : `#${next}`;
     if (window.location.hash !== hash) window.history.pushState(null, "", hash);
     updateLocation(locationFromHash(hash));
     window.scrollTo({ top: 0 });
   }, []);
-  return [location.view, setView, location.noteId] as const;
+  return [location.view, setView, location.noteId, location.dtfCustomerId] as const;
 }

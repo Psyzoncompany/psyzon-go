@@ -68,6 +68,25 @@ service cloud.firestore {
         && (!("pendingAdjustment" in data) || (data.pendingAdjustment is number && data.pendingAdjustment >= -100000000 && data.pendingAdjustment <= 100000000));
     }
 
+    function validDtfOrder(data) {
+      let fields = ["title", "customerId", "customerName", "phone", "lengthCm", "widthCm", "priceCents", "paidCents", "dueDate", "stage", "artworkUrl", "notes", "photoData", "createdAt", "updatedAt"];
+      return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+        && text(data.title, 1, 160)
+        && text(data.customerId, 0, 1500)
+        && text(data.customerName, data.customerId == "" ? 0 : 1, 120)
+        && text(data.phone, 0, 40)
+        && data.lengthCm is int && data.lengthCm >= 1 && data.lengthCm <= 1000000
+        && data.widthCm is number && data.widthCm >= 0 && data.widthCm <= 300
+        && data.priceCents is int && data.priceCents >= 0 && data.priceCents <= 1000000
+        && data.paidCents is int && data.paidCents >= 0 && data.paidCents * 100 <= data.lengthCm * data.priceCents + 50
+        && (data.dueDate == "" || calendarDate(data.dueDate))
+        && data.stage in ["Orçamento", "Aguardando arte", "Em impressão", "Pronto", "Entregue"]
+        && text(data.artworkUrl, 0, 2000) && (data.artworkUrl == "" || data.artworkUrl.matches('^https?://[^\\s]+$'))
+        && text(data.notes, 0, 4000)
+        && text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))
+        && data.createdAt is timestamp && data.updatedAt == request.time;
+    }
+
     function validTransaction(data) {
       return data.keys().hasOnly([
           "description", "amount", "type", "account", "category", "transactionDate", "source",
@@ -159,6 +178,12 @@ service cloud.firestore {
       allow get, list: if owns(uid);
       allow create, update: if owns(uid) && validCustomer(request.resource.data);
       allow delete: if owns(uid);
+    }
+
+    match /users/{uid}/dtfOrders/{documentId} {
+      allow get, list, delete: if owns(uid);
+      allow create: if owns(uid) && validDtfOrder(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if owns(uid) && validDtfOrder(request.resource.data) && unchanged("createdAt");
     }
 
     match /users/{uid}/transactions/{documentId} {

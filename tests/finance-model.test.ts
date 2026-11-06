@@ -3,6 +3,7 @@ import test from "node:test";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { nextOrderStatus, normalizeOrderStatus, orderStatuses } from "../app/order-model";
+import { dtfForCustomer, dtfOverdue, dtfPending, dtfTotal, validateDtf, type DtfInput } from "../app/dtf-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -98,4 +99,17 @@ test("legacy order stages remain visible and the next action skips retired stage
   assert.equal(nextOrderStatus("Produção"), "Pronto");
   assert.equal(nextOrderStatus("Pronto"), "Entregue");
   assert.equal(nextOrderStatus("Entregue"), undefined);
+});
+
+test("DTF orders round fractional meters in cents and retain customer identity", () => {
+  const input: DtfInput = { title: "Estampas", customerId: "legacy-ana", customerName: "Ana", phone: "", lengthCm: 125, widthCm: 58, priceCents: 102, paidCents: 28, dueDate: "2026-11-04", stage: "Em impressão", artworkUrl: "https://example.com/arte", notes: "", photoData: "" };
+  validateDtf(input);
+  assert.equal(dtfTotal(input), 1.28);
+  assert.equal(dtfPending(input), 1);
+  assert.equal(dtfForCustomer(input, { id: "new-id", name: "Ána" }), true);
+  assert.equal(dtfForCustomer({ ...input, customerId: "" }, { id: "new-id", name: "Ana" }), false);
+  assert.equal(dtfOverdue(input, "2026-11-06"), true);
+  assert.equal(dtfOverdue({ ...input, stage: "Entregue" }, "2026-11-06"), false);
+  assert.throws(() => validateDtf({ ...input, paidCents: 129 }));
+  assert.throws(() => validateDtf({ ...input, artworkUrl: "javascript:alert(1)" }));
 });

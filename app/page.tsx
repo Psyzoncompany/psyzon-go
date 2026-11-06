@@ -8,6 +8,7 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
+import { dtfForCustomer, type DtfInput, type DtfOrder, type DtfStage } from "./dtf-model";
 import { dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import useViewHistory from "./useViewHistory";
@@ -61,6 +62,7 @@ import {
   PanelLeftOpen,
   PictureInPicture2,
   Plus,
+  Printer,
   RotateCcw,
   Search,
   Settings,
@@ -109,6 +111,7 @@ type AppNotification = {
 };
 
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
+const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -118,6 +121,7 @@ const firebaseConfig = {
 };
 
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
+type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
@@ -156,11 +160,11 @@ function clientAuth(app: FirebaseApp) {
   return authInstance;
 }
 
-function userCollection(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number]) {
+function userCollection(uid: string, name: UserCollection) {
   return collection(getFirestore(getApps()[0]), "users", uid, name);
 }
 
-function userDocument(uid: string, name: (typeof FIRESTORE_COLLECTIONS)[number], id: string) {
+function userDocument(uid: string, name: UserCollection, id: string) {
   return doc(getFirestore(getApps()[0]), "users", uid, name, id);
 }
 
@@ -181,13 +185,14 @@ const statusProgress: Record<OrderStatus, number> = {
 const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "inicio", label: "Início", icon: Home },
   { id: "producao", label: "Produção", icon: Boxes },
+  { id: "dtf", label: "DTF", icon: Printer },
   { id: "notas", label: "Bloco de notas", icon: NotebookPen },
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
 const navGroups = [
-  { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "notas", "clientes"].includes(item.id)) },
+  { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "dtf", "notas", "clientes"].includes(item.id)) },
   { label: "Gestão", items: navItems.filter((item) => ["financeiro"].includes(item.id)) },
   { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
 ];
@@ -195,9 +200,11 @@ const navGroups = [
 const mobileNavItems = navItems;
 
 export default function HomePage() {
-  const [view, setView, noteId] = useViewHistory();
+  const [view, setView, noteId, dtfCustomerId] = useViewHistory();
   useEffect(() => { const timer = window.setInterval(() => setCalendarDate(localDateValue()), 30000); return () => window.clearInterval(timer); }, []);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [dtfOrders, setDtfOrders] = useState<DtfOrder[]>([]);
+  const [dtfConnection, setDtfConnection] = useState<"connecting" | "live" | "error">("connecting");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
@@ -264,6 +271,8 @@ export default function HomePage() {
       setAuthReady(true);
       setAuthError("");
       setDataReady(false);
+      setDtfOrders([]);
+      setDtfConnection("connecting");
 
       if (!nextUser) {
         setOrders([]);
@@ -313,6 +322,13 @@ export default function HomePage() {
           setNotes(toList<BusinessNote>(snapshot));
           markReady("notes");
         }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "dtfOrders"), (snapshot) => {
+          setDtfOrders(toList<DtfOrder>(snapshot));
+          setDtfConnection("live");
+        }, (error) => {
+          console.error("DTF synchronization failed", error);
+          setDtfConnection("error");
+        }),
       ];
     });
 
@@ -453,11 +469,14 @@ export default function HomePage() {
   };
 
   const resetAllData = async () => {
-    if (!uid || !window.confirm("Apagar definitivamente todos os pedidos, clientes, contas, movimentações e anotações desta conta?")) return;
+    if (!uid) return;
+    if (dtfConnection !== "live") return showToast("Aguarde a sincronização dos pedidos DTF para resetar os dados.");
+    if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações e anotações desta conta?")) return;
     setResetting(true);
     try {
       const records = [
         ...orders.map((item) => ["orders", item.id] as const),
+        ...dtfOrders.map((item) => ["dtfOrders", item.id] as const),
         ...customers.map((item) => ["customers", item.id] as const),
         ...transactions.map((item) => ["transactions", item.id] as const),
         ...bills.map((item) => ["bills", item.id] as const),
@@ -469,6 +488,7 @@ export default function HomePage() {
         await batch.commit();
       }
       setOrders([]);
+      setDtfOrders([]);
       setCustomers([]);
       setTransactions([]);
       setBills([]);
@@ -656,6 +676,30 @@ export default function HomePage() {
     } catch {
       throw new Error("Não foi possível excluir o pedido. Tente novamente.");
     }
+  };
+
+  const saveDtf = async (input: DtfInput, id?: string) => {
+    if (!uid || dtfConnection !== "live") throw new Error("Aguarde a sincronização dos pedidos DTF.");
+    const data = { ...input, updatedAt: serverTimestamp() };
+    try {
+      if (id) await updateDoc(userDocument(uid, "dtfOrders", id), data);
+      else await addDoc(userCollection(uid, "dtfOrders"), { ...data, createdAt: serverTimestamp() });
+      showToast(id ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
+    } catch { throw new Error("Não foi possível salvar o pedido DTF. Confira a conexão e tente novamente."); }
+  };
+
+  const moveDtf = async (id: string, stage: DtfStage) => {
+    if (!uid || dtfConnection !== "live") throw new Error("Aguarde a sincronização dos pedidos DTF.");
+    try { await updateDoc(userDocument(uid, "dtfOrders", id), { stage, updatedAt: serverTimestamp() }); }
+    catch { throw new Error("Não foi possível alterar a etapa do pedido DTF."); }
+    showToast(`Pedido DTF · ${stage}`);
+  };
+
+  const deleteDtf = async (id: string) => {
+    if (!uid || dtfConnection !== "live") throw new Error("Aguarde a sincronização dos pedidos DTF.");
+    try { await deleteDoc(userDocument(uid, "dtfOrders", id)); }
+    catch { throw new Error("Não foi possível excluir o pedido DTF."); }
+    showToast("Pedido DTF excluído");
   };
 
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
@@ -852,8 +896,9 @@ export default function HomePage() {
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
+          {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} />}
           {view === "notas" && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} />}
-          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
+          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfOrders.filter(order => dtfForCustomer(order, customer)).length} openDtf={id => setView("dtf", id)} />}
           {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
 
 

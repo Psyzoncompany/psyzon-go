@@ -172,6 +172,24 @@ service cloud.firestore {
         && data.warnings is list && data.warnings.size() <= 30;
     }
 
+    function validHistoryEntry(data) {
+      let fields = ["kind", "source", "date", "title", "quantity", "amount", "supplier", "notes"];
+      return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+        && data.kind in ["orders", "payable", "paid", "fabric"]
+        && (data.source == "manual" || (data.source == "material" && data.kind == "fabric"))
+        && calendarDate(data.date)
+        && text(data.title, 1, 200) && text(data.supplier, 0, 120) && text(data.notes, 0, 1200)
+        && data.quantity is number && data.quantity >= 0 && data.quantity <= 1000000
+        && (data.kind == "orders" ? (data.quantity is int && data.quantity > 0 && data.amount == 0) : (data.kind == "fabric" ? data.quantity > 0 : data.quantity == 0))
+        && money(data.amount, data.kind == "fabric" || data.kind == "orders");
+    }
+
+    match /users/{uid}/historyEntries/{documentId} {
+      allow get, list, delete: if owns(uid);
+      allow create: if owns(uid) && validHistoryEntry(request.resource.data);
+      allow update: if owns(uid) && validHistoryEntry(request.resource.data) && unchanged("source");
+    }
+
     match /users/{uid}/orders/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validOrder(request.resource.data);

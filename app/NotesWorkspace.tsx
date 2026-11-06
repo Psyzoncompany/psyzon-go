@@ -2,19 +2,18 @@
 
 import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
-import { collection, doc, getFirestore, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import NoteDialog from "./notes/NoteDialog";
 import MaterialCalculator from "./notes/MaterialCalculator";
 import MaterialsWorkspace from "./notes/MaterialsWorkspace";
-import { updatePurchasedMaterials } from "./notes/materials-model";
 import "./notes/notes.css";
 import ProductionChecklist from "./ProductionChecklist";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openNote: (id?: string) => void };
+type Props = { uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
 type Filter = "all" | "pinned" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -24,7 +23,7 @@ const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { 
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
 const queues = new Map<string, QueueEntry>();
 
-export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openNote }: Props) {
+export default function NotesWorkspace({ uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openNote, onCompleteMaterials }: Props) {
   const initialNote = notes.find(note => note.id === initialNoteId);
   const [selectedId, setSelectedId] = useState(initialNote?.id ?? "");
   const [overlays, setOverlays] = useState<Record<string, Overlay>>({});
@@ -201,15 +200,7 @@ export default function NotesWorkspace({ uid, notes, orders = [], customers = []
     const queue = queueRef.current;
     await queue?.flush(id);
     if (queue?.isPending(id)) throw new Error("A anotação ainda tem alterações pendentes. Salve antes de concluir a compra.");
-    const db = getFirestore(getApps()[0]);
-    const reference = doc(db, "users", uid, "notes", id);
-    await runTransaction(db, async transaction => {
-      const snapshot = await transaction.get(reference);
-      if (!snapshot.exists()) throw new Error("Esta anotação foi removida.");
-      const note = snapshot.data() as BusinessNote;
-      const purchasedMaterialIds = updatePurchasedMaterials(note.materials ?? [], note.purchasedMaterialIds, materialIds, completed);
-      transaction.update(reference, { purchasedMaterialIds });
-    });
+    await onCompleteMaterials(id, materialIds, completed);
   }
 
   if (materialsOpen) {

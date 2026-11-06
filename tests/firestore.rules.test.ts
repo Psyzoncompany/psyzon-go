@@ -55,6 +55,25 @@ test("unauthenticated users cannot read or write", async () => {
   await assertFails(setDoc(doc(db, "users/user-a/orders/order-1"), validOrder()));
 });
 
+test("history records are owner-only and validate orders, bills, and material purchases", async () => {
+  const owner = environment.authenticatedContext("user-a").firestore();
+  const other = environment.authenticatedContext("user-b").firestore();
+  const path = "users/user-a/historyEntries";
+  const record = { kind: "orders", source: "manual", date: "2026-11-06", title: "Pedidos de novembro", quantity: 4, amount: 0, supplier: "", notes: "" };
+  await assertSucceeds(setDoc(doc(owner, path, "orders"), record));
+  await assertFails(setDoc(doc(owner, path, "fraction"), { ...record, quantity: 1.5 }));
+  await assertFails(setDoc(doc(owner, path, "zero-bill"), { ...record, kind: "payable", quantity: 0 }));
+  await assertFails(setDoc(doc(owner, path, "bad-date"), { ...record, date: "novembro" }));
+  await assertFails(updateDoc(doc(owner, path, "orders"), { kind: "fabric", source: "material" }));
+  await assertSucceeds(updateDoc(doc(owner, path, "orders"), { quantity: 5 }));
+  await assertSucceeds(setDoc(doc(owner, path, "fabric"), { ...record, kind: "fabric", source: "material", title: "Malha PV", quantity: 2.5, amount: 112.34 }));
+  assert.equal((await assertSucceeds(getDocs(collection(owner, path)))).size, 2);
+  await assertFails(getDocs(collection(other, path)));
+  await assertFails(setDoc(doc(other, path, "fabric"), record));
+  await assertFails(deleteDoc(doc(other, path, "fabric")));
+  await assertSucceeds(deleteDoc(doc(owner, path, "fabric")));
+});
+
 test("a user can create, read, update and delete only their own valid order", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   const reference = doc(db, "users/user-a/orders/order-1");

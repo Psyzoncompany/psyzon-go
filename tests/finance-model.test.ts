@@ -6,6 +6,7 @@ import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, typ
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
 import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
+import { fabricHistoryEntry, historyDate, historyRows, historyTotals, legacyFabricPurchases, materialHistoryId, pendingFabric, type HistoryEntry } from "../app/history-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -32,6 +33,31 @@ test("zero adjustments are respected, invalid balances rejected, and deletion su
 });
 
 const bill = (overrides: Partial<Bill> = {}): Bill => ({ id: "rent", description: "Aluguel", amount: 500, account: "business", billingType: "fixed", dueDay: 31, category: "Estrutura", ...overrides });
+
+test("history separates order dates in Bahia, open due dates, actual payments, and manual counts", () => {
+  const order: Order = { id: "camisas", customer: "Ana", product: "Camisas", quantity: 16, total: 800, paid: 800, dueDate: "2026-11-09", status: "Entregue", createdAt: "2026-11-01T01:30:00Z" };
+  assert.equal(historyDate(order.createdAt), "2026-10-31");
+  const entries: HistoryEntry[] = [{ id: "old", source: "manual", kind: "orders", title: "Anotações", date: "2026-10-03", quantity: 4, amount: 0, supplier: "", notes: "" }];
+  const bills = [bill(), bill({ id: "outubro", billingType: "once", dueDate: "2026-10-20", amount: 123 }), bill({ id: "cliente", direction: "receivable" })];
+  const paid = { id: "paid", type: "expense", source: "bill", description: "Energia", amount: 249.50, transactionDate: "2026-10-21" };
+  const rows = historyRows([order], bills, [paid, { ...paid, id: "recebido", type: "income" }], entries, "2026-11");
+  assert.deepEqual(historyTotals(rows.filter(row => row.date.startsWith("2026-10"))), { orders: 5, payable: 123, payableCount: 1, paid: 249.50, fabric: 0, fabricAmount: 0 });
+  assert.equal(historyTotals(rows.filter(row => row.date.startsWith("2026-11"))).payable, 500);
+  assert.equal(historyTotals(historyRows([order], bills, [], entries, "2026-11")).paid, 0);
+  assert.equal(viewFromHash("#historico"), "historico");
+});
+
+test("fabric history freezes the purchased fabric weight and cost and identifies undated purchases", () => {
+  const material = { id: "malha", fabricType: "PV", color: "Azul", supplier: "Loja", fabricKg: 2.5, fabricCost: 112.344, collarType: "common", ribanaKg: .2, ribanaCost: 10, ribanaPricePerKg: 50, poloUnits: 0, totalCost: 122.344 } as const;
+  const note: BusinessNote = { id: "ana", title: "Camisas da Ana", content: "", category: "Compras", pinned: false, materials: [material], purchasedMaterialIds: ["malha"] };
+  const entry = fabricHistoryEntry(note, material, "2026-10-31");
+  assert.ok(entry);
+  assert.equal(entry.quantity, 2.5);
+  assert.equal(entry.amount, 112.34);
+  assert.deepEqual(legacyFabricPurchases([note], []), [{ id: "ana", title: note.title, quantity: 2.5, materialIds: ["malha"] }]);
+  assert.deepEqual(legacyFabricPurchases([note], [{ ...entry, id: materialHistoryId(note.id, material.id) }]), []);
+  assert.equal(pendingFabric([note, { ...note, id: "pending", purchasedMaterialIds: [] }]), 2.5);
+});
 
 test("deleting a customer removes only their debt from all live totals and keeps historical orders", () => {
   const orders = [{ id: "old", customer: " JOÃO  SILVA ", total: 880, paid: 520 }, { id: "live", customer: "Ana", total: 200, paid: 100 }];

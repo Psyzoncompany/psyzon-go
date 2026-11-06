@@ -12,6 +12,8 @@ import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type Dtf
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import { millis } from "./notes-model";
+import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
+import { updatePurchasedMaterials } from "./notes/materials-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
@@ -54,6 +56,7 @@ import {
   Clock3,
   Eye,
   EyeOff,
+  History,
   Home,
   LogOut,
   Moon,
@@ -114,6 +117,7 @@ type AppNotification = {
 
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
+const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -123,7 +127,7 @@ const firebaseConfig = {
 };
 
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
-type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders";
+type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
@@ -199,11 +203,12 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "notas", label: "Bloco de notas", icon: NotebookPen },
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
+  { id: "historico", label: "Histórico", icon: History },
   { id: "mais", label: "Mais", icon: MoreHorizontal },
 ];
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "dtf", "notas", "clientes"].includes(item.id)) },
-  { label: "Gestão", items: navItems.filter((item) => ["financeiro"].includes(item.id)) },
+  { label: "Gestão", items: navItems.filter((item) => ["financeiro", "historico"].includes(item.id)) },
   { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
 ];
 
@@ -215,6 +220,8 @@ export default function HomePage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [dtfOrders, setDtfOrders] = useState<DtfOrder[]>([]);
   const [dtfConnection, setDtfConnection] = useState<"connecting" | "live" | "error">("connecting");
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
+  const [historyConnection, setHistoryConnection] = useState<"connecting" | "live" | "error">("connecting");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
@@ -283,6 +290,8 @@ export default function HomePage() {
       setDataReady(false);
       setDtfOrders([]);
       setDtfConnection("connecting");
+      setHistoryEntries([]);
+      setHistoryConnection("connecting");
 
       if (!nextUser) {
         setOrders([]);
@@ -338,6 +347,13 @@ export default function HomePage() {
         }, (error) => {
           console.error("DTF synchronization failed", error);
           setDtfConnection("error");
+        }),
+        onSnapshot(collection(db, "users", nextUser.uid, "historyEntries"), (snapshot) => {
+          setHistoryEntries(toList<HistoryEntry>(snapshot));
+          setHistoryConnection("live");
+        }, (error) => {
+          console.error("History synchronization failed", error);
+          setHistoryConnection("error");
         }),
       ];
     });
@@ -487,7 +503,8 @@ export default function HomePage() {
   const resetAllData = async () => {
     if (!uid) return;
     if (dtfConnection !== "live") return showToast("Aguarde a sincronização dos pedidos DTF para resetar os dados.");
-    if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações e anotações desta conta?")) return;
+    if (historyConnection !== "live") return showToast("Aguarde a sincronização do histórico para resetar os dados.");
+    if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações, anotações e histórico desta conta?")) return;
     setResetting(true);
     try {
       const records = [
@@ -497,6 +514,7 @@ export default function HomePage() {
         ...transactions.map((item) => ["transactions", item.id] as const),
         ...bills.map((item) => ["bills", item.id] as const),
         ...notes.map((item) => ["notes", item.id] as const),
+        ...historyEntries.map((item) => ["historyEntries", item.id] as const),
       ];
       for (let start = 0; start < records.length; start += 450) {
         const batch = writeBatch(getFirestore(getApps()[0]));
@@ -509,6 +527,7 @@ export default function HomePage() {
       setTransactions([]);
       setBills([]);
       setNotes([]);
+      setHistoryEntries([]);
       showToast("Todos os dados foram removidos");
     } catch (error) {
       console.error("Reset failed", error);
@@ -741,6 +760,53 @@ export default function HomePage() {
     });
   };
 
+  const saveHistory = async (input: HistoryInput, id?: string) => {
+    if (!uid || historyConnection !== "live") throw new Error("Aguarde a sincronização do histórico.");
+    validateHistoryInput(input);
+    if (id && !historyEntries.some(entry => entry.id === id && entry.source === "manual")) throw new Error("Este registro já foi removido.");
+    try {
+      if (id) await updateDoc(userDocument(uid, "historyEntries", id), input);
+      else await addDoc(userCollection(uid, "historyEntries"), { ...input, source: "manual" });
+    } catch {
+      throw new Error("Não foi possível salvar o registro. Confira a conexão e tente novamente.");
+    }
+    showToast(id ? "Registro atualizado" : "Registro adicionado ao histórico");
+  };
+
+  const deleteHistory = async (id: string) => {
+    if (!uid || historyConnection !== "live") throw new Error("Aguarde a sincronização do histórico.");
+    if (!historyEntries.some(entry => entry.id === id && entry.source === "manual")) return;
+    try { await deleteDoc(userDocument(uid, "historyEntries", id)); }
+    catch { throw new Error("Não foi possível excluir o registro."); }
+    showToast("Registro excluído");
+  };
+
+  const updateMaterialPurchase = async (id: string, materialIds: string[], mode: "complete" | "reopen" | "date", date = historyDate(Date.now())) => {
+    if (!uid) throw new Error("Entre na sua conta para registrar a compra.");
+    const noteRef = userDocument(uid, "notes", id);
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const snapshot = await transaction.get(noteRef);
+      if (!snapshot.exists()) throw new Error("Esta anotação foi removida.");
+      const note = snapshot.data() as BusinessNote;
+      const materials = note.materials ?? [];
+      const previous = new Set(note.purchasedMaterialIds);
+      const selected = new Set(materialIds);
+      const targets = materials.filter(material => selected.has(material.id) && previous.has(material.id) === (mode !== "complete"));
+      const refs = targets.map(material => userDocument(uid, "historyEntries", materialHistoryId(id, material.id)));
+      const existing = mode === "date" ? await Promise.all(refs.map(ref => transaction.get(ref))) : [];
+
+      for (const [index, material] of targets.entries()) {
+        const ref = refs[index];
+        if (mode === "reopen") transaction.delete(ref);
+        else if (!existing[index]?.exists()) {
+          const entry = fabricHistoryEntry(note, material, date);
+          if (entry) transaction.set(ref, entry);
+        }
+      }
+      if (mode !== "date") transaction.update(noteRef, { purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
+    });
+  };
+
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editingOrder || firebaseState !== "live") return showToast("Firestore ainda não está conectado");
@@ -964,16 +1030,25 @@ export default function HomePage() {
           {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openNote={id => setView("notas", id)} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "historico" && <HistoryWorkspace
+            key={uid} today={historyDate(Date.now())} connection={historyConnection}
+            rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
+            pendingKg={pendingFabric(notes)} undatedOrders={orders.filter(order => !historyDate(order.createdAt)).length}
+            legacy={historyConnection === "live" ? legacyFabricPurchases(notes, historyEntries) : []}
+            displayMoney={displayMoney} displayTotal={displayTotal} onSave={saveHistory} onDelete={deleteHistory}
+            onDatePurchase={(id, ids, date) => updateMaterialPurchase(id, ids, "date", date)}
+            openFinance={() => setView("financeiro")} openMaterials={() => setView("materiais")}
+          />}
 
 
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
         </section>
       </main>
 
-      {view !== "notas" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "notas" && view !== "historico" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
       <nav className="mobile-nav">

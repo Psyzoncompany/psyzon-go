@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
-import { viewFromHash } from "../app/useViewHistory";
+import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -79,4 +79,12 @@ test("one-time bills stay settled and completed installments do not reopen", () 
 test("browser history restores available pages and ignores removed views", () => {
   for (const view of ["inicio", "producao", "notas", "clientes", "financeiro", "mais"]) assert.equal(viewFromHash(`#${view}`), view);
   for (const view of ["ai", "pessoal", "unknown", ""]) assert.equal(viewFromHash(`#${view}`), "inicio");
+});
+
+test("linked notes keep their ID in browser history without affecting other views", () => {
+  const hash = `#notas?nota=${encodeURIComponent("pedido #1")}`;
+  assert.equal(viewFromHash(hash), "notas");
+  assert.equal(noteFromHash(hash), "pedido #1");
+  assert.equal(noteFromHash("#notas"), "");
+  assert.equal(noteFromHash("#producao?nota=123"), "");
 });

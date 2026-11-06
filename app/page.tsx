@@ -7,6 +7,8 @@ import OrderPhotoField from "./OrderPhotoField";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
+import ProductionBoard from "./ProductionBoard";
+import { dueLabel, dueTone, type Order, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
@@ -51,16 +53,12 @@ import {
   Eye,
   EyeOff,
   Home,
-  LayoutGrid,
-  List,
   LogOut,
-  MessageCircle,
   Moon,
   MoreHorizontal,
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
-  Pencil,
   PictureInPicture2,
   Plus,
   RotateCcw,
@@ -79,31 +77,6 @@ type DocumentPictureInPictureController = {
   window: Window | null;
   requestWindow: (options?: { width?: number; height?: number }) => Promise<Window>;
 };
-type OrderStatus =
-  | "Orçamento"
-  | "Aprovado"
-  | "Aguardando material"
-  | "Produção"
-  | "Finalização"
-  | "Pronto"
-  | "Entregue";
-
-type Order = {
-  id: string;
-  customer: string;
-  phone?: string;
-  product: string;
-  quantity: number;
-  total: number;
-  paid: number;
-  receivable?: number;
-  dueDate: string;
-  status: OrderStatus;
-  notes?: string;
-  photoData?: string;
-  createdAt?: unknown;
-};
-
 type Transaction = {
   id: string;
   description: string;
@@ -223,27 +196,8 @@ const navGroups = [
 
 const mobileNavItems = navItems;
 
-function dueLabel(dateString: string, status: OrderStatus) {
-  if (status === "Entregue") return "Entregue";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(`${dateString}T00:00:00`);
-  const days = Math.ceil((due.getTime() - today.getTime()) / 86400000);
-  if (days < 0) return `ATRASADO ${Math.abs(days)} ${Math.abs(days) === 1 ? "DIA" : "DIAS"}`;
-  if (days === 0) return "Entrega hoje";
-  if (days === 1) return "Entrega amanhã";
-  return `Entrega em ${days} dias`;
-}
-
-function dueTone(dateString: string, status: OrderStatus) {
-  const label = dueLabel(dateString, status);
-  if (label.startsWith("ATRASADO")) return "danger";
-  if (label === "Entrega hoje" || label === "Entrega amanhã") return "warning";
-  return "normal";
-}
-
 export default function HomePage() {
-  const [view, setView] = useViewHistory();
+  const [view, setView, noteId] = useViewHistory();
   useEffect(() => { const timer = window.setInterval(() => setCalendarDate(localDateValue()), 30000); return () => window.clearInterval(timer); }, []);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -261,7 +215,6 @@ export default function HomePage() {
   const [dark, setDark] = useState(false);
   const [privateValues, setPrivateValues] = useState(true);
   const [privacyTarget, setPrivacyTarget] = useState<boolean | null>(null);
-  const revealAction = useRef<(() => void) | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => localDateValue());
   const [uiSize, setUiSize] = useState<UISize>("comfortable");
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -270,7 +223,6 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
-  const [board, setBoard] = useState(false);
   const [floatingModeOpen, setFloatingModeOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -309,7 +261,6 @@ export default function HomePage() {
       unsubscribers = [];
       setPrivateValues(true);
       setPrivacyTarget(null);
-      revealAction.current = null;
       setUser(nextUser);
       setUid(nextUser?.uid ?? "");
       setAuthReady(true);
@@ -490,13 +441,8 @@ export default function HomePage() {
     }
   };
 
-  const closePrivacy = () => { setPrivacyTarget(null); revealAction.current = null; };
-  const requestPrivacy = (hide: boolean) => { revealAction.current = null; setPrivacyTarget(hide); };
-  const requireVisible = (action: () => void) => {
-    if (!privateValues) { action(); return; }
-    revealAction.current = action;
-    setPrivacyTarget(false);
-  };
+  const closePrivacy = () => setPrivacyTarget(null);
+  const requestPrivacy = (hide: boolean) => setPrivacyTarget(hide);
 
   const signOutGoogle = async () => {
     setPrivateValues(true);
@@ -540,7 +486,8 @@ export default function HomePage() {
   const visibleCustomers = balances.filter((customer) => !customer.archived);
   const { pending, toPay: payable, debtors } = financialSummary(balances, bills, calendarDate.slice(0, 7));
   const orderBalances = orderReceivables(balances, orders);
-  const activeOrders = orders.filter((order) => order.status !== "Entregue").map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
+  const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
+  const activeOrders = productionOrders.filter(order => order.status !== "Entregue");
   const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
 
@@ -562,11 +509,11 @@ export default function HomePage() {
       const dueDate = billDueDate(bill, month);
       const days = Math.ceil((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
       const action = bill.direction === "receivable" ? "a receber" : "a pagar";
-      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: (privateValues ? "Valor protegido" : money.format(bill.amount)) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
+      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: money.format(bill.amount) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
     });
 
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [activeOrders, bills, privateValues, calendarDate]);
+  }, [activeOrders, bills, calendarDate]);
 
   useEffect(() => {
     if (!notificationsEnabled || !dataReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -632,10 +579,11 @@ export default function HomePage() {
   const searchResults = useMemo(() => {
     const value = search.trim().toLocaleLowerCase("pt-BR");
     if (!value) return [];
-    return orders.filter((order) => [order.customer, order.product, order.id, order.phone, (!privateValues ? String(order.total) : undefined)].some((field) => field?.toLocaleLowerCase("pt-BR").includes(value))).slice(0, 5);
-  }, [orders, search, privateValues]);
+    return orders.filter((order) => [order.customer, order.product, order.id, order.phone, String(order.total)].some((field) => field?.toLocaleLowerCase("pt-BR").includes(value))).slice(0, 5);
+  }, [orders, search]);
 
-  const displayMoney = (value: number) => (privateValues ? "R$ ••••••" : money.format(value));
+  const displayMoney = (value: number) => money.format(value);
+  const displayTotal = (value: number) => privateValues ? "R$ ••••••" : displayMoney(value);
 
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -689,11 +637,25 @@ export default function HomePage() {
   };
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
-    setOrders((current) => current.map((item) => (item.id === order.id ? { ...item, status } : item)));
-    if (firebaseState === "live") {
+    if (firebaseState !== "live") throw new Error("Aguarde a conexão para atualizar a etapa.");
+    try {
       await updateDoc(userDocument(uid, "orders", order.id), { status });
+      showToast(status === "Entregue" ? "Pedido movido para Entregues" : "Etapa do pedido atualizada");
+    } catch {
+      throw new Error("Não foi possível salvar a etapa. Tente novamente.");
     }
-    showToast("Pedido atualizado");
+  };
+
+  const deleteOrder = async (order: Order) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a conexão para excluir o pedido.");
+    const confirmed = window.confirm(`Excluir o pedido “${order.product}” de ${order.customer}? O pedido sai da Produção e dos totais. Os recebimentos registrados e as anotações ficam no histórico.`);
+    if (!confirmed) return;
+    try {
+      await deleteDoc(userDocument(uid, "orders", order.id));
+      showToast("Pedido excluído");
+    } catch {
+      throw new Error("Não foi possível excluir o pedido. Tente novamente.");
+    }
   };
 
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
@@ -880,7 +842,7 @@ export default function HomePage() {
           </div>
           <div className="top-actions">
             <button className={`floating-mode-action ${floatingActive ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingActive ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingActive}><PictureInPicture2 size={18} /><span>{floatingActive ? "Flutuante ativo" : "Modo flutuante"}</span></button>
-            <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-label={privateValues ? "Mostrar valores" : "Ocultar valores"} title={privateValues ? "Mostrar valores" : "Ocultar valores"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
+            <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-label={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"} title={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>
             {notificationsOpen && <div className="notification-panel"><header><div><b>Notificações</b><small>{notifications.length ? `${notifications.length} item(ns) precisam de atenção` : "Tudo em dia por aqui"}</small></div><button onClick={() => setNotificationsOpen(false)} aria-label="Fechar notificações"><X size={16} /></button></header><div>{notifications.length ? notifications.map((item) => <button className="notification-item" key={item.id} onClick={() => { setView(item.view); setNotificationsOpen(false); }}><span className={item.tone}>{item.tone === "danger" ? <AlertTriangle size={15} /> : <Bell size={15} />}</span><span><b>{item.title}</b><small>{item.detail}</small></span><ChevronRight size={15} /></button>) : <div className="notification-empty"><Check size={20} /><b>Nenhuma pendência próxima</b><small>Pedidos e contas aparecerão aqui.</small></div>}</div></div>}
@@ -888,11 +850,11 @@ export default function HomePage() {
         </header>
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} displayMoney={displayMoney} setModal={setModal} setView={setView} updateStatus={updateStatus} />}
-          {view === "producao" && <Production orders={activeOrders} board={board} setBoard={setBoard} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={(order: Order) => requireVisible(() => setEditingOrder(order))} />}
-          {view === "notas" && <NotesWorkspace key={uid} uid={uid} notes={notes} orders={orders} customers={visibleCustomers} privateValues={privateValues} requireVisible={requireVisible} />}
-          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} requireVisible={requireVisible} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
-          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} requireVisible={requireVisible} displayMoney={displayMoney} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "inicio" && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
+          {view === "notas" && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} />}
+          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
 
 
           {view === "mais" && <MoreView firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
@@ -911,7 +873,7 @@ export default function HomePage() {
 
 
 
-      {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={() => { const action = revealAction.current; setPrivateValues(privacyTarget); closePrivacy(); action?.(); }} />}
+      {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={() => { setPrivateValues(privacyTarget); closePrivacy(); }} />}
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -950,14 +912,6 @@ function NavButton({ item, active, onClick }: { item: (typeof navItems)[number];
   return <button className={active ? "active" : ""} onClick={onClick} title={item.label} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>;
 }
 
-function whatsappUrl(phone: string | undefined, message?: string) {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  if (!/^\d{8,15}$/.test(digits)) return null;
-  const url = new URL(`https://wa.me/${digits}`);
-  if (message) url.searchParams.set("text", message);
-  return url.href;
-}
-
 function localDateValue(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -965,7 +919,7 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, urgent, displayMoney, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, urgent, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -973,8 +927,8 @@ function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, 
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     <div className="metric-grid">
-      <Metric icon={WalletCards} label="A pagar" value={displayMoney(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
-      <Metric icon={CircleDollarSign} label="A receber" value={displayMoney(pending)} detail={<><span>{debtorsCount} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
+      <Metric icon={WalletCards} label="A pagar" value={displayTotal(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
+      <Metric icon={CircleDollarSign} label="A receber" value={displayTotal(pending)} detail={<><span>{debtorsCount} clientes pendentes</span><ChevronRight size={16} /></>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={`${orders.length} pedidos`} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
 
     </div>
@@ -998,16 +952,6 @@ function Metric({ icon: Icon, label, value, detail, onClick }: any) {
   return <Tag className="metric-card" onClick={onClick}><div className="metric-top"><span><Icon size={19} /></span><small>{label}</small>{onClick && <ChevronRight size={16} />}</div><strong>{value}</strong><div className="metric-detail">{detail}</div></Tag>;
 }
 
-function Production({ orders, board, setBoard, displayMoney, updateStatus, editOrder }: any) {
-  const statuses: OrderStatus[] = ["Aguardando material", "Produção", "Finalização", "Pronto"];
-  return <><div className="page-heading compact"><div><span className="eyebrow">OPERAÇÃO</span><h1>Produção</h1><p>{orders.length} pedidos ativos · prazos em primeiro lugar</p></div><div className="view-toggle"><button className={!board ? "active" : ""} onClick={() => setBoard(false)}><List size={17} /> Lista</button><button className={board ? "active" : ""} onClick={() => setBoard(true)}><LayoutGrid size={17} /> Kanban</button></div></div><div className="filter-row"><button className="active">Todos <span>{orders.length}</span></button><button>Hoje</button><button>Esta semana</button><button>Atrasados</button><button>Prontos</button></div>{board ? <div className="kanban">{statuses.map((status) => <div className="kanban-column" key={status}><div className="kanban-title"><span className={`status-dot s-${statusProgress[status]}`} />{status}<b>{orders.filter((o: Order) => o.status === status).length}</b></div>{orders.filter((o: Order) => o.status === status).map((order: Order) => <OrderCard key={order.id} order={order} displayMoney={displayMoney} updateStatus={updateStatus} editOrder={editOrder} />)}</div>)}</div> : <section className="panel order-table"><div className="table-head"><span>Pedido / cliente</span><span>Produto</span><span>Prazo</span><span>Status</span><span>Valor</span><span>Ações</span></div>{orders.map((order: Order) => <div className="table-row" key={order.id}><span className="order-customer-cell">{order.photoData && <img className="order-photo-thumb" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<b>#{order.id} · {order.customer}</b><small>{order.quantity} unidades</small></span><span>{order.product}</span><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span><select value={order.status} onChange={(event) => updateStatus(order, event.target.value as OrderStatus)}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></span><span><b>{displayMoney(order.total)}</b><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></span><button className="order-edit" onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>)}</section>}</>;
-}
-
-function OrderCard({ order, displayMoney, updateStatus, editOrder }: { order: Order; displayMoney: (value: number) => string; updateStatus: (order: Order, status: OrderStatus) => void; editOrder: (order: Order) => void }) {
-  const contactUrl = whatsappUrl(order.phone, `Olá, ${order.customer}. Seu pedido da PSYZON ficou pronto e já está disponível para retirada/entrega.`);
-  return <article className="order-card"><div><span>#{order.id}</span><button onClick={() => editOrder(order)} aria-label={`Editar pedido de ${order.customer}`} title="Editar pedido"><Pencil size={15} /></button></div>{order.photoData && <img className="order-card-photo" src={order.photoData} alt={`Foto do pedido de ${order.customer}`} />}<h3>{order.customer}</h3><p>{order.quantity} × {order.product}</p><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><div className="progress-line"><span style={{ width: `${statusProgress[order.status]}%` }} /></div><footer><span><small>Pendente</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></span>{order.status === "Pronto" && contactUrl ? <a href={contactUrl} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar</a> : <button onClick={() => updateStatus(order, order.status === "Produção" ? "Finalização" : "Produção")}>Avançar <ChevronRight size={15} /></button>}</footer></article>;
-}
-
 function MoreView({ firebaseState, dark, setDark, privateValues, requestPrivacy, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, user, onSignOut, onReset, resetting }: any) {
   const sizes: { value: UISize; label: string; hint: string }[] = [
     { value: "compact", label: "Pequena", hint: "90%" },
@@ -1015,7 +959,7 @@ function MoreView({ firebaseState, dark, setDark, privateValues, requestPrivacy,
     { value: "large", label: "Grande", hint: "114%" },
     { value: "extra-large", label: "Muito grande", hint: "128%" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar valores</b><small>Privacidade perto de clientes</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p>Conta, alertas, aparência e dados do PSYZON GO.</p></div></div><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3><p>Ajuste a interface sem complicar sua rotina.</p></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar totais financeiros</b><small>Somente A pagar e A receber</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3><p>Pedidos próximos do prazo e contas a vencer.</p></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3><p>Seus registros protegidos e centralizados no Cloud Firestore.</p></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

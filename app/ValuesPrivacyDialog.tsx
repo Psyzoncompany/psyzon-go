@@ -7,7 +7,7 @@ import Modal from "./Modal";
 export default function ValuesPrivacyDialog({ hide, getToken, close, confirm }: { hide: boolean; getToken: () => Promise<string>; close: () => void; confirm: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const action = hide ? "Ocultar valores" : "Mostrar valores";
+  const action = hide ? "Ocultar totais financeiros" : "Mostrar totais financeiros";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,7 +39,7 @@ export default function ValuesPrivacyDialog({ hide, getToken, close, confirm }: 
   return <Modal titleId="values-privacy-title" busy={busy} close={close}>
     <header><h2 id="values-privacy-title">{action}</h2><button type="button" onClick={close} disabled={busy} aria-label="Fechar"><X size={20} /></button></header>
     <form onSubmit={submit}>
-      <p className="form-help">Digite a senha de privacidade para confirmar.</p>
+      <p className="form-help">Digite a senha para alterar a exibição dos totais de A pagar e A receber.</p>
       <label className="full">Senha de privacidade<input name="pin" type="password" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="off" required /></label>
       {error && <p className="form-error" role="alert">{error}</p>}
       <footer><button type="button" className="secondary" onClick={close} disabled={busy}>Cancelar</button><button type="submit" className="primary" disabled={busy}><LockKeyhole size={16} />{busy ? "Verificando…" : action}</button></footer>

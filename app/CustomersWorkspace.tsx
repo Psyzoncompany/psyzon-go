@@ -9,12 +9,11 @@ type Props = {
   customers: CustomerBalance[];
   displayMoney: (value: number) => string;
   onCreate: () => void;
-  requireVisible: (action: () => void) => void;
   onSave: (customer: CustomerBalance, total: number, pending: number) => Promise<void>;
   onDelete: (customer: CustomerBalance) => Promise<void>;
 };
 
-export default function CustomersWorkspace({ customers, displayMoney, onCreate, requireVisible, onSave, onDelete }: Props) {
+export default function CustomersWorkspace({ customers, displayMoney, onCreate, onSave, onDelete }: Props) {
   const [editing, setEditing] = useState<CustomerBalance | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -37,7 +36,7 @@ export default function CustomersWorkspace({ customers, displayMoney, onCreate, 
     <div className="customer-grid">{customers.map((customer) => {
       const phone = customer.phone.replace(/\D/g, "");
       return <article className="customer-card" key={customer.id}>
-        <div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Sem contato"}</p></div><div className="customer-actions"><button aria-label={`Editar valores de ${customer.name}`} title="Editar valores" onClick={() => requireVisible(() => { setError(""); setEditing(customer); })}><Pencil size={16} /></button><button disabled={busy} aria-label={`Excluir cliente ${customer.name}`} title="Excluir cliente" onClick={async () => { setBusy(true); setError(""); try { await onDelete(customer); } catch { setError("Não foi possível excluir o cliente."); } finally { setBusy(false); } }}><Trash2 size={16} /></button></div></div>
+        <div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Sem contato"}</p></div><div className="customer-actions"><button aria-label={`Editar valores de ${customer.name}`} title="Editar valores" onClick={() => { setError(""); setEditing(customer); }}><Pencil size={16} /></button><button disabled={busy} aria-label={`Excluir cliente ${customer.name}`} title="Excluir cliente" onClick={async () => { setBusy(true); setError(""); try { await onDelete(customer); } catch { setError("Não foi possível excluir o cliente."); } finally { setBusy(false); } }}><Trash2 size={16} /></button></div></div>
         <div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(customer.total)}</b></span><span><small>Saldo pendente</small><b className={customer.pending ? "negative" : "positive"}>{displayMoney(customer.pending)}</b></span></div>
         <footer><span>{customer.orderCount} {customer.orderCount === 1 ? "pedido" : "pedidos"}</span>{phone && <a href={`https://wa.me/${phone.length <= 11 ? `55${phone}` : phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> WhatsApp</a>}</footer>
       </article>;

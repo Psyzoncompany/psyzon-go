@@ -5,10 +5,10 @@ import { ArrowRight, CalendarDays, Clipboard, FileImage, Layers, Link2, Pencil, 
 import { useMemo, useState, type FormEvent } from "react";
 import Modal from "./Modal";
 import DtfPrints from "./DtfPrints";
-import OrderPhotoField from "./OrderPhotoField";
+import DtfPhotoField from "./DtfPhotoField";
 import { customerNameKey, type Customer } from "./finance-model";
 import { millis } from "./notes-model";
-import { dtfArtworkLink, dtfCode, dtfDate, dtfForCustomer, dtfOverdue, dtfPending, dtfStages, dtfTotal, readDtfPrints, validateDtf, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
+import { dtfArtworkLink, dtfCode, dtfDate, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfStages, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import "./dtf.css";
 
 type Connection = "connecting" | "live" | "error";
@@ -21,7 +21,7 @@ type Props = {
   displayMoney: (amount: number) => string;
   displayTotal: (amount: number) => string;
   clearCustomer: () => void;
-  onSave: (input: DtfInput, id?: string) => Promise<void>;
+  onSave: (input: DtfInput, previous?: DtfOrder) => Promise<void>;
   onMove: (id: string, stage: DtfStage) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPrintChange: (id: string, change: DtfPrintChange) => Promise<void>;
@@ -100,22 +100,23 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
           const due = order.dueDate === today && order.stage !== "Entregue" ? "Entrega hoje" : dtfDate(order.dueDate);
           const prints = printsByOrder.get(order.id) ?? [];
           const remaining = prints.filter(print => !print.separated).length;
+          const title = dtfTitle(order);
           return <article className="dtf-order" key={order.id}>
             <div className="dtf-thumb" aria-hidden="true">
               {order.photoData ? <Image unoptimized src={order.photoData} width={88} height={88} alt="" /> : <FileImage size={23} />}
             </div>
             <div className="dtf-order-description">
               <div><span className="dtf-code">#{dtfCode(order.id)}</span><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
-              <h2>{order.title}</h2><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p>
-              <button className="dtf-prints-link" type="button" aria-label={`Estampas do metro ${order.title}`} onClick={() => setPrintsId(order.id)}><Layers size={14} /> {prints.length ? `${prints.length} ${prints.length === 1 ? "estampa" : "estampas"} · ${remaining} a separar` : "Adicionar estampas"}</button>
+              <h2>{title}</h2><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p>
+              <button className="dtf-prints-link" type="button" aria-label={`Estampas do metro ${title}`} onClick={() => setPrintsId(order.id)}><Layers size={14} /> {prints.length ? `${prints.length} ${prints.length === 1 ? "estampa" : "estampas"} · ${remaining} a separar` : "Adicionar estampas"}</button>
             </div>
-            <div className="dtf-order-specs"><b>{meterLabel(order.lengthCm)}</b><span>{widthLabel(order.widthCm)}</span></div>
+            <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}</div>
             <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}</span></div>
             <div className="dtf-order-money"><b>{displayMoney(dtfTotal(order))}</b><span>{dtfPending(order) > 0 ? `${displayMoney(dtfPending(order))} pendente` : dtfTotal(order) ? "Quitado" : "Sem cobrança"}</span></div>
             <div className="dtf-order-actions">
-              <button className="dtf-open-ticket" type="button" aria-label={`Abrir ficha de ${order.title}`} onClick={() => setTicketId(order.id)}><Clipboard size={15} /> Ficha</button>
+              <button className="dtf-open-ticket" type="button" aria-label={`Abrir ficha de ${title}`} onClick={() => setTicketId(order.id)}><Clipboard size={15} /> Ficha</button>
               {next && <button className="dtf-advance" type="button" disabled={!live || !!workingId} onClick={() => void run(order.id, () => onMove(order.id, next))}>{next === "Entregue" ? "Entregar" : "Avançar"} <ArrowRight size={14} /></button>}
-              <button type="button" aria-label={`Editar DTF ${order.title}`} title="Editar pedido" disabled={!live || !!workingId} onClick={() => setEditor(order)}><Pencil size={16} /></button>
+              <button type="button" aria-label={`Editar DTF ${title}`} title="Editar pedido" disabled={!live || !!workingId} onClick={() => setEditor(order)}><Pencil size={16} /></button>
             </div>
           </article>;
         })}
@@ -130,7 +131,8 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
 
 function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete, close }: Pick<Props, "customers" | "displayMoney" | "onSave" | "onDelete"> & { order?: DtfOrder; customer?: Customer; close: () => void }) {
   const [selectedId, setSelectedId] = useState(order?.customerId ?? customer?.id ?? "");
-  const [meters, setMeters] = useState(order ? String(order.lengthCm / 100) : "");
+  const [photos, setPhotos] = useState(() => order ? dtfPhotos(order) : []);
+  const [meters, setMeters] = useState(order?.lengthCm ? String(order.lengthCm / 100) : "");
   const [price, setPrice] = useState(order ? String(order.priceCents / 100) : "");
   const [paid, setPaid] = useState(order ? String(order.paidCents / 100) : "");
   const [busy, setBusy] = useState(false);
@@ -149,22 +151,28 @@ function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete,
     if (blocked) return;
     const form = new FormData(event.currentTarget);
     const get = (name: string) => String(form.get(name) ?? "").trim();
-    const input: DtfInput = {
-      title: get("title"), customerId: selectedId,
-      customerName: selectedId ? linked?.name ?? order?.customerName ?? "" : get("customerName"),
-      phone: selectedId ? linked?.phone ?? order?.phone ?? "" : get("phone"),
-      lengthCm, widthCm: Number(get("widthCm")), priceCents, paidCents, dueDate: get("dueDate"),
-      stage: get("stage") as DtfStage, artworkUrl: get("artworkUrl").replace(/^https?:/i, value => value.toLowerCase()), notes: get("notes"), photoData: get("photoData"),
-    };
     setError("");
     setBusy(true);
-    try { validateDtf(input); await onSave(input, order?.id); close(); }
+    try {
+      const input: DtfInput = {
+        title: get("title"), customerId: selectedId, quantity: Number(get("quantity")),
+        customerName: selectedId ? linked?.name ?? order?.customerName ?? "" : get("customerName"),
+        phone: selectedId ? linked?.phone ?? order?.phone ?? "" : get("phone"),
+        lengthCm, widthCm: Number(get("widthCm")), priceCents, paidCents, dueDate: get("dueDate"),
+        stage: (get("stage") || "Aguardando arte") as DtfStage,
+        artworkUrl: get("artworkUrl").replace(/^https?:/i, value => value.toLowerCase()), notes: get("notes"),
+        ...packDtfPhotos(photos),
+      };
+      validateDtf(input);
+      await onSave(input, order);
+      close();
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar o pedido."); }
     finally { setBusy(false); }
   }
 
   async function remove() {
-    if (!order || blocked || !window.confirm(`Excluir o pedido DTF “${order.title}”?`)) return;
+    if (!order || blocked || !window.confirm(`Excluir o pedido DTF “${dtfTitle(order)}”?`)) return;
     setBusy(true);
     setError("");
     try { await onDelete(order.id); close(); }
@@ -176,24 +184,20 @@ function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete,
     <header><div><span className="eyebrow">IMPRESSÃO DTF</span><h2 id="dtf-editor-title">{order ? "Editar pedido DTF" : "Novo pedido DTF"}</h2></div><button type="button" onClick={close} disabled={blocked} aria-label="Fechar"><X size={19} /></button></header>
     <form className="dtf-editor" onSubmit={submit}>
       <fieldset disabled={busy}>
-        <legend>Pedido e cliente</legend>
-        <label>Nome do pedido<input name="title" required maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
-        <label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-        {!selectedId && <div className="form-row"><label>Nome avulso (opcional)<input name="customerName" maxLength={120} defaultValue={order?.customerName} /></label><label>Contato (opcional)<input name="phone" type="tel" maxLength={40} defaultValue={order?.phone} /></label></div>}
-        <div className="form-row"><label>Etapa<select name="stage" defaultValue={order?.stage ?? "Aguardando arte"}>{dtfStages.map(value => <option key={value}>{value}</option>)}</select></label><label>Prazo<input name="dueDate" type="date" max="9999-12-31" defaultValue={order?.dueDate} /></label></div>
-      </fieldset>
-      <fieldset disabled={busy}>
-        <legend>Metragem e valores</legend>
-        <div className="form-row"><label>Metragem (m)<input type="number" min="0.01" max="10000" step="0.01" required value={meters} onChange={event => setMeters(event.target.value)} /></label><label>Largura (cm)<input name="widthCm" type="number" min="0.01" max="300" step="0.01" placeholder="Opcional" defaultValue={order?.widthCm || ""} /></label></div>
-        <div className="form-row"><label>Preço por metro (R$)<input type="number" min="0" max="10000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} /></label><label>Valor recebido (R$)<input type="number" min="0" max="100000000" step="0.01" value={paid} onChange={event => setPaid(event.target.value)} /></label></div>
-        <div className="dtf-estimate" aria-live="polite"><div><span>Total do pedido</span><strong>{displayMoney(total)}</strong></div><div><span>Pendente</span><strong>{displayMoney(Math.max(0, total - paidCents / 100))}</strong></div></div>
-      </fieldset>
-      <fieldset disabled={busy}>
-        <legend>Arte e instruções</legend>
-        <label>Link do arquivo<input name="artworkUrl" type="url" maxLength={2000} placeholder="https://…" defaultValue={order?.artworkUrl} /></label>
-        <OrderPhotoField label="Imagem de referência" initialValue={order?.photoData} onBusyChange={setPhotoBusy} />
+        <p className="form-help">Preencha só o que tiver agora.</p>
+        <DtfPhotoField photos={photos} setPhotos={setPhotos} onBusyChange={setPhotoBusy} />
+        <label>Nome do pedido<input name="title" maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
+        <div className="form-row"><label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" defaultValue={order?.quantity || ""} /></label></div>
         <label>Observações<textarea name="notes" rows={3} maxLength={4000} placeholder="Detalhes para preparar e conferir a impressão" defaultValue={order?.notes} /></label>
       </fieldset>
+      {order && <details className="dtf-editor-extra"><summary>Mais detalhes</summary><fieldset disabled={busy}>
+        {!selectedId && <div className="form-row"><label>Nome avulso<input name="customerName" maxLength={120} defaultValue={order.customerName} /></label><label>Contato<input name="phone" type="tel" maxLength={40} defaultValue={order.phone} /></label></div>}
+        <div className="form-row"><label>Etapa<select name="stage" defaultValue={order.stage}>{dtfStages.map(value => <option key={value}>{value}</option>)}</select></label><label>Prazo<input name="dueDate" type="date" max="9999-12-31" defaultValue={order.dueDate} /></label></div>
+        <div className="form-row"><label>Metragem (m)<input type="number" min="0" max="10000" step="0.01" value={meters} onChange={event => setMeters(event.target.value)} /></label><label>Largura (cm)<input name="widthCm" type="number" min="0" max="300" step="0.01" defaultValue={order.widthCm || ""} /></label></div>
+        <div className="form-row"><label>Preço por metro (R$)<input type="number" min="0" max="10000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} /></label><label>Valor recebido (R$)<input type="number" min="0" max="100000000" step="0.01" value={paid} onChange={event => setPaid(event.target.value)} /></label></div>
+        <div className="dtf-estimate" aria-live="polite"><div><span>Total do pedido</span><strong>{displayMoney(total)}</strong></div><div><span>Pendente</span><strong>{displayMoney(Math.max(0, total - paidCents / 100))}</strong></div></div>
+        <label>Link do arquivo<input name="artworkUrl" type="url" maxLength={2000} placeholder="https://…" defaultValue={order.artworkUrl} /></label>
+      </fieldset></details>}
       {error && <p className="form-error" role="alert">{error}</p>}
       <footer>{order && <button className="dtf-delete" type="button" disabled={blocked} onClick={() => void remove()}><Trash2 size={17} /> Excluir</button>}<button className="secondary" type="button" disabled={blocked} onClick={close}>Cancelar</button><button className="primary" type="submit" disabled={blocked}>{busy ? "Salvando…" : "Salvar pedido"}</button></footer>
     </form>
@@ -204,9 +208,12 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   const [notice, setNotice] = useState("");
   const link = dtfArtworkLink(order.artworkUrl);
   const prints = readDtfPrints(order.printsData);
+  const photos = dtfPhotos(order);
   const lines = [
-    `Pedido #${dtfCode(order.id)} · ${order.title}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
-    `Prazo: ${dtfDate(order.dueDate)}`, `Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`,
+    `Pedido #${dtfCode(order.id)}${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
+    ...(order.quantity ? [`Quantidade: ${order.quantity} un.`] : []),
+    ...(order.dueDate ? [`Prazo: ${dtfDate(order.dueDate)}`] : []),
+    ...(order.lengthCm ? [`Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`] : []),
     ...(order.phone ? [`Contato: ${order.phone}`] : []), ...(link ? [`Arte: ${link}`] : []), ...(order.notes ? [`\nObservações\n${order.notes}`] : []),
     ...(prints.length ? ["\nEstampas do metro", ...prints.map(print => `${print.separated ? "☑" : "☐"} ${print.title} · ${print.customerName || "Sem cliente"} · ${print.quantity} un.`)] : []),
   ];
@@ -222,7 +229,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
     frame.className = "dtf-print-frame";
     frame.title = "Ficha DTF para impressão";
     const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-    const photo = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(order.photoData) ? `<img alt="Referência" src="${order.photoData}">` : "";
+    const photo = photos.map((source, index) => `<img alt="Referência ${index + 1}" src="${source}">`).join("");
     frame.srcdoc = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha DTF ${dtfCode(order.id).replace(/[^A-Z0-9]/g, "")}</title><style>@page{size:A4;margin:16mm}body{font:14px/1.5 system-ui,sans-serif;color:#111}h1{font-size:23px;margin:0 0 12px;border-bottom:2px solid #111;padding-bottom:8px}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}img{display:block;max-width:100%;max-height:85mm;object-fit:contain;break-inside:avoid;margin-top:12px}</style></head><body><h1>Ficha de impressão DTF</h1><pre>${escape(ticketText)}</pre>${photo}</body></html>`;
     frame.onload = () => {
       const target = frame.contentWindow;
@@ -236,7 +243,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   return <Modal titleId="dtf-ticket-title" busy={false} close={close}>
     <header><div><span className="eyebrow">ORDEM DE IMPRESSÃO</span><h2 id="dtf-ticket-title">Ficha DTF</h2></div><button type="button" onClick={close} aria-label="Fechar"><X size={19} /></button></header>
     <div className="dtf-ticket">
-      {order.photoData && <Image unoptimized width={440} height={280} src={order.photoData} alt="Referência da impressão" />}
+      {photos.length > 0 && <div className="dtf-ticket-photos">{photos.map((photo, index) => <Image key={index} unoptimized width={440} height={280} src={photo} alt={photos.length === 1 ? "Referência da impressão" : `Referência da impressão ${index + 1}`} />)}</div>}
       <pre>{ticketText}</pre>
       {link && <a className="secondary" href={link} target="_blank" rel="noopener noreferrer"><Link2 size={16} /> Abrir arquivo da arte</a>}
       <div><button type="button" className="secondary" onClick={() => void copy()}><Clipboard size={16} /> Copiar ficha</button><button type="button" className="primary" onClick={print}><Printer size={16} /> Imprimir ficha</button></div>

@@ -71,12 +71,13 @@ service cloud.firestore {
 
     function validDtfOrder(data) {
       let fields = ["title", "customerId", "customerName", "phone", "lengthCm", "widthCm", "priceCents", "paidCents", "dueDate", "stage", "artworkUrl", "notes", "photoData", "createdAt", "updatedAt"];
-      return data.keys().hasOnly(fields.concat(["printsData"])) && data.keys().hasAll(fields)
-        && text(data.title, 1, 160)
+      return data.keys().hasOnly(fields.concat(["printsData", "referencePhotos", "quantity"])) && data.keys().hasAll(fields)
+        && text(data.title, 0, 160)
         && text(data.customerId, 0, 1500)
         && text(data.customerName, data.customerId == "" ? 0 : 1, 120)
         && text(data.phone, 0, 40)
-        && data.lengthCm is int && data.lengthCm >= 1 && data.lengthCm <= 1000000
+        && data.lengthCm is int && data.lengthCm >= 0 && data.lengthCm <= 1000000
+        && (!("quantity" in data) || (data.quantity is int && data.quantity >= 0 && data.quantity <= 10000))
         && data.widthCm is number && data.widthCm >= 0 && data.widthCm <= 300
         && data.priceCents is int && data.priceCents >= 0 && data.priceCents <= 1000000
         && data.paidCents is int && data.paidCents >= 0 && data.paidCents * 100 <= data.lengthCm * data.priceCents + 50
@@ -85,6 +86,7 @@ service cloud.firestore {
         && text(data.artworkUrl, 0, 2000) && (data.artworkUrl == "" || data.artworkUrl.matches('^https?://[^\\s]+$'))
         && text(data.notes, 0, 4000)
         && text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))
+        && optionalText(data, "referencePhotos", 450000 - data.photoData.size())
         && optionalText(data, "printsData", 500000)
         && data.createdAt is timestamp && data.updatedAt == request.time;
     }

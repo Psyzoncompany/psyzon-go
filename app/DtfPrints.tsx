@@ -5,7 +5,7 @@ import { FileImage, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import Modal from "./Modal";
 import OrderPhotoField from "./OrderPhotoField";
-import { maxDtfPrintPhoto, maxDtfPrints, readDtfPrints, type DtfOrder, type DtfPrint, type DtfPrintChange } from "./dtf-model";
+import { dtfTitle, maxDtfPrintPhoto, maxDtfPrints, readDtfPrints, type DtfOrder, type DtfPrint, type DtfPrintChange } from "./dtf-model";
 import type { Customer } from "./finance-model";
 
 export default function DtfPrints({ order, customers, onChange, close }: { order: DtfOrder; customers: Customer[]; onChange: (id: string, change: DtfPrintChange) => Promise<void>; close: () => void }) {
@@ -57,7 +57,7 @@ export default function DtfPrints({ order, customers, onChange, close }: { order
   return <Modal titleId="dtf-prints-title" busy={blocked} close={close}>
     <header><div><span className="eyebrow">SEPARAÇÃO DO DTF</span><h2 id="dtf-prints-title">Estampas do metro</h2></div><button type="button" disabled={blocked} onClick={close} aria-label="Fechar"><X size={19} /></button></header>
     <div className="dtf-prints-panel">
-      <div className="dtf-prints-intro"><div><b>{order.title}</b><p>{prints.length} {prints.length === 1 ? "estampa" : "estampas"} · {pending} a separar</p></div>{!editor && <button className="primary" type="button" disabled={blocked || prints.length >= maxDtfPrints} onClick={() => openEditor("new")}><Plus size={16} /> Adicionar estampa</button>}</div>
+      <div className="dtf-prints-intro"><div><b>{dtfTitle(order)}</b><p>{prints.length} {prints.length === 1 ? "estampa" : "estampas"} · {pending} a separar</p></div>{!editor && <button className="primary" type="button" disabled={blocked || prints.length >= maxDtfPrints} onClick={() => openEditor("new")}><Plus size={16} /> Adicionar estampa</button>}</div>
       {error && !editor && <p role="alert" className="form-error">{error}</p>}
       {editor && <form key={selected?.id ?? "new"} className="dtf-print-form" onSubmit={save}>
         <h3>{selected ? "Editar estampa" : "Nova estampa"}</h3>

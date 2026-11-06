@@ -17,6 +17,8 @@ export type DtfInput = {
   artworkUrl: string;
   notes: string;
   photoData: string;
+  referencePhotos?: string;
+  quantity?: number;
 };
 
 export type DtfOrder = DtfInput & { id: string; updatedAt?: unknown; printsData?: string };
@@ -24,6 +26,28 @@ export type DtfPrint = { id: string; title: string; customerId: string; customer
 export type DtfPrintChange = { type: "add"; print: DtfPrint } | { type: "edit"; print: DtfPrint } | { type: "separate"; id: string; separated: boolean } | { type: "delete"; id: string };
 export const maxDtfPrints = 50;
 export const maxDtfPrintPhoto = 18000;
+export const maxDtfPhotos = 8;
+export const maxDtfPhotoData = 450000;
+const isReferencePhoto = (photo: unknown): photo is string => typeof photo === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo);
+
+export function dtfPhotos(order: Pick<DtfInput, "photoData" | "referencePhotos">) {
+  const photos = isReferencePhoto(order.photoData) ? [order.photoData] : [];
+  if (!order.referencePhotos) return photos;
+  try {
+    const extra: unknown = JSON.parse(order.referencePhotos);
+    if (Array.isArray(extra)) photos.push(...extra.slice(0, maxDtfPhotos - photos.length).filter(isReferencePhoto));
+  } catch { /* Keep the original cover if the additional references are unreadable. */ }
+  return photos;
+}
+
+export function packDtfPhotos(photos: string[]) {
+  const [photoData = "", ...extra] = photos;
+  const referencePhotos = extra.length ? JSON.stringify(extra) : "";
+  if (photos.length > maxDtfPhotos || photoData.length + referencePhotos.length > maxDtfPhotoData || !photos.every(isReferencePhoto)) {
+    throw new Error("Limite de imagens atingido. Remova uma imagem ou use arquivos menores.");
+  }
+  return { photoData, referencePhotos };
+}
 
 function isDtfPrint(value: unknown): value is DtfPrint {
   if (!value || typeof value !== "object") return false;
@@ -34,7 +58,7 @@ function isDtfPrint(value: unknown): value is DtfPrint {
     && typeof print.customerName === "string" && print.customerName.length <= 120
     && Number.isInteger(print.quantity) && print.quantity >= 1 && print.quantity <= 10000
     && typeof print.separated === "boolean" && typeof print.photoData === "string"
-    && (print.photoData === "" || (print.photoData.length <= maxDtfPrintPhoto && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(print.photoData)));
+    && (print.photoData === "" || (print.photoData.length <= maxDtfPrintPhoto && isReferencePhoto(print.photoData)));
 }
 
 export function readDtfPrints(data?: string): DtfPrint[] {
@@ -71,6 +95,7 @@ const totalCents = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => Math.flo
 export const dtfTotal = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => totalCents(item) / 100;
 export const dtfPending = (item: DtfInput) => Math.max(0, totalCents(item) - item.paidCents) / 100;
 export const dtfCode = (id: string) => id.slice(0, 8).toUpperCase();
+export const dtfTitle = (order: Pick<DtfOrder, "id" | "title">) => order.title || `Pedido #${dtfCode(order.id)}`;
 export const dtfDate = (value: string) => value ? value.split("-").reverse().join("/") : "Sem prazo";
 export const dtfOverdue = (item: DtfInput, today: string) => item.stage !== "Entregue" && !!item.dueDate && item.dueDate < today;
 
@@ -87,9 +112,9 @@ export function dtfForCustomer(order: Pick<DtfInput, "customerId" | "customerNam
 
 
 export function validateDtf(input: DtfInput) {
-  if (!input.title) throw new Error("Informe o nome do pedido.");
   if (input.customerId && !input.customerName) throw new Error("Selecione o cliente do pedido.");
-  if (!Number.isInteger(input.lengthCm) || input.lengthCm < 1 || input.lengthCm > 1000000) throw new Error("Informe uma metragem entre 0,01 e 10.000 m.");
+  if (!Number.isInteger(input.lengthCm) || input.lengthCm < 0 || input.lengthCm > 1000000) throw new Error("Informe uma metragem de até 10.000 m.");
+  if (input.quantity !== undefined && (!Number.isInteger(input.quantity) || input.quantity < 0 || input.quantity > 10000)) throw new Error("Confira a quantidade. Use um número inteiro de até 10.000.");
   if (!Number.isFinite(input.widthCm) || input.widthCm < 0 || input.widthCm > 300) throw new Error("Informe uma largura de até 300 cm ou deixe o campo vazio.");
   if (!Number.isInteger(input.priceCents) || input.priceCents < 0 || input.priceCents > 1000000) throw new Error("Confira o preço por metro.");
   if (!Number.isInteger(input.paidCents) || input.paidCents < 0 || input.paidCents > totalCents(input)) throw new Error("O valor recebido precisa estar entre zero e o total do pedido.");

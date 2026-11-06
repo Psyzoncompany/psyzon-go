@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import { Camera, Trash2 } from "lucide-react";
+import { prepareOrderPhoto } from "./order-photo";
 
 export default function OrderPhotoField({ initialValue = "", value, onPhotoChange, label = "Foto do pedido", includeFormField = true, thumbnailLimit, onBusyChange }: { initialValue?: string; value?: string; onPhotoChange?: (photo: string) => void; label?: string; includeFormField?: boolean; thumbnailLimit?: number; onBusyChange: (busy: boolean) => void }) {
   const [localPhoto, setLocalPhoto] = useState(initialValue);
@@ -14,22 +15,7 @@ export default function OrderPhotoField({ initialValue = "", value, onPhotoChang
     if (!file) return;
     setError(""); setBusy(true); onBusyChange(true);
     try {
-      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size > 10 * 1024 * 1024) throw new Error("Use uma foto JPG, PNG ou WebP de até 10 MB.");
-      const bitmap = await createImageBitmap(file);
-      try {
-        const canvas = document.createElement("canvas");
-        const scale = Math.min(1, (thumbnailLimit ? 300 : 1200) / Math.max(bitmap.width, bitmap.height));
-        canvas.width = Math.max(1, Math.round(bitmap.width * scale)); canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-        const context = canvas.getContext("2d");
-        if (!context) throw new Error("Não foi possível preparar a foto.");
-        context.fillStyle = "white"; context.fillRect(0, 0, canvas.width, canvas.height);
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        let result = canvas.toDataURL("image/jpeg", .8);
-        const limit = thumbnailLimit ?? 450000;
-        if (result.length > limit) result = canvas.toDataURL("image/jpeg", thumbnailLimit ? .26 : .5);
-        if (result.length > limit) throw new Error("A foto ainda ficou muito grande. Escolha uma imagem menor.");
-        setPhoto(result);
-      } finally { bitmap.close(); }
+      setPhoto(await prepareOrderPhoto(file, { dimension: thumbnailLimit ? 300 : 1200, limit: thumbnailLimit ?? 450000, fallbackQuality: thumbnailLimit ? .26 : .5 }));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível abrir a foto."); }
     finally { setBusy(false); onBusyChange(false); event.target.value = ""; }
   };

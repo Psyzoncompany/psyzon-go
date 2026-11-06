@@ -690,13 +690,15 @@ export default function HomePage() {
     }
   };
 
-  const saveDtf = async (input: DtfInput, id?: string) => {
+  const saveDtf = async (input: DtfInput, previous?: DtfOrder) => {
     if (!uid || dtfConnection !== "live") throw new Error("Aguarde a sincronização dos pedidos DTF.");
-    const data = { ...input, updatedAt: serverTimestamp() };
+    const original = previous && { ...previous, quantity: previous.quantity ?? 0, referencePhotos: previous.referencePhotos ?? "" };
+    const changes = original ? Object.fromEntries(Object.entries(input).filter(([field, value]) => original[field as keyof DtfInput] !== value)) : input;
+    const data = { ...changes, updatedAt: serverTimestamp() };
     try {
-      if (id) await updateDoc(userDocument(uid, "dtfOrders", id), data);
+      if (previous) await updateDoc(userDocument(uid, "dtfOrders", previous.id), data);
       else await addDoc(userCollection(uid, "dtfOrders"), { ...data, createdAt: serverTimestamp() });
-      showToast(id ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
+      showToast(previous ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
     } catch { throw new Error("Não foi possível salvar o pedido DTF. Confira a conexão e tente novamente."); }
   };
 

@@ -85,9 +85,12 @@ test("DTF orders support linked and avulso work, exact cent rounding and owner-o
   const input = { title: "Estampas", customerId: "ana", customerName: "Ana", phone: "", lengthCm: 125, widthCm: 58, priceCents: 102, paidCents: 128, dueDate: "", stage: "Aguardando arte", artworkUrl: "https://example.com/art", notes: "", photoData: "", createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
   await assertSucceeds(setDoc(ref, input));
   await assertSucceeds(setDoc(doc(db, "users/user-a/dtfOrders/avulso"), { ...input, customerId: "", customerName: "", priceCents: 0, paidCents: 0 }));
+  await assertSucceeds(setDoc(doc(db, "users/user-a/dtfOrders/rapido"), { ...input, title: "", customerId: "", customerName: "", lengthCm: 0, widthCm: 0, priceCents: 0, paidCents: 0, quantity: 0, artworkUrl: "", referencePhotos: "" }));
   await assertSucceeds(getDocs(collection(db, "users/user-a/dtfOrders")));
   await assertSucceeds(updateDoc(ref, { stage: "Em impressão", updatedAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref, { printsData: "[]", updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { quantity: 3, referencePhotos: '["data:image/jpeg;base64,AAAA"]', updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { quantity: 1.5, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { printsData: [], updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { paidCents: 129, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { stage: "Aprovado", updatedAt: serverTimestamp() }));

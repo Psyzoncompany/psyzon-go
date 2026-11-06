@@ -3,7 +3,7 @@ import test from "node:test";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
-import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfTotal, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
+import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -112,6 +112,19 @@ test("DTF orders round fractional meters in cents and retain customer identity",
   assert.equal(dtfOverdue({ ...input, stage: "Entregue" }, "2026-11-06"), false);
   assert.throws(() => validateDtf({ ...input, paidCents: 129 }));
   assert.throws(() => validateDtf({ ...input, artworkUrl: "javascript:alert(1)" }));
+});
+
+test("quick DTF orders support blank inputs and multiple photos alongside legacy covers", () => {
+  const empty: DtfInput = { title: "", customerId: "", customerName: "", phone: "", lengthCm: 0, widthCm: 0, priceCents: 0, paidCents: 0, dueDate: "", stage: "Aguardando arte", artworkUrl: "", notes: "", photoData: "", quantity: 0 };
+  validateDtf(empty);
+  assert.equal(dtfTitle({ ...empty, id: "123456789" }), "Pedido #12345678");
+  assert.throws(() => validateDtf({ ...empty, quantity: 1.5 }));
+  const cover = "data:image/jpeg;base64,AA==";
+  const extra = "data:image/jpeg;base64,BB==";
+  assert.deepEqual(dtfPhotos({ photoData: cover }), [cover]);
+  assert.deepEqual(dtfPhotos(packDtfPhotos([cover, extra])), [cover, extra]);
+  assert.deepEqual(dtfPhotos({ photoData: cover, referencePhotos: '["https://example.com/photo"]' }), [cover]);
+  assert.throws(() => packDtfPhotos(Array(9).fill(cover)));
 });
 
 test("the DTF deadline alert starts seven days out and stops when requested or delivered", () => {

@@ -1,0 +1,16 @@
+.next-payables {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  grid-column: 1 / -1;
+}
+
+.next-payables b { color: var(--text); white-space: nowrap; }
+.metric-detail-stack { display: grid; gap: 2px; width: 100%; }

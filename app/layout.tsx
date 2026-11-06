@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
+import "./mobile-shell.css";
+import "./finance-forecast.css";
 import "./production-print.css";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });

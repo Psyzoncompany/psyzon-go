@@ -1,6 +1,16 @@
-export const productionStages = ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto"] as const;
+export const productionStages = ["Orçamento", "Aguardando material", "Produção", "Pronto"] as const;
 export const orderStatuses = [...productionStages, "Entregue"] as const;
 export type OrderStatus = (typeof orderStatuses)[number];
+
+export function normalizeOrderStatus(status: unknown): OrderStatus {
+  if (status === "Aprovado") return "Aguardando material";
+  if (status === "Finalização") return "Produção";
+  return orderStatuses.find(stage => stage === status) ?? "Orçamento";
+}
+
+export function nextOrderStatus(status: OrderStatus): OrderStatus | undefined {
+  return orderStatuses[orderStatuses.indexOf(status) + 1];
+}
 
 export type Order = {
   id: string;

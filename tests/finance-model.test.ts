@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerReceipt, financialSummary, orderReceivables, type Bill } from "../app/finance-model";
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
+import { nextOrderStatus, normalizeOrderStatus, orderStatuses } from "../app/order-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -87,4 +88,14 @@ test("linked notes keep their ID in browser history without affecting other view
   assert.equal(noteFromHash(hash), "pedido #1");
   assert.equal(noteFromHash("#notas"), "");
   assert.equal(noteFromHash("#producao?nota=123"), "");
+});
+
+test("legacy order stages remain visible and the next action skips retired stages", () => {
+  assert.deepEqual(orderStatuses, ["Orçamento", "Aguardando material", "Produção", "Pronto", "Entregue"]);
+  assert.equal(normalizeOrderStatus("Aprovado"), "Aguardando material");
+  assert.equal(normalizeOrderStatus("Finalização"), "Produção");
+  assert.equal(nextOrderStatus("Orçamento"), "Aguardando material");
+  assert.equal(nextOrderStatus("Produção"), "Pronto");
+  assert.equal(nextOrderStatus("Pronto"), "Entregue");
+  assert.equal(nextOrderStatus("Entregue"), undefined);
 });

@@ -5,7 +5,7 @@ import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, ImageIcon, Messa
 import { useMemo, useRef, useState } from "react";
 import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
-import { dueLabel, dueTone, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
+import { dueLabel, dueTone, nextOrderStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
 import "./production-board.css";
 
 type Props = {
@@ -131,7 +131,7 @@ function OrderPhoto({ order }: { order: Order }) {
 }
 
 function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMoney }: OrderActionsProps & { note?: BusinessNote; move: (status: OrderStatus) => void; openNote: Props["openNote"]; displayMoney: Props["displayMoney"] }) {
-  const next = orderStatuses[orderStatuses.indexOf(order.status) + 1];
+  const next = nextOrderStatus(order.status);
   const phone = (order.phone ?? "").replace(/\D/g, "");
   const contact = /^\d{8,15}$/.test(phone) ? `https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}` : null;
   const nextAction = next === "Entregue" ? "Marcar como entregue" : "Avançar etapa";

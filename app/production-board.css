@@ -5,12 +5,11 @@
 .production-heading p span { padding-inline: 4px; color: var(--faint); }
 .production-heading > button { flex-shrink: 0; }
 .production-stage-jump { display: none; }
-.production-kanban { position: relative; display: grid; grid-template-columns: repeat(6, minmax(183px, 1fr)); gap: 10px; align-items: stretch; overflow-x: auto; padding-bottom: 10px; scrollbar-width: thin; }
+.production-kanban { position: relative; display: grid; grid-template-columns: repeat(4, minmax(183px, 1fr)); gap: 10px; align-items: stretch; overflow-x: auto; padding-bottom: 10px; scrollbar-width: thin; }
 .production-lane { --stage-color: var(--blue); min-width: 0; min-height: 216px; border: 1px solid var(--border); border-radius: 12px; padding: 9px; background: var(--card-subtle); }
 .production-lane[data-stage="0"] { --stage-color: var(--muted); }
-.production-lane[data-stage="2"] { --stage-color: var(--yellow); }
-.production-lane[data-stage="4"] { --stage-color: #9b78d7; }
-.production-lane[data-stage="5"] { --stage-color: var(--green); }
+.production-lane[data-stage="1"] { --stage-color: var(--yellow); }
+.production-lane[data-stage="3"] { --stage-color: var(--green); }
 .production-lane > header { display: flex; align-items: center; gap: 7px; min-height: 34px; margin-bottom: 8px; padding: 3px 2px 7px; border-bottom: 1px solid var(--border); }
 .production-lane h2 { flex: 1; margin: 0; color: var(--text); font-size: 11px; font-weight: 750; }
 .production-stage-dot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: var(--stage-color); }
@@ -53,12 +52,12 @@
 .production-delivered-value { font-size: 11px; }
 .production-delivered-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .production-delivered > .production-lane-empty { margin: 0 0 12px; }
-@container (width < 1148px) {
+@container (width < 762px) {
   .production-stage-jump { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 8px; color: var(--muted); font-size: 11px; }
   .production-stage-jump select { width: auto; }
 }
 @media (max-width: 700px) {
-  .production-kanban { grid-template-columns: repeat(6, clamp(216px, 65vw, 280px)); scroll-snap-type: x proximity; }
+  .production-kanban { grid-template-columns: repeat(4, clamp(216px, 65vw, 280px)); scroll-snap-type: x proximity; }
   .production-lane { scroll-snap-align: start; }
   .production-delivered-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
   .production-delivered-actions { grid-column: 2 / -1; }

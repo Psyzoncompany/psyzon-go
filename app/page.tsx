@@ -8,7 +8,7 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
-import { dueLabel, dueTone, type Order, type OrderStatus } from "./order-model";
+import { dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import useViewHistory from "./useViewHistory";
 import { Capacitor } from "@capacitor/core";
@@ -172,10 +172,8 @@ function isoOffset(days: number) {
 
 const statusProgress: Record<OrderStatus, number> = {
   Orçamento: 8,
-  Aprovado: 20,
   "Aguardando material": 35,
   Produção: 65,
-  Finalização: 82,
   Pronto: 100,
   Entregue: 100,
 };
@@ -294,7 +292,9 @@ export default function HomePage() {
       setFirebaseState("connecting");
       unsubscribers = [
         onSnapshot(collection(db, "users", nextUser.uid, "orders"), (snapshot) => {
-          setOrders(toList<Order>(snapshot).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
+          setOrders(toList<Order>(snapshot)
+            .map(order => ({ ...order, status: normalizeOrderStatus(order.status) }))
+            .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
           markReady("orders");
         }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "customers"), (snapshot) => {
@@ -601,7 +601,7 @@ export default function HomePage() {
           total: Number(form.get("total")),
           paid: Number(form.get("paid")),
           dueDate: String(form.get("dueDate")),
-          status: "Aprovado",
+          status: "Aguardando material",
           notes: String(form.get("notes") || ""),
           photoData: String(form.get("photoData") || ""),
           createdAt: serverTimestamp(),
@@ -936,7 +936,7 @@ function Dashboard({ userName, orders, pending, payable, debtorsCount, overdue, 
     <div className="dashboard-grid">
       <div className="main-column">
         {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + debtorsCount} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido #{order.id} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}
-        <section className="panel"><div className="section-title"><div><h2>Hoje</h2><span className="count">{Math.min(3, orders.length)}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div><div className="today-list">{orders.slice(0, 3).map((order: Order, index: number) => <div className="today-row" key={order.id}><button className="check-button" onClick={() => updateStatus(order, order.status === "Finalização" ? "Pronto" : "Finalização")} aria-label="Concluir etapa"><span /></button><div><span className="task-type">PEDIDO #{order.id}</span><b>{index === 0 ? "Finalizar e embalar" : index === 1 ? "Conferir impressão" : "Separar materiais"}</b><small>{order.customer} · {order.quantity} un.</small></div><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><button className="row-menu"><MoreHorizontal size={18} /></button></div>)}</div></section>
+        <section className="panel"><div className="section-title"><div><h2>Hoje</h2><span className="count">{Math.min(3, orders.length)}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div><div className="today-list">{orders.slice(0, 3).map((order: Order, index: number) => <div className="today-row" key={order.id}><button className="check-button" disabled={order.status === "Pronto"} onClick={() => { const next = nextOrderStatus(order.status); if (next && next !== "Entregue") updateStatus(order, next); }} aria-label="Concluir etapa"><span /></button><div><span className="task-type">PEDIDO #{order.id}</span><b>{index === 0 ? "Finalizar e embalar" : index === 1 ? "Conferir impressão" : "Separar materiais"}</b><small>{order.customer} · {order.quantity} un.</small></div><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><button className="row-menu"><MoreHorizontal size={18} /></button></div>)}</div></section>
         <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{orders.slice(0, 4).map((order: Order) => <div className="delivery-row" key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><div><span style={{ width: `${statusProgress[order.status]}%` }} /></div><small>{order.status} · {statusProgress[order.status]}%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></div><ChevronRight size={17} /></div>)}</div></section>
       </div>
       <aside className="side-column">
@@ -969,5 +969,5 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{Object.keys(statusProgress).map((status) => <option key={status}>{status}</option>)}</select></label><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

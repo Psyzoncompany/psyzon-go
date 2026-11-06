@@ -43,24 +43,32 @@
 .dtf-order-description p, .dtf-order-specs span, .dtf-order-money span { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .dtf-link-tag { color: var(--blue); font-size: 9px; white-space: nowrap; }
 .dtf-link-tag::before { content: ' · '; }
-.dtf-prints-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; padding: 5px 7px; border: 0; border-radius: 6px; background: var(--blue-soft); color: var(--blue); font-size: 10px; font-weight: 700; cursor: pointer; }
-.dtf-prints-panel { padding-block: 14px 24px; }
-.dtf-prints-intro { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
-.dtf-prints-intro b { font-size: 13px; overflow-wrap: anywhere; }
-.dtf-prints-intro p, .dtf-prints-empty { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
-.dtf-prints-intro > button { flex-shrink: 0; }
-.dtf-print-form { padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 9px; }
+.dtf-client-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.dtf-names-link, .dtf-add-print { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0; border: 0; background: transparent; color: var(--blue); text-decoration: none; font-size: 11px; font-weight: 650; cursor: pointer; }
+.dtf-names-link:hover, .dtf-add-print:hover { text-decoration: underline; }
+.dtf-add-print:disabled { opacity: .45; cursor: default; }
+.dtf-client-field { display: flex; align-items: end; gap: 10px; }
+.dtf-client-field > label { min-width: 0; flex: 1; }
+.dtf-client-field .dtf-names-link { flex-shrink: 0; min-height: 34px; }
+.dtf-prints-panel { grid-column: 1 / -1; margin-left: 63px; padding: 0 9px 4px; border-left: 2px solid var(--border); }
+.dtf-print-form { display: grid; gap: 8px; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 9px; background: var(--card-subtle); }
 .dtf-print-form h3 { margin: 0; font-size: 13px; }
+.dtf-print-form .form-help { margin: 0; }
+.dtf-print-form label { display: grid; gap: 3px; color: var(--muted); font-size: 11px; }
+.dtf-print-form :is(input:not([type="hidden"]), select) { width: 100%; min-width: 0; min-height: 33px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); font: inherit; }
+.dtf-print-form footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .dtf-print-list { list-style: none; margin: 0; padding: 0; }
 .dtf-print-list li { display: grid; grid-template-columns: 45px minmax(0, 1fr) auto auto; align-items: center; gap: 7px; padding-block: 8px; border-top: 1px solid var(--border); }
 .dtf-print-list .dtf-thumb { width: 45px; height: 45px; }
 .dtf-print-list b, .dtf-print-list small { display: block; font-size: 11px; overflow-wrap: anywhere; }
 .dtf-print-list small { margin-top: 4px; color: var(--muted); font-size: 10px; }
-.dtf-separated { display: inline-flex; align-items: center; gap: 4px; }
+.dtf-print-list .dtf-client-line small { margin-top: 0; }
+.dtf-separated { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .dtf-separated input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
 .dtf-order-specs, .dtf-order-money { display: grid; gap: 3px; min-width: 0; font-size: 13px; }
 .dtf-order-deadline { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11px; color: var(--muted); }
 .dtf-order-deadline svg { flex-shrink: 0; }
+.dtf-order-deadline small { display: block; margin-top: 2px; }
 .dtf-order-deadline[data-late="true"] { color: var(--red); }
 .dtf-order-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .dtf-order-actions button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 32px; min-height: 32px; padding: 5px; border: 0; border-radius: 6px; background: var(--card-subtle); color: var(--muted); font-size: 10px; cursor: pointer; }
@@ -104,6 +112,8 @@
   .dtf-order-description { grid-column: 2 / -1; }
   .dtf-order-specs { grid-column: 1 / 2; }
   .dtf-order-actions { grid-column: 2 / -1; }
+  .dtf-prints-panel { margin-left: 0; }
+  .dtf-print-list .dtf-order-actions { grid-column: auto; }
 }
 @container (width < 420px) {
   .dtf-header { align-items: flex-start; }

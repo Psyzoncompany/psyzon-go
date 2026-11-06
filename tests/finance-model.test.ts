@@ -4,6 +4,8 @@ import { billDueDate, billIsSettled, billSettlementAfterEdit, customerAdjustment
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
+import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
+import { documentPrefix, type BusinessNote } from "../app/notes-model";
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -125,6 +127,20 @@ test("quick DTF orders support blank inputs and multiple photos alongside legacy
   assert.deepEqual(dtfPhotos(packDtfPhotos([cover, extra])), [cover, extra]);
   assert.deepEqual(dtfPhotos({ photoData: cover, referencePhotos: '["https://example.com/photo"]' }), [cover]);
   assert.throws(() => packDtfPhotos(Array(9).fill(cover)));
+});
+
+test("DTF customer links prefer the names checklist and follow the linked production delivery", () => {
+  const customers = [{ id: "ana", name: "ANA", phone: "" }, { id: "jef", name: "Jefersson", phone: "" }];
+  const base: Order = { id: "one", customer: "Ana", product: "Camisas", dueDate: "2026-12-04", quantity: 16, total: 0, paid: 0, status: "Produção" };
+  const notes: BusinessNote[] = [
+    { id: "plain", title: "Nota geral", category: "Clientes", pinned: false, updatedAt: 100, content: documentPrefix + JSON.stringify({ version: 2, status: "active", customerId: "ana", blocks: [] }) },
+    { id: "names", title: "Nomes", category: "Produção", pinned: false, updatedAt: 10, content: documentPrefix + JSON.stringify({ version: 2, status: "archive", orderId: "one", blocks: [], productionChecklist: { deadline: "2026-11-20", rows: [{ name: "João" }] } }) },
+  ];
+  const links = indexDtfCustomerLinks(customers, [base, { ...base, id: "two", dueDate: "2026-11-20" }, { ...base, id: "jef-1", customer: " JEFERSSON ", dueDate: "2026-11-15" }], notes);
+  assert.equal(dtfDeadline("2026-01-03"), "2025-12-27");
+  assert.deepEqual(links.get("ana"), { noteId: "names", deadline: "2026-11-27" });
+  assert.deepEqual(links.get("jef"), { deadline: "2026-11-08" });
+  assert.equal(indexDtfCustomerLinks(customers, [{ ...base, dueDate: "2026-12-05" }], notes).get("ana")?.deadline, "2026-11-28");
 });
 
 test("the DTF deadline alert starts seven days out and stops when requested or delivered", () => {

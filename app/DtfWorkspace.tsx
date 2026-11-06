@@ -1,13 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, CalendarDays, Clipboard, FileImage, Layers, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Clipboard, FileImage, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import Modal from "./Modal";
 import DtfPrints from "./DtfPrints";
 import DtfPhotoField from "./DtfPhotoField";
+import DtfNamesLink from "./DtfNamesLink";
 import { customerNameKey, type Customer } from "./finance-model";
-import { millis } from "./notes-model";
+import { millis, type BusinessNote } from "./notes-model";
+import { indexDtfCustomerLinks, type DtfCustomerLink } from "./dtf-links";
+import type { Order } from "./order-model";
 import { dtfArtworkLink, dtfCode, dtfDate, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfStages, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import "./dtf.css";
 
@@ -15,6 +18,8 @@ type Connection = "connecting" | "live" | "error";
 type Props = {
   orders: DtfOrder[];
   customers: Customer[];
+  productionOrders: Order[];
+  notes: BusinessNote[];
   customerId: string;
   connection: Connection;
   today: string;
@@ -25,25 +30,29 @@ type Props = {
   onMove: (id: string, stage: DtfStage) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPrintChange: (id: string, change: DtfPrintChange) => Promise<void>;
+  openNote: (id: string) => void;
 };
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const meterLabel = (lengthCm: number) => `${number.format(lengthCm / 100)} m`;
 const widthLabel = (widthCm: number) => widthCm ? `${number.format(widthCm)} cm` : "Largura livre";
 
-export default function DtfWorkspace({ orders, customers, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onDelete, onPrintChange }: Props) {
+export default function DtfWorkspace({ orders, customers, productionOrders, notes, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onDelete, onPrintChange, openNote }: Props) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<DtfStage | "all">("all");
   const [link, setLink] = useState("all");
   const [editor, setEditor] = useState<DtfOrder | "new" | null>(null);
   const [ticketId, setTicketId] = useState("");
-  const [printsId, setPrintsId] = useState("");
   const [workingId, setWorkingId] = useState("");
   const [error, setError] = useState("");
 
   const customer = customers.find(item => item.id === customerId);
   const names = new Map(customers.map(item => [item.id, item.name]));
   const printsByOrder = useMemo(() => new Map(orders.map(order => [order.id, readDtfPrints(order.printsData)])), [orders]);
+  const links = useMemo(() => indexDtfCustomerLinks(customers, productionOrders, notes), [customers, productionOrders, notes]);
+  const linkedDeadlines = new Map(orders.map(order => [order.id, [order, ...(printsByOrder.get(order.id) ?? [])]
+    .flatMap(item => links.get(item.customerId)?.deadline ?? []).sort()[0]]));
+  const deadlineFor = (order: DtfOrder) => linkedDeadlines.get(order.id) ?? order.dueDate;
   const nameFor = (order: DtfOrder) => names.get(order.customerId) || order.customerName || "Sem cliente";
   const scoped = customerId ? orders.filter(order => [order, ...(printsByOrder.get(order.id) ?? [])].some(item => customer ? dtfForCustomer(item, customer) : item.customerId === customerId)) : orders;
   const linked = scoped.filter(order => link === "all" || Boolean(order.customerId) === (link === "linked"));
@@ -51,13 +60,12 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
   const filtered = linked.filter(order => !term || customerNameKey([order.title, nameFor(order), dtfCode(order.id), ...(printsByOrder.get(order.id) ?? []).flatMap(print => [print.title, names.get(print.customerId) || print.customerName])].join(" ")).includes(term));
   const visible = filtered.filter(order => stage === "all" || order.stage === stage).sort((a, b) =>
     Number(a.stage === "Entregue") - Number(b.stage === "Entregue") ||
-    (a.dueDate || "9999").localeCompare(b.dueDate || "9999") || millis(b.updatedAt) - millis(a.updatedAt));
+    (deadlineFor(a) || "9999").localeCompare(deadlineFor(b) || "9999") || millis(b.updatedAt) - millis(a.updatedAt));
   const active = scoped.filter(order => order.stage !== "Entregue");
-  const late = active.filter(order => dtfOverdue(order, today)).length;
+  const late = active.filter(order => dtfOverdue({ ...order, dueDate: deadlineFor(order) }, today)).length;
   const queued = active.filter(order => order.stage === "Aguardando arte" || order.stage === "Em impressão").reduce((sum, order) => sum + order.lengthCm, 0);
   const pending = scoped.filter(order => order.stage !== "Orçamento" && (!customerId || (customer ? dtfForCustomer(order, customer) : order.customerId === customerId))).reduce((sum, order) => sum + dtfPending(order), 0);
   const ticket = scoped.find(order => order.id === ticketId);
-  const printsOrder = orders.find(order => order.id === printsId);
   const live = connection === "live";
 
   async function run(id: string, action: () => Promise<void>) {
@@ -96,10 +104,10 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
       <div className="dtf-orders">
         {visible.map(order => {
           const next = dtfStages[dtfStages.indexOf(order.stage) + 1];
-          const overdue = dtfOverdue(order, today);
-          const due = order.dueDate === today && order.stage !== "Entregue" ? "Entrega hoje" : dtfDate(order.dueDate);
+          const dueDate = deadlineFor(order);
+          const overdue = dtfOverdue({ ...order, dueDate }, today);
+          const due = dueDate === today && order.stage !== "Entregue" ? "Entrega hoje" : dtfDate(dueDate);
           const prints = printsByOrder.get(order.id) ?? [];
-          const remaining = prints.filter(print => !print.separated).length;
           const title = dtfTitle(order);
           return <article className="dtf-order" key={order.id}>
             <div className="dtf-thumb" aria-hidden="true">
@@ -107,29 +115,28 @@ export default function DtfWorkspace({ orders, customers, customerId, connection
             </div>
             <div className="dtf-order-description">
               <div><span className="dtf-code">#{dtfCode(order.id)}</span><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
-              <h2>{title}</h2><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p>
-              <button className="dtf-prints-link" type="button" aria-label={`Estampas do metro ${title}`} onClick={() => setPrintsId(order.id)}><Layers size={14} /> {prints.length ? `${prints.length} ${prints.length === 1 ? "estampa" : "estampas"} · ${remaining} a separar` : "Adicionar estampas"}</button>
+              <h2>{title}</h2><div className="dtf-client-line"><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p><DtfNamesLink noteId={links.get(order.customerId)?.noteId} openNote={openNote} /></div>
             </div>
             <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}</div>
-            <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}</span></div>
+            <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}{linkedDeadlines.get(order.id) && <small>Prazo DTF vinculado</small>}</span></div>
             <div className="dtf-order-money"><b>{displayMoney(dtfTotal(order))}</b><span>{dtfPending(order) > 0 ? `${displayMoney(dtfPending(order))} pendente` : dtfTotal(order) ? "Quitado" : "Sem cobrança"}</span></div>
             <div className="dtf-order-actions">
               <button className="dtf-open-ticket" type="button" aria-label={`Abrir ficha de ${title}`} onClick={() => setTicketId(order.id)}><Clipboard size={15} /> Ficha</button>
               {next && <button className="dtf-advance" type="button" disabled={!live || !!workingId} onClick={() => void run(order.id, () => onMove(order.id, next))}>{next === "Entregue" ? "Entregar" : "Avançar"} <ArrowRight size={14} /></button>}
               <button type="button" aria-label={`Editar DTF ${title}`} title="Editar pedido" disabled={!live || !!workingId} onClick={() => setEditor(order)}><Pencil size={16} /></button>
             </div>
+            <DtfPrints order={order} prints={prints} customers={customers} links={links} live={live} onChange={onPrintChange} openNote={openNote} />
           </article>;
         })}
         {live && !visible.length && <div className="dtf-empty"><Printer size={29} /><h2>{scoped.length ? "Nenhum pedido com esses filtros" : "Nenhum pedido DTF por aqui"}</h2><p>{scoped.length ? "Altere a busca, o vínculo ou a etapa." : "Cadastre o primeiro pedido com um cliente vinculado ou como avulso."}</p>{!scoped.length && <button className="secondary" onClick={() => setEditor("new")}><Plus size={16} /> Novo pedido DTF</button>}</div>}
       </div>
     </section>
-    {editor && <DtfEditor order={editor === "new" ? undefined : editor} customers={customers} customer={customer} displayMoney={displayMoney} onSave={onSave} onDelete={onDelete} close={() => setEditor(null)} />}
-    {ticket && <DtfTicket order={ticket} customerName={nameFor(ticket)} close={() => setTicketId("")} />}
-    {printsOrder && <DtfPrints key={printsOrder.id} order={printsOrder} customers={customers} onChange={onPrintChange} close={() => setPrintsId("")} />}
+    {editor && <DtfEditor order={editor === "new" ? undefined : editor} customers={customers} links={links} customer={customer} displayMoney={displayMoney} onSave={onSave} onDelete={onDelete} close={() => setEditor(null)} />}
+    {ticket && <DtfTicket order={{ ...ticket, dueDate: deadlineFor(ticket) }} customerName={nameFor(ticket)} close={() => setTicketId("")} />}
   </section>;
 }
 
-function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete, close }: Pick<Props, "customers" | "displayMoney" | "onSave" | "onDelete"> & { order?: DtfOrder; customer?: Customer; close: () => void }) {
+function DtfEditor({ order, customers, links, customer, displayMoney, onSave, onDelete, close }: Pick<Props, "customers" | "displayMoney" | "onSave" | "onDelete"> & { order?: DtfOrder; customer?: Customer; links: Map<string, DtfCustomerLink>; close: () => void }) {
   const [selectedId, setSelectedId] = useState(order?.customerId ?? customer?.id ?? "");
   const [photos, setPhotos] = useState(() => order ? dtfPhotos(order) : []);
   const [meters, setMeters] = useState(order?.lengthCm ? String(order.lengthCm / 100) : "");
@@ -139,6 +146,7 @@ function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete,
   const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState("");
   const linked = customers.find(item => item.id === selectedId);
+  const clientLink = links.get(selectedId);
   const blocked = busy || photoBusy;
   const lengthCm = Math.round(Number(meters) * 100);
   const priceCents = Math.round(Number(price) * 100);
@@ -187,12 +195,14 @@ function DtfEditor({ order, customers, customer, displayMoney, onSave, onDelete,
         <p className="form-help">Preencha só o que tiver agora.</p>
         <DtfPhotoField photos={photos} setPhotos={setPhotos} onBusyChange={setPhotoBusy} />
         <label>Nome do pedido<input name="title" maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
-        <div className="form-row"><label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" defaultValue={order?.quantity || ""} /></label></div>
+        <div className="dtf-client-field"><label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><DtfNamesLink noteId={clientLink?.noteId} /></div>
+        {clientLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(clientLink.deadline)} · 7 dias antes da entrega.</p>}
+        <label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" defaultValue={order?.quantity || ""} /></label>
         <label>Observações<textarea name="notes" rows={3} maxLength={4000} placeholder="Detalhes para preparar e conferir a impressão" defaultValue={order?.notes} /></label>
       </fieldset>
       {order && <details className="dtf-editor-extra"><summary>Mais detalhes</summary><fieldset disabled={busy}>
         {!selectedId && <div className="form-row"><label>Nome avulso<input name="customerName" maxLength={120} defaultValue={order.customerName} /></label><label>Contato<input name="phone" type="tel" maxLength={40} defaultValue={order.phone} /></label></div>}
-        <div className="form-row"><label>Etapa<select name="stage" defaultValue={order.stage}>{dtfStages.map(value => <option key={value}>{value}</option>)}</select></label><label>Prazo<input name="dueDate" type="date" max="9999-12-31" defaultValue={order.dueDate} /></label></div>
+        <div className="form-row"><label>Etapa<select name="stage" defaultValue={order.stage}>{dtfStages.map(value => <option key={value}>{value}</option>)}</select></label><label>Prazo manual<input name="dueDate" type="date" max="9999-12-31" defaultValue={order.dueDate} /></label></div>
         <div className="form-row"><label>Metragem (m)<input type="number" min="0" max="10000" step="0.01" value={meters} onChange={event => setMeters(event.target.value)} /></label><label>Largura (cm)<input name="widthCm" type="number" min="0" max="300" step="0.01" defaultValue={order.widthCm || ""} /></label></div>
         <div className="form-row"><label>Preço por metro (R$)<input type="number" min="0" max="10000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} /></label><label>Valor recebido (R$)<input type="number" min="0" max="100000000" step="0.01" value={paid} onChange={event => setPaid(event.target.value)} /></label></div>
         <div className="dtf-estimate" aria-live="polite"><div><span>Total do pedido</span><strong>{displayMoney(total)}</strong></div><div><span>Pendente</span><strong>{displayMoney(Math.max(0, total - paidCents / 100))}</strong></div></div>
@@ -212,7 +222,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   const lines = [
     `Pedido #${dtfCode(order.id)}${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
     ...(order.quantity ? [`Quantidade: ${order.quantity} un.`] : []),
-    ...(order.dueDate ? [`Prazo: ${dtfDate(order.dueDate)}`] : []),
+    ...(order.dueDate ? [`Prazo DTF: ${dtfDate(order.dueDate)}`] : []),
     ...(order.lengthCm ? [`Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`] : []),
     ...(order.phone ? [`Contato: ${order.phone}`] : []), ...(link ? [`Arte: ${link}`] : []), ...(order.notes ? [`\nObservações\n${order.notes}`] : []),
     ...(prints.length ? ["\nEstampas do metro", ...prints.map(print => `${print.separated ? "☑" : "☐"} ${print.title} · ${print.customerName || "Sem cliente"} · ${print.quantity} un.`)] : []),

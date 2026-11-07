@@ -85,20 +85,20 @@ test("printed size summaries keep masculine, feminine and child quantities in th
   assert.match(summaries[2], /<small>M<\/small><b>1 un\.<\/b>/);
 });
 
-test("each printed name has independent cut, print and packaging checkboxes on every page", () => {
+test("each printed name has independent cut, print, pressing and packaging checkboxes on every page", () => {
   const checklist = parseProductionOrder(sampleProductionOrder);
   checklist.rows[0].done = true;
   const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
   const pieces = [...html.matchAll(/<div class="production-piece">([\s\S]*?)<\/div>/g)].map(match => match[1]);
   assert.equal(pieces.length, 16);
   for (const piece of pieces) {
-    assert.equal([...piece.matchAll(/<i /g)].length, 3);
-    for (const stage of ["Corte", "Estampa", "Embalagem"]) assert.ok(piece.includes(`aria-label="${stage} · `));
+    assert.equal([...piece.matchAll(/<i /g)].length, 4);
+    for (const stage of ["Corte", "Estampa", "Prensagem", "Embalagem"]) assert.ok(piece.includes(`aria-label="${stage} · `));
     assert.doesNotMatch(piece, /✓/);
   }
   const many = { ...checklist, rows: Array.from({ length: 64 }, (_, index) => ({ id: String(index), model: "Masculina", size: "M", name: `Pessoa ${index + 1}`, done: false })) };
   const longHtml = renderToStaticMarkup(createElement(ProductionSheets, { checklist: many }));
-  assert.equal([...longHtml.matchAll(/<i /g)].length, 64 * 3);
+  assert.equal([...longHtml.matchAll(/<i /g)].length, 64 * 4);
 });
 
 test("the print theme follows the shirt color and ignores artwork colors", () => {

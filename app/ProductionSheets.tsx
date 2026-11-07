@@ -1,6 +1,6 @@
 import { productionPages, productionSummary, type ProductionChecklist, type ProductionRow } from "./production-checklist";
 
-const productionStages = ["Corte", "Estampa", "Embalagem"];
+const productionStages = ["Corte", "Estampa", "Prensagem", "Embalagem"];
 
 function groups(rows: ProductionRow[], key: "model" | "size") {
   const result = new Map<string, ProductionRow[]>();

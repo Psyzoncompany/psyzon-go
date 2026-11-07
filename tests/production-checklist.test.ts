@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import ProductionSheets from "../app/ProductionSheets";
 import { parseProductionOrder, productionPages, productionSummary, sampleProductionOrder, sortProductionRows, validateProductionChecklist } from "../app/production-checklist";
 import { organizeProductionWithAI } from "../app/lib/server/production-organizer";
 import type { ProviderCandidate } from "../app/lib/server/ai-agent";
@@ -65,6 +68,21 @@ test("numeric sizes, ages and extended sizes sort naturally and keep custom size
   const sizes = ["G10", "A confirmar", "12 anos", "6 anos", "G2", "G1", "XGG", "GG", "G", "M", "P", "PP", "Sob medida", "Único", "Especial"];
   const rows = sizes.map((size, index) => ({ id: String(index), model: "Geral", size, name: "Sem nome", done: false }));
   assert.deepEqual(sortProductionRows(rows).map(row => row.size), ["6 anos", "12 anos", "PP", "P", "M", "G", "GG", "XGG", "G1", "G2", "G10", "Único", "Sob medida", "Especial", "A confirmar"]);
+});
+
+test("printed size summaries keep masculine, feminine and child quantities in their own model", () => {
+  const checklist = parseProductionOrder("MASCULINA\nM\nJoão\nP\nEnzo\nP\nLucas\nFEMININA\nP\nAna\nINFANTIL\nP\nPedro\nM\nMaria");
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  const summaries = [...html.matchAll(/<section class="production-summary-model">([\s\S]*?)<\/section>/g)].map(match => match[1]);
+  assert.equal(summaries.length, 3);
+  assert.match(summaries[0], /<span>MASCULINA<\/span><b>3 un\.<\/b>/);
+  assert.match(summaries[0], /<small>P<\/small><b>2 un\.<\/b>/);
+  assert.match(summaries[0], /<small>M<\/small><b>1 un\.<\/b>/);
+  assert.match(summaries[1], /<span>FEMININA<\/span><b>1 un\.<\/b>/);
+  assert.match(summaries[1], /<small>P<\/small><b>1 un\.<\/b>/);
+  assert.match(summaries[2], /<span>INFANTIL<\/span><b>2 un\.<\/b>/);
+  assert.match(summaries[2], /<small>P<\/small><b>1 un\.<\/b>/);
+  assert.match(summaries[2], /<small>M<\/small><b>1 un\.<\/b>/);
 });
 
 test("the print theme follows the shirt color and ignores artwork colors", () => {

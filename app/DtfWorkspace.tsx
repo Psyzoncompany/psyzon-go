@@ -116,6 +116,7 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
             <div className="dtf-order-description">
               <div><span className="dtf-code">#{dtfCode(order.id)}</span><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
               <h2>{title}</h2><div className="dtf-client-line"><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p><DtfNamesLink noteId={links.get(order.customerId)?.noteId} openNote={openNote} /></div>
+              {order.notes?.trim() && <p className="dtf-order-notes"><b>Observações</b><span>{order.notes}</span></p>}
             </div>
             <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}</div>
             <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}{linkedDeadlines.get(order.id) && <small>Prazo DTF vinculado</small>}</span></div>

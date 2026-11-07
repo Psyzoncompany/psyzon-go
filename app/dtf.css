@@ -41,6 +41,9 @@
 .dtf-stage[data-stage="3"], .dtf-stage[data-stage="4"] { background: var(--green-soft); color: var(--green); }
 .dtf-order-description h2 { margin: 4px 0; font-size: 14px; line-height: 1.2; overflow-wrap: anywhere; }
 .dtf-order-description p, .dtf-order-specs span, .dtf-order-money span { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.dtf-order-description .dtf-order-notes { margin-top: 7px; padding: 7px 9px; border-left: 2px solid var(--blue); border-radius: 0 5px 5px 0; background: var(--card-subtle); color: var(--text); font-size: 12px; line-height: 1.45; }
+.dtf-order-notes b { display: block; margin-bottom: 2px; color: var(--muted); font-size: 10px; }
+.dtf-order-notes span { white-space: pre-wrap; }
 .dtf-link-tag { color: var(--blue); font-size: 9px; white-space: nowrap; }
 .dtf-link-tag::before { content: ' · '; }
 .dtf-client-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }

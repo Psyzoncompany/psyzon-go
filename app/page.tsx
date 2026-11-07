@@ -16,6 +16,7 @@ import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, ma
 import { updatePurchasedMaterials } from "./notes/materials-model";
 import type { Task } from "./notes/task-model";
 import useViewHistory from "./useViewHistory";
+import MobileNavigation from "./MobileNavigation";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
@@ -213,8 +214,6 @@ const navGroups = [
   { label: "Gestão", items: navItems.filter((item) => ["financeiro", "historico"].includes(item.id)) },
   { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
 ];
-
-const mobileNavItems = navItems;
 
 export default function HomePage() {
   const [view, setView, noteId, dtfCustomerId] = useViewHistory();
@@ -1027,7 +1026,7 @@ export default function HomePage() {
   const floatingActive = floatingModeOpen;
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view}>
       <aside className="sidebar">
         <div className="sidebar-brand-row">
           <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
@@ -1048,7 +1047,7 @@ export default function HomePage() {
           <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
           <div className="search-wrap">
             <Search size={18} />
-            <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente, pedido ou produto…" aria-label="Busca global" />
+            <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar em tudo…" aria-label="Buscar cliente, pedido ou produto" />
             <kbd>/</kbd>
             {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(orderBalances.get(order.id) ?? 0)}<small>pendente</small></strong></button>)}</div>}
           </div>
@@ -1087,9 +1086,7 @@ export default function HomePage() {
       {view !== "notas" && view !== "historico" && view !== "afazeres" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
-      <nav className="mobile-nav">
-        {mobileNavItems.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}
-      </nav>
+      <MobileNavigation view={view} navigate={setView} />
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}

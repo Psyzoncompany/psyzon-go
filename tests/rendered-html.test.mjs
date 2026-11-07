@@ -26,7 +26,8 @@ test("server-renders the branded PSYZON GO splash", async () => {
   assert.match(html, /src="\/icon-512-v3\.png"/);
   assert.match(html, /Produção e financeiro em tempo real/);
   assert.match(html, /rel="manifest" href="\/manifest\.webmanifest"/);
-  assert.match(html, /name="viewport" content="[^"]*maximum-scale=1[^"]*user-scalable=no/);
+  assert.match(html, /name="viewport" content="[^"]*width=device-width[^"]*initial-scale=1/);
+  assert.doesNotMatch(html, /user-scalable=no|maximum-scale=1/);
   assert.match(html, /icon-192-v3\.png\?v=4/);
   assert.doesNotMatch(html, /rel="icon" href="\/favicon\.svg"/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/i);

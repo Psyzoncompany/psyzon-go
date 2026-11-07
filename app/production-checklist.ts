@@ -105,7 +105,7 @@ export function productionPages(rows: ProductionRow[]) {
   let page = 0; let column = 0; let used = 0;
   for (const row of ordered) {
     let previous = pages[page][column].at(-1);
-    const weight = () => 1 + Math.max(0, Math.ceil(row.name.length / 38) - 1) * .6 + (previous?.model !== row.model ? 1.5 : 0) + (previous?.model !== row.model || previous?.size !== row.size ? 1.2 : 0);
+    const weight = () => 1 + Math.max(0, Math.ceil(row.name.length / 28) - 1) * .6 + (previous?.model !== row.model ? 1.5 : 0) + (previous?.model !== row.model || previous?.size !== row.size ? 1.2 : 0);
     if (used + weight() > 15 && pages[page][column].length) {
       if (column === 0) column = 1;
       else { page += 1; column = 0; pages.push([[], []]); }

@@ -1,5 +1,34 @@
 export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean };
 export type ProductionChecklist = { client: string; deadline: string; notes: string; rows: ProductionRow[]; warnings: string[] };
+
+const sizeCollator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
+const standardSizes = ["PP", "P", "M", "G", "GG", "XGG"];
+
+function sizeOrder(size: string): [number, number, string] {
+  const label = size.trim().toLocaleUpperCase("pt-BR").replace(/^TAMANHO\s+/, "").replace(/\s+/g, " ");
+  const numeric = label.match(/^(\d+)(?:\s*ANOS?)?$/);
+  if (numeric) return [0, Number(numeric[1]), label];
+  const standard = standardSizes.indexOf(label);
+  if (standard !== -1) return [1, standard, label];
+  const extended = label.match(/^G(\d+)$/);
+  if (extended) return [1, 5 + Number(extended[1]), label];
+  if (label === "ÚNICO" || label === "UNICO") return [2, 0, label];
+  if (label === "SOB MEDIDA") return [3, 0, label];
+  if (!label || label === "A CONFIRMAR") return [5, 0, label];
+  return [4, 0, label];
+}
+
+function compareSizes(first: string, second: string) {
+  const a = sizeOrder(first);
+  const b = sizeOrder(second);
+  return a[0] - b[0] || a[1] - b[1] || sizeCollator.compare(a[2], b[2]);
+}
+
+export function sortProductionRows(rows: ProductionRow[]) {
+  const models = new Map<string, number>();
+  rows.forEach(row => { if (!models.has(row.model)) models.set(row.model, models.size); });
+  return [...rows].sort((a, b) => models.get(a.model)! - models.get(b.model)! || compareSizes(a.size, b.size));
+}
 export const sampleProductionOrder = `MASCULINA — 8 UNIDADES
 Tamanho P (2)
 - Enzo
@@ -61,23 +90,17 @@ export function validateProductionChecklist(value: unknown): ProductionChecklist
   const data = value as Record<string, unknown>;
   if (!Array.isArray(data.rows) || data.rows.length < 1 || data.rows.length > 500) throw new Error("A lista deve ter entre 1 e 500 peças.");
   const string = (input: unknown, max: number) => { if (typeof input !== "string" || input.length > max) throw new Error("O checklist contém um campo inválido."); return input.trim(); };
-  return { client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: data.rows.map((value, index) => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true }; }) };
+  return { client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: sortProductionRows(data.rows.map((value, index) => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true }; })) };
 }
 
 export function productionSummary(rows: ProductionRow[]) {
   const map = new Map<string, number>();
   rows.forEach((row) => map.set(row.size, (map.get(row.size) ?? 0) + 1));
-  return [...map].map(([size, quantity]) => ({ size, quantity }));
+  return [...map].sort(([a], [b]) => compareSizes(a, b)).map(([size, quantity]) => ({ size, quantity }));
 }
 
 export function productionPages(rows: ProductionRow[]) {
-  const grouped = new Map<string, Map<string, ProductionRow[]>>();
-  rows.forEach((row) => {
-    const sizes = grouped.get(row.model) ?? new Map<string, ProductionRow[]>();
-    sizes.set(row.size, [...(sizes.get(row.size) ?? []), row]);
-    grouped.set(row.model, sizes);
-  });
-  const ordered = [...grouped.values()].flatMap((sizes) => [...sizes.values()].flat());
+  const ordered = sortProductionRows(rows);
   const pages: ProductionRow[][][] = [[[], []]];
   let page = 0; let column = 0; let used = 0;
   for (const row of ordered) {

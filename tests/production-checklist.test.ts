@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseProductionOrder, productionPages, productionSummary, sampleProductionOrder, validateProductionChecklist } from "../app/production-checklist";
+import { parseProductionOrder, productionPages, productionSummary, sampleProductionOrder, sortProductionRows, validateProductionChecklist } from "../app/production-checklist";
 import { organizeProductionWithAI } from "../app/lib/server/production-organizer";
 import type { ProviderCandidate } from "../app/lib/server/ai-agent";
 import { productionColorFromNotes, productionColorFromProduct, productionColorInk } from "../app/production-theme";
@@ -39,6 +39,32 @@ test("printing preserves every piece across columns and pages", () => {
   const pages = productionPages(rows);
   assert.ok(pages.length > 1);
   assert.deepEqual(pages.flat(2).map((row) => row.id).sort(), rows.map((row) => row.id).sort());
+});
+
+test("imported lists, saved pieces, summaries and print pages share ascending size order", () => {
+  const checklist = parseProductionOrder("MASCULINA\nGG\nLucas\nP\nEnzo\nG\nJoão\nPP\nPedro\nM\nJeferson\nFEMININA\nG\nViviane\nP\nVitória");
+  assert.deepEqual(checklist.rows.map(row => row.size), ["PP", "P", "M", "G", "GG", "P", "G"]);
+  const rows = [
+    { id: "g", model: "Masculina", size: "G", name: "João", done: true },
+    { id: "m", model: "Feminina", size: "M", name: "Lara", done: false },
+    { id: "p", model: "Masculina", size: "P", name: "Enzo", done: false },
+    { id: "p2", model: "Masculina", size: "P", name: "Lucas", done: true },
+    { id: "pp", model: "Feminina", size: "PP", name: "Ana", done: false },
+  ];
+  const sorted = sortProductionRows(rows);
+  assert.deepEqual(sorted.map(row => row.id), ["p", "p2", "g", "pp", "m"]);
+  assert.equal(sorted.find(row => row.id === "g"), rows[0]);
+  assert.equal(sorted.find(row => row.id === "p2")?.done, true);
+  assert.deepEqual(rows.map(row => row.id), ["g", "m", "p", "p2", "pp"]);
+  assert.deepEqual(productionPages(rows).flat(2).map(row => row.id), sorted.map(row => row.id));
+  assert.deepEqual(productionSummary(rows).map(item => item.size), ["PP", "P", "M", "G"]);
+  assert.deepEqual(sortProductionRows([...rows, { id: "new", model: "Masculina", size: "PP", name: "Sem nome", done: false }]).map(row => row.id), ["new", "p", "p2", "g", "pp", "m"]);
+});
+
+test("numeric sizes, ages and extended sizes sort naturally and keep custom sizes", () => {
+  const sizes = ["G10", "A confirmar", "12 anos", "6 anos", "G2", "G1", "XGG", "GG", "G", "M", "P", "PP", "Sob medida", "Único", "Especial"];
+  const rows = sizes.map((size, index) => ({ id: String(index), model: "Geral", size, name: "Sem nome", done: false }));
+  assert.deepEqual(sortProductionRows(rows).map(row => row.size), ["6 anos", "12 anos", "PP", "P", "M", "G", "GG", "XGG", "G1", "G2", "G10", "Único", "Sob medida", "Especial", "A confirmar"]);
 });
 
 test("the print theme follows the shirt color and ignores artwork colors", () => {

@@ -5,10 +5,11 @@ import "./globals.css";
 import "./mobile-shell.css";
 import "./finance-forecast.css";
 import "./production-print.css";
+import "./mobile-design.css";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, maximumScale: 1, userScalable: false };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export async function generateMetadata(): Promise<Metadata> {
   const headerList = await headers();

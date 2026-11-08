@@ -23,6 +23,7 @@
   .production-group { border: .25mm solid var(--sheet-line); border-radius: 3mm; overflow: hidden; margin-bottom: 2mm; }
   .production-group h2 { display: flex; justify-content: space-between; gap: 3mm; margin: 0; padding: 2.5mm 3mm; background: var(--sheet-accent, #142b55); color: var(--sheet-on-accent, white); box-shadow: inset 0 -1px var(--sheet-line); font-size: 10pt; font-weight: 700; text-transform: uppercase; }
   .production-size { padding: 1mm 2.5mm .5mm; }
+  .production-continuation { font-size: 7pt; font-weight: 400; text-transform: none; }
   .production-size h3 { display: flex; justify-content: space-between; gap: 3mm; margin: 0 0 1mm; padding: 1.25mm 2mm; background: var(--sheet-tint); color: var(--sheet-ink); border-radius: 1.5mm; font-size: 9pt; font-weight: 700; }
   .production-piece, .production-piece-head { display: grid; grid-template-columns: minmax(0, 1fr) 8mm 10mm 13mm 14mm; align-items: center; column-gap: 1mm; padding-inline: 1mm; }
   .production-piece-head { padding-block: 1mm; font-size: 6.5pt; font-weight: 700; color: var(--sheet-ink); break-after: avoid; }

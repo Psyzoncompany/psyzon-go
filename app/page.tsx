@@ -1036,9 +1036,9 @@ export default function HomePage() {
     showToast("Pagamento desfeito. Conta voltou para A pagar.");
   };
 
-  const deleteBill = async (bill: Bill) => {
+  const deleteBill = async (bill: Bill, confirmed = false) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-    if (!window.confirm("Excluir a conta “" + bill.description + "”? O histórico de pagamentos será mantido.")) return;
+    if (!confirmed && !window.confirm("Excluir a conta “" + bill.description + "”? O histórico de pagamentos será mantido.")) return;
     await deleteDoc(userDocument(uid, "bills", bill.id));
     showToast("Conta removida");
   };
@@ -1096,7 +1096,7 @@ export default function HomePage() {
           {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
-          {view === "financeiro" && <FinanceWorkspace restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace premium={interfaceAppearance.appearance.theme === "ios-premium"} today={calendarDate} restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}

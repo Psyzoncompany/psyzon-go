@@ -11,6 +11,11 @@ function groups(rows: ProductionRow[], key: "model" | "size") {
 export default function ProductionSheets({ checklist, photoData }: { checklist: ProductionChecklist; photoData?: string }) {
   const pages = productionPages(checklist.rows);
   const summary = groups(checklist.rows, "model");
+  const modelTotals = new Map(summary.map(([model, items]) => [model, items.length]));
+  const sizeTotals = new Map(summary.flatMap(([model, items]) => productionSummary(items).map(item => [JSON.stringify([model, item.size]), item.quantity] as const)));
+  const firstModel = new Map<string, string>();
+  const firstSize = new Map<string, string>();
+  pages.flat(2).forEach(row => { if (!firstModel.has(row.model)) firstModel.set(row.model, row.id); const key = JSON.stringify([row.model, row.size]); if (!firstSize.has(key)) firstSize.set(key, row.id); });
   const attention = [checklist.notes, ...checklist.warnings].filter(Boolean).join("\n");
   const inlineLimit = photoData && checklist.rows.length <= 20 ? 420 : 200;
   const extra = attention.length > inlineLimit || attention.split("\n").length > 8 ? attention.match(/[\s\S]{1,1200}/g) ?? [] : [];
@@ -38,9 +43,9 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   return <>{pages.map((columns, pageIndex) => <article className="production-sheet" key={pageIndex}>
     {header}
     <div className="production-sheet-columns">{columns.map((rows, column) => <div key={column}>{groups(rows, "model").map(([model, items]) => <section className="production-group" key={model}>
-      <h2><span>{model}</span><b>{items.length} un.</b></h2>
+      {firstModel.get(model) === items[0].id && <h2><span>{model}</span><b>{modelTotals.get(model)} un.</b></h2>}
       {groups(items, "size").map(([size, pieces]) => <div className="production-size" key={size}>
-        <h3><span>TAMANHO {size}</span><b>{pieces.length} un.</b></h3>
+        <h3><span>TAMANHO {size}{firstSize.get(JSON.stringify([model, size])) !== pieces[0].id && <small className="production-continuation"> · continuação</small>}</span><b>{sizeTotals.get(JSON.stringify([model, size]))} un.</b></h3>
         <div className="production-piece-head"><span>Nome</span>{productionStages.map(stage => <span key={stage}>{stage}</span>)}</div>
         {pieces.map(row => <div className="production-piece" key={row.id}>
           <span>{row.name}</span>

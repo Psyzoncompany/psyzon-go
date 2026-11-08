@@ -225,3 +225,25 @@ test("DTF prints preserve separation when their details are edited", () => {
   assert.deepEqual(readDtfPrints(changeDtfPrints(edited, { type: "delete", id: print.id })), []);
   assert.throws(() => changeDtfPrints(undefined, { type: "add", print: { ...print, photoData: "https://example.com/invalid.svg" } }));
 });
+
+test("premium finance statuses use actual dates, paid state and monthly recurrence", async () => {
+  const { financeStatus, recurrenceLabel, sortedBills } = await import("../app/finance/presentation");
+  const make = (date: string) => bill({ id: date, billingType: "once", dueDate: date, settled: false });
+  assert.equal(financeStatus(make("2026-11-07"), "2026-11-08", "2026-11").tone, "late");
+  assert.equal(financeStatus(make("2026-11-08"), "2026-11-08", "2026-11").label, "Vence hoje");
+  assert.equal(financeStatus(make("2026-11-09"), "2026-11-08", "2026-11").label, "Vence amanhã");
+  assert.equal(financeStatus(make("2026-11-11"), "2026-11-08", "2026-11").tone, "soon");
+  assert.equal(financeStatus(make("2026-11-12"), "2026-11-08", "2026-11").tone, "open");
+  assert.equal(financeStatus({ ...make("2026-11-01"), settled: true }, "2026-11-08", "2026-11").tone, "paid");
+  assert.equal(financeStatus(make("2026-11-01"), "2026-11-08", "2026-11", true).tone, "open");
+  const monthly = bill({ dueDay: 2, lastPaidMonth: "2026-11" });
+  assert.equal(financeStatus(monthly, "2026-11-08", "2026-11").tone, "paid");
+  assert.equal(financeStatus(monthly, "2026-12-08", "2026-12").tone, "late");
+  const installment = bill({ billingType: "installment", totalInstallments: 5, paidInstallments: 1, lastPaidMonth: "2026-11" });
+  assert.equal(recurrenceLabel(installment, "2026-11"), "Parcela 1/5");
+  assert.equal(recurrenceLabel(installment, "2026-12"), "Parcela 2/5");
+  const list = [make("2026-12-01"), make("2026-11-09"), make("2026-11-07")];
+  assert.deepEqual(sortedBills(list, "2026-11").map(item => item.id), ["2026-11-07", "2026-11-09", "2026-12-01"]);
+  assert.equal(list[0].id, "2026-12-01");
+  assert.equal(sortedBills(list, "2026-11", new Set(["2026-11-07"])).at(-1)?.id, "2026-11-07");
+});

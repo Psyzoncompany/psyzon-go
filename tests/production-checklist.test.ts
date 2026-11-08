@@ -155,3 +155,15 @@ test("AI cannot infer female models from names, including mixed sections and inl
   assert.equal(table.rows.find(row => row.name === "Ana")?.model, "Feminina");
   assert.equal(table.rows.find(row => row.name === "Maria")?.model, "Masculina");
 });
+
+test("split sizes retain the complete quantity and continue without another model heading", () => {
+  const checklist = parseProductionOrder("Masculina\nP\n" + Array.from({ length: 7 }, (_, i) => `Pessoa P${i}`).join("\n") + "\nM\n" + Array.from({ length: 6 }, (_, i) => `Pessoa M${i}`).join("\n") + "\nG\n" + Array.from({ length: 6 }, (_, i) => `Pessoa G${i}`).join("\n"));
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  const mHeaders = [...html.matchAll(/<h3><span>TAMANHO M[\s\S]*?<\/h3>/g)].map(match => match[0]);
+  assert.equal(mHeaders.length, 2);
+  assert.ok(mHeaders.every(header => header.includes("<b>6 un.</b>")));
+  assert.ok(mHeaders[1].includes("continuação"));
+  assert.equal([...html.matchAll(/<h2><span>Masculina<\/span>/g)].length, 1);
+  assert.match(html, /<h2><span>Masculina<\/span><b>19 un\.<\/b><\/h2>/);
+  assert.equal([...html.matchAll(/class="production-piece"/g)].length, 19);
+});

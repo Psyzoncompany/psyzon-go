@@ -26,3 +26,9 @@ test("prepaint starts original until authentication identifies the account and s
   }
   assert.doesNotThrow(() => runInNewContext(appearanceBootstrap, { localStorage: { getItem: () => { throw new Error("Blocked"); } } }));
 });
+
+test("iOS Premium is a separate selectable model and old themes retain their settings", () => {
+  assert.equal(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "ios-premium" })).theme, "ios-premium");
+  assert.equal(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "liquid-glass-card" })).theme, "liquid-glass-card");
+  assert.deepEqual(readAppearance(null), defaultAppearance);
+});

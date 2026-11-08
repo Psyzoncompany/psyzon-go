@@ -149,7 +149,7 @@
   .app-shell .dtf-filters button[aria-pressed="true"] { border-color: transparent; }
   .app-shell .dtf-filters button span { font-size: 12px; }
   .app-shell .dtf-orders { padding: 0 16px; }
-  .app-shell .dtf-order { grid-template-columns: 48px minmax(0,1fr) auto; grid-template-areas: "photo description description" "specs specs specs" "deadline deadline money" "actions actions actions" "prints prints prints"; gap: 10px; padding: 14px 0; min-width: 0; }
+  .app-shell .dtf-order { grid-template-columns: 44px minmax(0,1fr) auto; grid-template-areas: "photo description description" "specs specs money" "deadline deadline deadline" "actions actions actions"; gap: 6px 8px; padding: 12px 0; min-width: 0; }
   .app-shell .dtf-order > .dtf-thumb { grid-area: photo; width: 48px; height: 48px; }
   .app-shell .dtf-order > .dtf-order-description { grid-area: description; min-width: 0; }
   .app-shell .dtf-thumb { width: 56px; height: 56px; border-radius: 12px; }
@@ -159,16 +159,16 @@
   .app-shell .dtf-stage { font-size: 11px; padding: 4px 7px; border-radius: 7px; }
   .app-shell .dtf-order-description p { font-size: 13px; line-height: 1.5; }
   .app-shell .dtf-order > .dtf-order-specs { grid-area: specs; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 15px; }
-  .app-shell .dtf-order-separated { margin-left: auto; min-height: 44px; gap: 7px; font-size: 12px; }
+  .app-shell .dtf-order-separated { min-height: 44px; gap: 7px; font-size: 12px; }
   .app-shell .dtf-separated input[type="checkbox"] { width: 20px; height: 20px; }
   .app-shell .dtf-order > .dtf-order-deadline { grid-area: deadline; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
   .app-shell .dtf-order > .dtf-order-money { grid-area: money; display: grid; gap: 3px; font-size: 14px; text-align: right; }
   .app-shell .dtf-order-money span { font-size: 12px; }
-  .app-shell .dtf-order > .dtf-order-actions { grid-area: actions; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .app-shell .dtf-order > .dtf-order-actions { grid-area: actions; flex-wrap: wrap; gap: 4px; }
   .app-shell .dtf-order-actions button { min-width: 44px; min-height: 44px; padding: 10px; border-radius: 12px; font-size: 13px; }
   .app-shell .dtf-names-link { min-height: 44px; font-size: 13px; }
   .app-shell .dtf-prints-panel { margin-left: 0; }
-  .app-shell .dtf-order > .dtf-prints-panel, .app-shell .dtf-order > .dtf-existing-prints { grid-area: prints; }
+  .app-shell .dtf-order > .dtf-prints-panel, .app-shell .dtf-order > .dtf-existing-prints { grid-area: auto; grid-column: 1/-1; }
   .app-shell .dtf-existing-prints > summary { min-height: 44px; align-content: center; font-size: 12px; }
   .app-shell .dtf-print-list .dtf-separated { grid-column: 1/-1; min-height: 44px; }
   .app-shell .dtf-print-list li { grid-template-columns: 45px minmax(0,1fr); }

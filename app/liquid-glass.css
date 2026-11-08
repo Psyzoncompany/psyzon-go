@@ -1,0 +1,445 @@
+/* This skin is opt-in and screen-only. Reports use their own paper materials. */
+@media screen {
+  :root[data-ui-theme="liquid-glass-card"] {
+    --bg: #eaf0f6;
+    --card: #ffffffd9;
+    --card-subtle: #f4f7fbbf;
+    --text: #142a3d;
+    --muted: #52677d;
+    --faint: #63778c;
+    --border: #b8c9da75;
+    --blue: #0667cf;
+    --blue-soft: #deedfc;
+    --green: #106e52;
+    --green-soft: #e2f3ec;
+    --red: #b72e45;
+    --red-soft: #fce8ec;
+    --yellow: #8d5d08;
+    --yellow-soft: #faf0d6;
+    --shadow: 0 7px 24px #253c5810, inset 0 1px 0 #ffffffe6;
+    --glass-surface: #ffffffa6;
+    --glass-rim: #ffffffe0;
+    --glass-shine: #ffffffc7;
+    --glass-shadow: 0 12px 32px #233e5e12, 0 2px 5px #233e5e08, inset 0 1px 0 var(--glass-shine), inset 0 -1px 0 #ffffff4a;
+    --glass-blur: 24px;
+    --glass-filter: blur(var(--glass-blur)) saturate(155%);
+    --glass-ambient-a: #b9d8ee;
+    --glass-ambient-b: #d9d6ee;
+    --glass-ambient-c: #c7e6e0;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-glass-palette="amethyst"] {
+    --blue: #7144c6;
+    --blue-soft: #eee6fc;
+    --glass-ambient-a: #d8c4ed;
+    --glass-ambient-b: #c9d8ee;
+    --glass-ambient-c: #ecd9e0;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-glass-palette="graphite"] {
+    --blue: #435767;
+    --blue-soft: #e2e9ef;
+    --glass-ambient-a: #c1cdd9;
+    --glass-ambient-b: #d0d5de;
+    --glass-ambient-c: #c7dbda;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] {
+    --bg: #101923;
+    --card: #1e2b3beb;
+    --card-subtle: #29384ac4;
+    --text: #f1f6fc;
+    --muted: #b7c6d8;
+    --faint: #a3b5ca;
+    --border: #abc7e12e;
+    --blue: #83bdff;
+    --blue-soft: #253f5c;
+    --green: #81dbb9;
+    --green-soft: #1c423b;
+    --red: #ff9aae;
+    --red-soft: #512d3b;
+    --yellow: #f1ce80;
+    --yellow-soft: #423b2b;
+    --glass-surface: #1a293bcc;
+    --glass-rim: #b1d1ed30;
+    --glass-shine: #e0f0ff26;
+    --shadow: 0 8px 26px #00000020, inset 0 1px 0 #ffffff0c;
+    --glass-shadow: 0 14px 38px #00000030, inset 0 1px 0 var(--glass-shine), inset 0 -1px 0 #ffffff06;
+    --glass-ambient-a: #173e5c;
+    --glass-ambient-b: #303052;
+    --glass-ambient-c: #173d3d;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"][data-glass-palette="amethyst"] {
+    --blue: #c6afff;
+    --blue-soft: #3b3158;
+    --glass-ambient-a: #39264d;
+    --glass-ambient-b: #273454;
+    --glass-ambient-c: #442c3b;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"][data-glass-palette="graphite"] {
+    --blue: #b7d3ea;
+    --blue-soft: #304251;
+    --glass-ambient-a: #273640;
+    --glass-ambient-b: #2d3040;
+    --glass-ambient-c: #223e40;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"] body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
+    background: var(--bg);
+    isolation: isolate;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"] body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    background: radial-gradient(ellipse at 8% 8%, var(--glass-ambient-a), transparent 52%), radial-gradient(ellipse at 90% 14%, var(--glass-ambient-b), transparent 46%), radial-gradient(ellipse at 72% 98%, var(--glass-ambient-c), transparent 52%);
+  }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .content { max-width: 1540px; padding: 26px 30px 90px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .content.notes-content { max-width: none; padding: 20px 26px 26px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .main { margin-left: 254px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell.sidebar-collapsed .main { margin-left: 100px; }
+
+  :root[data-ui-theme="liquid-glass-card"] :is(.sidebar, .topbar, .notification-panel, .search-results, .an-menu, .mobile-menu-dialog, .modal, .an-dialog) {
+    border: 1px solid var(--glass-rim);
+    background: var(--glass-surface);
+    box-shadow: var(--glass-shadow);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+  }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .sidebar {
+    inset: 18px auto 18px 18px;
+    width: 218px;
+    padding: 22px 12px 12px;
+    border-radius: 28px;
+  }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell.sidebar-collapsed .sidebar { width: 70px; padding-inline: 7px; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar .brand { margin-bottom: 8px; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar .brand-mark { border-radius: 12px; box-shadow: 0 4px 12px #17427b1c; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar nav { gap: 15px; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar .nav-group > small { font-size: 9px; letter-spacing: .12em; margin: 8px 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar nav button { min-height: 44px; border-radius: 13px; font-size: 12px; padding-inline: 12px; margin-bottom: 3px; }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar nav button.active { background: var(--card); box-shadow: var(--shadow); color: var(--blue); }
+  :root[data-ui-theme="liquid-glass-card"] .sidebar .profile { padding: 10px; border: 1px solid var(--glass-rim); border-radius: 18px; background: var(--card); }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar {
+    top: 18px;
+    margin: 18px 30px 0;
+    padding: 0 14px;
+    height: 60px;
+    border-radius: 20px;
+  }
+  :root[data-ui-theme="liquid-glass-card"] .topbar .search-wrap { background: var(--card-subtle); border-color: var(--border); border-radius: 13px; }
+  :root[data-ui-theme="liquid-glass-card"] .top-actions > button { border-radius: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .notification-panel { top: calc(100% + 12px); right: 0; border-radius: 22px; }
+  :root[data-ui-theme="liquid-glass-card"] .search-results { border-radius: 16px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.panel, .metric-card, .attention-card, .customer-card, .dtf-pipeline, .materials-order, .materials-empty, .production-delivered, .dtf-metrics article, .materials-totals article) {
+    border: 1px solid var(--glass-rim);
+    border-radius: 22px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) { margin-bottom: 24px; align-items: center; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) h1 { font-size: clamp(27px, 2.6vw, 36px); font-weight: 720; letter-spacing: -.055em; line-height: 1.15; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+  :root[data-ui-theme="liquid-glass-card"] .eyebrow { font-size: 9px; letter-spacing: .16em; color: var(--muted); }
+  :root[data-ui-theme="liquid-glass-card"] .section-title { min-height: 61px; padding-inline: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .section-title h2 { font-size: 15px; font-weight: 650; }
+
+  :root[data-ui-theme="liquid-glass-card"] :is(.primary, .an-primary, .floating-new) {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--blue) 56%, white);
+    border-radius: 14px;
+    background: linear-gradient(155deg, #ffffff36, transparent 65%), var(--blue);
+    color: #fff;
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--blue) 20%, transparent), inset 0 1px 0 #ffffff73, inset 0 -1px 0 #00000015;
+    font-size: 12px;
+    font-weight: 650;
+    min-height: 42px;
+    text-shadow: 0 1px 1px #00000012;
+  }
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] :is(.primary, .an-primary, .floating-new) { color: #102234; text-shadow: none; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.secondary, .notes-entry-button, .an-shortcuts button) {
+    border: 1px solid var(--glass-rim);
+    border-radius: 12px;
+    background: linear-gradient(155deg, var(--glass-shine), transparent 85%), var(--card-subtle);
+    box-shadow: inset 0 1px 0 var(--glass-shine), 0 3px 9px #172b4510;
+    color: var(--text);
+    font-size: 12px;
+    min-height: 38px;
+  }
+  :root[data-ui-theme="liquid-glass-card"] :is(button, input, select, textarea, a):focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+  :root[data-ui-theme="liquid-glass-card"] button { -webkit-tap-highlight-color: transparent; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.primary, .secondary, .floating-new, .glass-shortcuts button, .sidebar nav button, .mobile-nav > button) { transition: transform .16s ease, background-color .16s ease, box-shadow .16s ease; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.primary, .secondary, .glass-shortcuts button):active { transform: scale(.98); }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .floating-new { position: fixed; min-height: 46px; border-radius: 18px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .glass-overview { margin-bottom: 22px; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kicker { font-size: 11px; color: var(--muted); text-transform: capitalize; letter-spacing: .03em; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-overview h1 { margin: 8px 0; font-size: clamp(32px, 4.2vw, 51px); font-weight: 720; line-height: 1; letter-spacing: -.065em; overflow-wrap: anywhere; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-overview h1 span { color: var(--blue); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-overview p { display: flex; flex-wrap: wrap; gap: 5px 8px; margin: 0; font-size: 13px; color: var(--muted); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts button { display: flex; align-items: center; gap: 10px; padding: 15px 12px; border: 1px solid var(--glass-rim); border-radius: 19px; background: linear-gradient(150deg, var(--glass-shine), transparent), var(--glass-surface); box-shadow: var(--glass-shadow); text-align: left; cursor: pointer; min-width: 0; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts button > span:nth-child(2) { min-width: 0; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts b { display: block; font-size: 13px; font-weight: 650; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts small { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts button > svg { margin-left: auto; flex-shrink: 0; color: var(--muted); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-shortcut-icon { flex: 0 0 36px; height: 36px; display: grid; place-items: center; color: var(--blue); border-radius: 12px; background: var(--blue-soft); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-notes-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 4px; font-size: 12px; font-weight: 600; color: var(--blue); cursor: pointer; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-grid { gap: 16px; margin-bottom: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card { padding: 22px; min-height: 160px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card > strong { margin: 16px 0; font-size: clamp(25px, 2.5vw, 32px); font-weight: 650; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+  :root[data-ui-theme="liquid-glass-card"] .metric-top small { font-size: 10px; letter-spacing: .08em; }
+  :root[data-ui-theme="liquid-glass-card"] .metric-top > span { width: 35px; height: 35px; border-radius: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .metric-detail { font-size: 11px; }
+  :root[data-ui-theme="liquid-glass-card"] .dashboard-grid { grid-template-columns: minmax(0, 1fr) 260px; gap: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.today-row, .delivery-row) { min-height: 79px; padding: 14px 20px; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.today-row, .delivery-row) b { font-size: 13px; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.today-row, .delivery-row) small { font-size: 11px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation { display: flex; gap: 7px; padding: 7px; margin-bottom: 18px; overflow-x: auto; border: 1px solid var(--glass-rim); border-radius: 18px; background: var(--glass-surface); box-shadow: var(--glass-shadow); scrollbar-width: thin; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button { --stage-color: var(--blue); display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1; min-width: max-content; min-height: 40px; padding: 8px 13px; border: 1px solid transparent; border-radius: 12px; font-size: 12px; color: var(--text); cursor: pointer; }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button:hover { background: var(--card); border-color: var(--glass-rim); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button[data-stage="0"] { --stage-color: var(--muted); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button[data-stage="1"] { --stage-color: var(--yellow); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button[data-stage="3"] { --stage-color: var(--green); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-stage-mark { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--stage-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage-color) 10%, transparent); }
+  :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation b { min-width: 23px; padding: 3px 6px; border-radius: 7px; background: var(--card); font-size: 11px; font-variant-numeric: tabular-nums; }
+  :root[data-ui-theme="liquid-glass-card"] .production-stage-jump { display: none; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .production-kanban { gap: 14px; grid-template-columns: repeat(4, minmax(220px, 1fr)); padding-bottom: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .production-lane { padding: 12px; border: 1px solid var(--glass-rim); border-top: 3px solid color-mix(in srgb, var(--stage-color) 45%, var(--glass-rim)); border-radius: 22px; background: color-mix(in srgb, var(--card-subtle) 74%, transparent); }
+  :root[data-ui-theme="liquid-glass-card"] .production-lane > header { padding: 4px 2px 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-lane h2 { font-size: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .production-order-card { border-radius: 16px; border-color: var(--glass-rim); background: var(--card); box-shadow: var(--shadow); }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-toggle { min-height: 76px; padding: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-summary-name { font-size: 14px; font-weight: 650; line-height: 1.3; }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-summary-meta { font-size: 11px; gap: 6px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-drag-handle { border-right-color: var(--border); background: color-mix(in srgb, var(--stage-color) 6%, transparent); }
+  :root[data-ui-theme="liquid-glass-card"] .production-count { border-radius: 9px; background: var(--card); color: var(--stage-color, var(--muted)); }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-content { padding: 13px; gap: 9px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-content h3 { font-size: 14px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-actions button { width: 33px; height: 33px; border-radius: 10px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-next { min-height: 38px; padding-inline: 10px; border-radius: 10px; font-size: 11px; }
+  :root[data-ui-theme="liquid-glass-card"] .production-order-move select { min-height: 36px; border-radius: 10px; font-size: 12px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-order { grid-template-columns: 52px minmax(0, 1fr) auto; grid-template-areas: "photo description description" "specs deadline money" "actions actions actions" "prints prints prints"; gap: 14px 10px; padding: 16px; border: 1px solid var(--border); border-radius: 18px; background: var(--card-subtle); align-items: start; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-thumb { grid-area: photo; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-order-description { grid-area: description; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-order-specs { grid-area: specs; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-order-deadline { grid-area: deadline; align-self: center; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-order-money { grid-area: money; text-align: right; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-order-actions { grid-area: actions; padding-top: 10px; border-top: 1px solid var(--border); }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order > .dtf-prints-panel { grid-area: prints; margin-left: 0; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-orders > .dtf-empty { grid-column: 1 / -1; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order-description h2 { font-size: 16px; font-weight: 650; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-thumb { border-radius: 14px; background: var(--card-subtle); border-color: var(--border); }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-filters { gap: 7px; padding-top: 5px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-filters button { border-radius: 10px; min-height: 35px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order-actions button { border-radius: 11px; min-height: 38px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-order-description .dtf-order-notes { border-radius: 4px 12px 12px 4px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-metrics { gap: 14px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-metrics article { padding: 18px; }
+  :root[data-ui-theme="liquid-glass-card"] .dtf-search { border-radius: 12px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .customer-grid { gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(275px, 100%), 1fr)); }
+  :root[data-ui-theme="liquid-glass-card"] .customer-card-top { padding: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-card h3 { font-size: 15px; font-weight: 650; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-card p { font-size: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-stats { padding: 18px 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-stats small { font-size: 11px; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+  :root[data-ui-theme="liquid-glass-card"] .customer-card footer { min-height: 52px; font-size: 11px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-summary { gap: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .finance-summary article { padding: 22px; }
+  :root[data-ui-theme="liquid-glass-card"] .finance-summary strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-columns { gap: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .commitment-row { padding: 16px 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .commitment-row b { font-size: 13px; }
+  :root[data-ui-theme="liquid-glass-card"] .commitment-row small { font-size: 11px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .history-metrics article { padding: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .history-panel-heading { padding: 18px 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .history-tabs button { border-radius: 12px; min-height: 37px; }
+  :root[data-ui-theme="liquid-glass-card"] .history-records li { padding: 15px 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .history-record-info strong { font-size: 14px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes { height: calc(var(--ui-viewport-height) - 125px); min-height: 530px; border: 1px solid var(--glass-rim); border-radius: 24px; background: var(--card); box-shadow: var(--shadow); overflow: hidden; grid-template-columns: 290px minmax(0, 1fr); }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator { grid-template-columns: 235px minmax(260px, 1fr) 335px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator.an-sidebar-hidden { grid-template-columns: minmax(260px, 1fr) 335px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-list-panel { background: var(--card-subtle); backdrop-filter: none; }
+  :root[data-ui-theme="liquid-glass-card"] .an-search { border-radius: 12px; min-height: 39px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-note-row { border-radius: 14px; }
+  :root[data-ui-theme="liquid-glass-card"] .apple-notes .an-note-row.selected { background: var(--blue-soft); box-shadow: inset 0 1px 0 var(--glass-shine); }
+  :root[data-ui-theme="liquid-glass-card"] .an-editor-topbar { background: var(--card-subtle); min-height: 60px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-document { padding-top: 26px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-editor-modes button { border-radius: 11px; min-height: 35px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-material { border-radius: 16px; background: var(--card-subtle); }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .materials-totals article { padding: 18px; }
+  :root[data-ui-theme="liquid-glass-card"] .materials-toolbar { padding: 10px; background: var(--glass-surface); border: 1px solid var(--glass-rim); border-radius: 18px; }
+  :root[data-ui-theme="liquid-glass-card"] .materials-order > header { padding: 18px; }
+  :root[data-ui-theme="liquid-glass-card"] .materials-table :is(th, td) { padding: 12px 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .tasks-workspace { max-width: 1040px; }
+  :root[data-ui-theme="liquid-glass-card"] .tasks-progress { padding: 22px; background: var(--card-subtle); }
+  :root[data-ui-theme="liquid-glass-card"] .tasks-progress progress { height: 6px; border-radius: 9px; }
+  :root[data-ui-theme="liquid-glass-card"] .tasks-list { border-radius: 17px; }
+  :root[data-ui-theme="liquid-glass-card"] .task-row { min-height: 61px; padding-block: 9px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .settings-grid { gap: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .settings-card { padding: 24px; }
+  :root[data-ui-theme="liquid-glass-card"] .settings-card h3 { font-size: 17px; }
+  :root[data-ui-theme="liquid-glass-card"] .settings-card :is(p, small) { font-size: 12px; line-height: 1.5; }
+  :root[data-ui-theme="liquid-glass-card"] .settings-card label b { font-size: 13px; }
+  :root[data-ui-theme="liquid-glass-card"] .settings-card .interface-size button { font-size: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .settings-card > label { padding-block: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .interface-size button { border-radius: 12px; }
+
+  :root[data-ui-theme="liquid-glass-card"] .modal-backdrop { background: #10243b40; }
+  :root[data-ui-theme="liquid-glass-card"] .modal-backdrop:not(.compact-modal-backdrop) { align-items: center; padding: 20px; }
+  :root[data-ui-theme="liquid-glass-card"] .modal-backdrop > .modal { height: auto; max-height: calc(100dvh - 40px); border-radius: 26px; }
+  :root[data-ui-theme="liquid-glass-card"] .modal :is(input:not([type="checkbox"]):not([type="color"]), select, textarea) { font-size: 14px; border-radius: 12px; background: var(--card-subtle); color: var(--text); }
+  :root[data-ui-theme="liquid-glass-card"] .modal header { min-height: 78px; }
+  :root[data-ui-theme="liquid-glass-card"] :is(.modal, .an-dialog) { background: var(--card); }
+  :root[data-ui-theme="liquid-glass-card"] .modal header button { border-radius: 50%; }
+  :root[data-ui-theme="liquid-glass-card"] .modal label { font-size: 12px; }
+  :root[data-ui-theme="liquid-glass-card"] .an-dialog { border-radius: 24px; }
+  :root[data-ui-theme="liquid-glass-card"] .toast { background: var(--glass-surface); border: 1px solid var(--glass-rim); color: var(--text); border-radius: 16px; box-shadow: var(--glass-shadow); backdrop-filter: var(--glass-filter); }
+  :root[data-ui-theme="liquid-glass-card"] :is(.glass-overview, .page-heading, .production-heading, .dtf-header, .history-heading, .tasks-heading, .materials-heading, .modal, .an-dialog) { animation: glass-materialize .22s ease-out both; }
+  @keyframes glass-materialize { from { opacity: .65; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  @media (hover: hover) {
+    :root[data-ui-theme="liquid-glass-card"] :is(.glass-shortcuts button, .metric-card):hover { transform: translateY(-2px); box-shadow: var(--glass-shadow); border-color: color-mix(in srgb, var(--blue) 30%, var(--glass-rim)); }
+    :root[data-ui-theme="liquid-glass-card"] :is(.primary, .secondary):hover { filter: brightness(1.04); box-shadow: var(--glass-shadow); }
+  }
+
+  @media (max-width: 1100px) {
+    :root[data-ui-theme="liquid-glass-card"] .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+    :root[data-ui-theme="liquid-glass-card"] .side-column .quick-panel { display: grid; grid-template-columns: repeat(3, 1fr); }
+    :root[data-ui-theme="liquid-glass-card"] .side-column .section-title { grid-column: 1 / -1; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator { grid-template-columns: minmax(0, 1fr) 310px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator.an-sidebar-hidden { grid-template-columns: minmax(0, 1fr) 310px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-orders { grid-template-columns: minmax(0, 1fr); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-columns { grid-template-columns: minmax(0, 1fr); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-summary article:last-child { grid-column: 1 / -1; }
+    :root[data-ui-theme="liquid-glass-card"] .finance-summary strong { overflow-wrap: anywhere; }
+  }
+
+  @media (max-width: 760px) {
+    :root[data-ui-theme="liquid-glass-card"] { --mobile-nav: calc(94px + env(safe-area-inset-bottom, 0px)); touch-action: pan-x pan-y; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .main, :root[data-ui-theme="liquid-glass-card"] .app-shell.sidebar-collapsed .main { margin-left: 0; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .sidebar { display: none; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar { top: 8px; margin: 8px 12px 0; height: 56px; padding: 0 9px; border-radius: 19px; gap: 7px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar .search-wrap { min-width: 0; height: 38px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar .mobile-logo { flex: 0 0 32px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar .top-actions { gap: 0; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .topbar .top-actions > button { width: 36px; min-width: 36px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .content { padding: 24px 16px calc(var(--mobile-nav) + 25px); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .content.notes-content { padding: 14px 10px 0 !important; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .mobile-nav {
+      inset: auto 12px calc(12px + env(safe-area-inset-bottom, 0px));
+      height: 68px;
+      padding: 5px;
+      border: 1px solid var(--glass-rim);
+      border-radius: 26px;
+      background: var(--glass-surface);
+      box-shadow: var(--glass-shadow);
+      backdrop-filter: var(--glass-filter);
+      -webkit-backdrop-filter: var(--glass-filter);
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .mobile-nav > button { border-radius: 20px; height: 56px; font-size: 9px; gap: 4px; padding: 4px 1px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .mobile-nav > button.active { background: var(--card); box-shadow: inset 0 1px 0 var(--glass-shine), 0 3px 10px #2339540d; color: var(--blue); }
+    :root[data-ui-theme="liquid-glass-card"] .mobile-menu-dialog[open] { inset: auto 10px calc(10px + env(safe-area-inset-bottom, 0px)); width: calc(100% - 20px); border-radius: 30px; background: var(--card); border: 1px solid var(--glass-rim); }
+    :root[data-ui-theme="liquid-glass-card"] .mobile-menu-dialog::backdrop { background: #10243b55; backdrop-filter: none; }
+    :root[data-ui-theme="liquid-glass-card"] .mobile-menu-surface { padding-bottom: 24px; }
+    :root[data-ui-theme="liquid-glass-card"] .mobile-menu-links button { border-radius: 15px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) { align-items: flex-start; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) h1 { font-size: 30px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .glass-overview-heading { align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-overview h1 { font-size: 43px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts { gap: 10px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts button { padding: 13px 10px; gap: 8px; border-radius: 18px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcut-icon { flex-basis: 31px; height: 31px; border-radius: 11px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts b { font-size: 13px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-shortcuts small { font-size: 9px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card { min-height: 148px; padding: 14px; border-radius: 20px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card:last-child { grid-column: 1 / -1; min-height: 108px; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card:last-child .metric-detail { grid-column: 1 / -1; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .metric-card > strong { font-size: calc(23px * var(--ui-zoom)); overflow-wrap: anywhere; }
+    :root[data-ui-theme="liquid-glass-card"] .metric-top > span { width: 29px; height: 29px; flex-shrink: 0; }
+    :root[data-ui-theme="liquid-glass-card"] .metric-top { gap: 6px; }
+    :root[data-ui-theme="liquid-glass-card"] .metric-top small { font-size: 9px; }
+    :root[data-ui-theme="liquid-glass-card"] .metric-detail { font-size: 10px; }
+    :root[data-ui-theme="liquid-glass-card"] .side-column .quick-panel { display: block; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-summary { grid-template-columns: 1fr; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-summary article { padding: 18px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .finance-columns { grid-template-columns: 1fr; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-metrics article { padding: 14px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-order { gap: 10px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .production-lane { padding: 11px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation { gap: 3px; border-radius: 18px; margin-bottom: 15px; }
+    :root[data-ui-theme="liquid-glass-card"] .glass-kanban-navigation button { min-height: 44px; flex-shrink: 0; font-size: 12px; padding-inline: 11px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .production-kanban { grid-template-columns: repeat(4, min(79vw, 310px)); scroll-padding-inline: 0; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .production-order-actions button { width: 40px; height: 40px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .production-order-summary-name { font-size: calc(16px * var(--ui-zoom)); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .dtf-order-description h2 { font-size: calc(16px * var(--ui-zoom)); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .customer-card h3 { font-size: calc(16px * var(--ui-zoom)); }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes,
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator,
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .apple-notes.an-has-calculator.an-sidebar-hidden { display: block; height: calc(100dvh - 175px); min-height: 350px; border-radius: 22px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .an-document { padding: 23px 18px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .an-editor-topbar { min-height: 57px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .an-title { font-size: 29px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .history-metrics article { padding: 15px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .settings-card { padding: 20px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .floating-new { bottom: calc(var(--mobile-nav) + 8px); right: 16px; border-radius: 18px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .modal-backdrop:not(.compact-modal-backdrop) { padding: 10px; align-items: flex-end; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .modal-backdrop > .modal { border-radius: 26px; max-height: 89dvh; padding-inline: 18px; }
+    :root[data-ui-theme="liquid-glass-card"] .an-modal-backdrop { padding: 10px; align-items: flex-end; }
+    :root[data-ui-theme="liquid-glass-card"] .an-modal-backdrop .an-dialog { border-radius: 26px; max-height: 89dvh; width: 100%; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .modal :is(input:not([type="checkbox"]):not([type="hidden"]), select, textarea) { font-size: 16px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .modal.compact-modal { max-width: 340px; }
+    :root[data-ui-theme="liquid-glass-card"] .app-shell .toast { bottom: calc(var(--mobile-nav) + 12px); }
+  }
+
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .compact-modal-backdrop { align-items: center; padding: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .modal.compact-modal header { min-height: 0; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .modal.compact-modal h2 { font-size: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] .app-shell .modal.compact-modal header button { width: 32px; height: 32px; }
+
+  /* Opaque surfaces are also the fallback when backdrop filters are unavailable. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root[data-ui-theme="liquid-glass-card"] { --glass-surface: #f8fbff; --card: #f8fbff; --card-subtle: #eef3f8; --glass-filter: none; }
+    :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] { --glass-surface: #1e2b3b; --card: #1e2b3b; --card-subtle: #29384a; }
+  }
+  :root[data-ui-theme="liquid-glass-card"][data-glass-transparency="reduced"] { --glass-surface: var(--card); --glass-filter: none; --card: #f8fbff; --card-subtle: #eef3f8; }
+  :root[data-ui-theme="liquid-glass-card"][data-glass-transparency="reduced"][data-theme="dark"] { --card: #1e2b3b; --card-subtle: #29384a; }
+  @media (prefers-reduced-transparency: reduce) {
+    :root[data-ui-theme="liquid-glass-card"] { --glass-surface: #f8fbff; --card: #f8fbff; --card-subtle: #eef3f8; --glass-filter: none; }
+    :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] { --glass-surface: #1e2b3b; --card: #1e2b3b; --card-subtle: #29384a; --glass-filter: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root[data-ui-theme="liquid-glass-card"] { --border: #788a9c; --muted: #354c63; --glass-rim: #788a9c; }
+    :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] { --border: #8ca5bf; --muted: #d5e4f6; --glass-rim: #8ca5bf; }
+  }
+  :root[data-ui-theme="liquid-glass-card"][data-glass-motion="reduced"] *,
+  :root[data-ui-theme="liquid-glass-card"][data-glass-motion="reduced"] *::before,
+  :root[data-ui-theme="liquid-glass-card"][data-glass-motion="reduced"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  @media (prefers-reduced-motion: reduce) {
+    :root[data-ui-theme="liquid-glass-card"] *,
+    :root[data-ui-theme="liquid-glass-card"] *::before,
+    :root[data-ui-theme="liquid-glass-card"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+}

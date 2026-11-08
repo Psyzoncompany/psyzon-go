@@ -15,7 +15,7 @@
     "test:api": "tsx --test tests/mercado-pago-payment.test.ts tests/pluggy-core.test.ts",
     "test:rules": "firebase emulators:exec --project psyzon-go-rules-test --only firestore \"tsx --test tests/firestore.rules.test.ts\"",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.vercel.json",
-    "test:workspace": "tsx --test tests/finance-model.test.ts tests/production-checklist.test.ts",
+    "test:workspace": "tsx --test tests/finance-model.test.ts tests/production-checklist.test.ts tests/appearance.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "test:notes": "node --import tsx --test tests/notes.test.ts"

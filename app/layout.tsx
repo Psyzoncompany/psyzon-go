@@ -6,6 +6,8 @@ import "./mobile-shell.css";
 import "./finance-forecast.css";
 import "./production-print.css";
 import "./mobile-design.css";
+import "./liquid-glass.css";
+import { appearanceBootstrap } from "./interface-appearance";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
@@ -34,6 +36,7 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="pt-BR"><body className={geist.variable}>{children}</body></html>;
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  return <html lang="pt-BR" suppressHydrationWarning><head><script nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceBootstrap }} /></head><body className={geist.variable}>{children}</body></html>;
 }

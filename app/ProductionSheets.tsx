@@ -20,7 +20,15 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   const inlineLimit = photoData && checklist.rows.length <= 20 ? 420 : 200;
   const extra = attention.length > inlineLimit || attention.split("\n").length > 8 ? attention.match(/[\s\S]{1,1200}/g) ?? [] : [];
   const totalPages = pages.length + extra.length;
-  const header = <header className="production-sheet-header"><div><small>PSYZON · CONTROLE DE PRODUÇÃO</small><h1>LISTA DE CAMISAS</h1><p>{checklist.client || "Pedido"}{checklist.deadline ? ` · Entrega: ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${checklist.deadline}T12:00:00`))}` : ""}</p></div>{photoData && <figure className="production-product-photo"><img src={photoData} alt="Foto do produto" /><figcaption>Referência do produto</figcaption></figure>}<div><strong>{checklist.rows.length} UNIDADES</strong><small>Total do pedido</small></div></header>;
+  const photoNotes = Boolean(photoData && attention && !extra.length);
+  const total = <><strong>{checklist.rows.length} UNIDADES</strong><small>Total do pedido</small></>;
+  const header = <header className="production-sheet-header">
+    <div><small>PSYZON · CONTROLE DE PRODUÇÃO</small><h1>LISTA DE CAMISAS</h1><p>{checklist.client || "Pedido"}{checklist.deadline ? ` · Entrega: ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${checklist.deadline}T12:00:00`))}` : ""}</p>
+      {photoData && <div className="production-inline-total">{total}</div>}
+      {photoNotes && <section className="production-photo-notes"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
+    </div>
+    {photoData ? <figure className="production-product-photo"><img src={photoData} alt="Foto do produto" /><figcaption>Referência do produto</figcaption></figure> : <div className="production-sheet-total">{total}</div>}
+  </header>;
   const footer = (index: number) => <footer className="production-sheet-footer">
     <div className={`production-sheet-bottom ${index >= pages.length ? "production-summary-only" : ""}`}>
       <section className="production-summary"><h2>RESUMO POR TAMANHO</h2>
@@ -53,7 +61,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
         </div>)}
       </div>)}
     </section>)}</div>)}</div>
-    {attention && !extra.length && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
+    {attention && !extra.length && !photoNotes && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
     {footer(pageIndex)}
   </article>)}{extra.map((text, index) => <article className="production-sheet" key={`notes-${index}`}>{header}<section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO · OBSERVAÇÕES E CONFERÊNCIA</h2><p>{text}</p></section>{footer(pages.length + index)}</article>)}</>;
 }

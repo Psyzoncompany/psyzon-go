@@ -5,6 +5,10 @@ usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
 
 ## Operação diária
 
+- O modo flutuante mostra os afazeres em uma janela que permanece sobre os outros
+  aplicativos. A lista acompanha as mudanças em tempo real e permite concluir ou
+  reabrir tarefas. A seta abre a lista completa no sistema. Disponível no Chrome
+  e Edge com suporte a Document Picture-in-Picture.
 - Os botões de voltar/avançar do navegador e do mouse navegam entre as telas.
 - Em Clientes, o lápis edita total comprado e saldo pendente. Os ajustes continuam
   recebendo os valores de novos pedidos. A lixeira remove o cadastro da lista e

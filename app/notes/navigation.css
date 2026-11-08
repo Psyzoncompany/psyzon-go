@@ -6,5 +6,9 @@
 .notes-nav-short { display:none; }
 .app-shell .topbar.notes-topbar .mobile-logo,.app-shell .topbar.notes-topbar .top-actions>button:not(.notification) { display:none; }
 .app-shell .topbar.notes-topbar .top-actions { margin-left:auto; }
+@media (min-width:761px) {
+  .app-shell .topbar.notes-topbar .top-actions>button.floating-mode-action { display:flex;justify-content:center;width:36px;padding:0; }
+  .app-shell .topbar.notes-topbar .floating-mode-action span { display:none; }
+}
 @media(max-width:760px){.app-shell .topbar.notes-topbar{gap:4px;padding-inline:8px}.notes-page-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}.notes-page-nav button{flex-direction:column;gap:3px;padding:5px 2px;font-size:10px;min-height:44px}.notes-nav-full{display:none}.notes-nav-short{display:inline}}
 @media print{.notes-page-nav{display:none}}

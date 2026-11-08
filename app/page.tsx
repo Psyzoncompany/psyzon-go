@@ -15,6 +15,7 @@ import { makeId, millis } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
 import type { Task } from "./notes/task-model";
+import FloatingTasks from "./notes/FloatingTasks";
 import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
@@ -255,11 +256,17 @@ export default function HomePage() {
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
-  const [floatingModeOpen, setFloatingModeOpen] = useState(false);
+  const [floatingHost, setFloatingHost] = useState<Window | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
+  const floatingOpeningRef = useRef(false);
   const dailyRemindersSignature = useRef("");
+
+  useEffect(() => () => {
+    floatingWindowRef.current?.close();
+    floatingWindowRef.current = null;
+  }, [uid]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setIntroComplete(true), 1900);
@@ -423,56 +430,32 @@ export default function HomePage() {
   };
 
   const toggleFloatingMode = async () => {
+    if (floatingOpeningRef.current) return;
     const controller = (window as Window & { documentPictureInPicture?: DocumentPictureInPictureController }).documentPictureInPicture;
     if (!controller) return showToast("Modo flutuante disponível no Edge ou Chrome atualizado");
     if (floatingWindowRef.current && !floatingWindowRef.current.closed) {
       floatingWindowRef.current.close();
       floatingWindowRef.current = null;
-      setFloatingModeOpen(false);
+      setFloatingHost(null);
       return;
     }
 
+    floatingOpeningRef.current = true;
     try {
-      const floatingWindow = await controller.requestWindow({ width: 230, height: 128 });
+      const floatingWindow = await controller.requestWindow({ width: 340, height: 430 });
       floatingWindowRef.current = floatingWindow;
-      floatingWindow.document.title = "PSYZON GO · Acesso rápido";
-
-      const style = floatingWindow.document.createElement("style");
-      style.textContent = `
-        * { box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
-        body { padding: 10px; background: #071226; font-family: Inter, system-ui, sans-serif; }
-        button { width: 100%; height: 100%; padding: 10px 12px; border: 1px solid rgba(96,165,250,.35); border-radius: 16px; background: linear-gradient(145deg,#102753,#0d1d3e); color: white; display: flex; align-items: center; gap: 11px; text-align: left; cursor: pointer; box-shadow: 0 12px 32px rgba(0,0,0,.32); }
-        button:hover { border-color: #60a5fa; background: linear-gradient(145deg,#16336a,#102753); }
-        img { width: 46px; height: 46px; border-radius: 13px; box-shadow: 0 8px 22px rgba(37,99,235,.35); }
-        span { min-width: 0; display: flex; flex-direction: column; }
-        b { font-size: 13px; letter-spacing: .035em; }
-        small { margin-top: 4px; color: #93c5fd; font-size: 9px; }
-      `;
-      const launcher = floatingWindow.document.createElement("button");
-      launcher.type = "button";
-      launcher.setAttribute("aria-label", "Abrir PSYZON GO");
-      const logo = floatingWindow.document.createElement("img");
-      logo.src = new URL("/icon-192-v3.png", window.location.href).href;
-      logo.alt = "";
-      const label = floatingWindow.document.createElement("span");
-      const title = floatingWindow.document.createElement("b");
-      title.textContent = "PSYZON GO";
-      const hint = floatingWindow.document.createElement("small");
-      hint.textContent = "Clique para abrir o sistema";
-      label.append(title, hint);
-      launcher.append(logo, label);
-      launcher.addEventListener("click", () => window.focus());
-      floatingWindow.document.head.append(style);
-      floatingWindow.document.body.append(launcher);
+      floatingWindow.document.title = "PSYZON GO · Afazeres";
       floatingWindow.addEventListener("pagehide", () => {
+        if (floatingWindowRef.current !== floatingWindow) return;
         floatingWindowRef.current = null;
-        setFloatingModeOpen(false);
+        setFloatingHost(null);
       });
-      setFloatingModeOpen(true);
-      showToast("Atalho flutuante ativado");
+      setFloatingHost(floatingWindow);
+      showToast("Afazeres flutuantes ativados");
     } catch {
       showToast("Não foi possível abrir o modo flutuante");
+    } finally {
+      floatingOpeningRef.current = false;
     }
   };
 
@@ -1057,7 +1040,7 @@ export default function HomePage() {
   const userName = user.displayName || "Usuário PSYZON";
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
-  const floatingActive = floatingModeOpen;
+  const floatingActive = floatingHost !== null;
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view}>
@@ -1122,6 +1105,7 @@ export default function HomePage() {
 
 
       <MobileNavigation view={view} navigate={setView} />
+      {floatingHost && <FloatingTasks key={uid} host={floatingHost} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}

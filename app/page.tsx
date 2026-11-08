@@ -11,10 +11,11 @@ import ProductionBoard from "./ProductionBoard";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
-import { millis } from "./notes-model";
+import { makeId, millis } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
 import type { Task } from "./notes/task-model";
+import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
 import AppearanceSettings from "./AppearanceSettings";
@@ -780,6 +781,23 @@ export default function HomePage() {
     });
   };
 
+  const updateRestock = async (id: string, change: RestockChange) => {
+    if (!uid || firebaseState !== "live") throw new Error("Aguarde a sincronização do estoque.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const reference = userDocument(uid, "notes", id);
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("Este item já foi removido.");
+      const value = changeRestockNote({ ...snapshot.data(), id } as BusinessNote, change);
+      transaction.update(reference, { ...value, updatedAt: serverTimestamp() });
+    });
+  };
+
+  const saveRestock = async (text: string, id?: string) => {
+    if (!uid || firebaseState !== "live") throw new Error("Aguarde a sincronização do estoque.");
+    if (id) await updateRestock(id, { type: "edit", text });
+    else await setDoc(userDocument(uid, "notes", restockPrefix + makeId()), { ...newRestockNote(text), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  };
+
   const saveTask = async (title: string, id?: string) => {
     if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
     const clean = title.trim();
@@ -1069,7 +1087,7 @@ export default function HomePage() {
           {view === "producao" && <ProductionBoard liquid={interfaceAppearance.appearance.theme === "liquid-glass-card"} orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
-          {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
+          {view === "afazeres" && <TasksWorkspace key={uid} restock={restockTasks(notes)} stockConnection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} onRestockSave={saveRestock} onRestockToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onRestockDelete={id => updateRestock(id, { type: "remove" })} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace

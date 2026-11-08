@@ -116,3 +116,27 @@ test("failed writes retain recoverable text and retry the latest edit", async ()
   q.stage("a", "draft"); await q.flushAll(); assert.equal(local, "draft"); assert.equal(q.getStatuses().a, "error");
   q.stage("a", "revised"); fail = false; await q.flushAll(); assert.deepEqual(values, ["revised"]); assert.equal(local, null); assert.equal(q.getStatuses().a, "saved");
 });
+
+test("stock replenishment survives reload, editing, completion and recoverable removal independently of ordinary notes", async () => {
+  const { newRestockNote, changeRestockNote, restockTasks, restockPrefix } = await import("../app/notes/restock-model");
+  let note = { id: restockPrefix + "pv", ...newRestockNote("Malha PV preta — 5 kg\nConfirmar lote com o fornecedor."), createdAt: 123, updatedAt: 456 };
+  const original = { id: "customer-note", ...serializeDraft(newDraft("Pedido de cliente")) };
+  assert.deepEqual(restockTasks([original, note]).map(item => item.title), ["Malha PV preta — 5 kg\nConfirmar lote com o fornecedor."]);
+  assert.equal(restockTasks([note])[0].completed, false);
+  note = { ...note, ...changeRestockNote(note, { type: "toggle", completed: true }) };
+  note = { ...note, ...changeRestockNote(note, { type: "edit", text: "Malha PV preta — 7 kg\nMesmo lote." }) };
+  assert.equal(restockTasks([JSON.parse(JSON.stringify(note))])[0].completed, true);
+  assert.equal(restockTasks([note])[0].title, "Malha PV preta — 7 kg\nMesmo lote.");
+  note = { ...note, ...changeRestockNote(note, { type: "toggle", completed: false }) };
+  assert.equal(restockTasks([note])[0].completed, false);
+  note = { ...note, ...changeRestockNote(note, { type: "remove" }) };
+  assert.equal(restockTasks([note]).length, 0);
+  const draft = toDraft(note);
+  assert.equal(draft.document.status, "trash");
+  draft.document.status = "active";
+  assert.equal(restockTasks([{ ...note, ...serializeDraft(draft) }]).length, 1);
+  assert.throws(() => newRestockNote(" "));
+  assert.throws(() => newRestockNote("a".repeat(2001)));
+  assert.throws(() => changeRestockNote(original, { type: "remove" }));
+  assert.throws(() => changeRestockNote(note, { type: "toggle", completed: true }));
+});

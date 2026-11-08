@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import NoteDialog from "./notes/NoteDialog";
+import MobileNotesControls from "./notes/MobileNotesControls";
 import MaterialCalculator from "./notes/MaterialCalculator";
 import MaterialsWorkspace from "./notes/MaterialsWorkspace";
 import "./notes/notes.css";
@@ -216,6 +217,7 @@ export default function NotesWorkspace({ uid, notes, orders = [], customers = []
 
   return <div className={`apple-notes ${showChecklist ? "an-production-mode" : ""} ${sidebar ? "" : "an-sidebar-hidden"} ${mobileEditor ? "an-mobile-editor" : ""} ${calculator ? "an-has-calculator" : ""}`}>
     <aside className="an-list-panel" aria-label="Lista de anotações">
+      <MobileNotesControls section={filter} counts={{ all: activeCount, pinned: allNotes.filter(n => n.draft.document.status === "active" && n.draft.pinned).length, archive: allNotes.filter(n => n.draft.document.status === "archive").length, trash: allNotes.filter(n => n.draft.document.status === "trash").length }} search={search} category={category} sort={sort} onSection={section} onSearch={setSearch} onCategory={setCategory} onSort={setSort} onCreate={() => setModal("new")} />
       <header><h1>Anotações</h1><button className="an-icon blue" onClick={() => setModal("new")} aria-label="Nova anotação" title="Nova anotação"><FilePlus2 size={21} /></button></header>
       <div className="an-search"><Search size={17} /><input aria-label="Buscar anotações" placeholder="Buscar" value={search} onChange={e => setSearch(e.target.value)} /><kbd>⌕</kbd></div>
       <div className="an-segment"><button aria-pressed={filter === "all"} onClick={() => section("all")}>Todas <span>{activeCount}</span></button><button aria-pressed={filter === "pinned"} onClick={() => section("pinned")}><Pin size={13} /> Fixadas</button></div>

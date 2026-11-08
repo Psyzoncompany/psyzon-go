@@ -1,0 +1,26 @@
+.an-mobile-note-controls { display: none; }
+@media screen and (max-width: 760px) {
+  .app-shell .apple-notes .an-list-panel > :is(header, .an-search, .an-segment, .an-list-filters, footer) { display: none; }
+  .app-shell .apple-notes .an-mobile-note-controls { display: block; position: relative; flex-shrink: 0; padding: 8px 12px; border-bottom: 1px solid var(--border); z-index: 5; }
+  .an-mobile-note-bar { display: flex; align-items: center; gap: 4px; min-width: 0; height: 44px; }
+  .an-mobile-note-bar > label { flex: 1; min-width: 0; height: 44px; margin: 0; }
+  .apple-notes .an-mobile-note-bar > button, .apple-notes .an-mobile-note-filters header button { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--muted); flex-shrink: 0; }
+  .apple-notes .an-mobile-note-bar > button:is([data-active="true"], [aria-expanded="true"], .an-mobile-note-create) { color: var(--blue); background: var(--blue-soft); }
+  .an-mobile-note-section { position: relative; display: flex; align-items: center; color: var(--text); }
+  .an-mobile-note-section > svg:first-child { position: absolute; left: 8px; pointer-events: none; color: var(--blue); }
+  .an-mobile-note-section > svg:last-child { position: absolute; right: 8px; pointer-events: none; color: var(--muted); }
+  .apple-notes .an-mobile-note-section select { width: 100%; height: 44px; min-width: 0; padding: 0 28px 0 34px; border: 0; border-radius: 10px; background: transparent; color: var(--text); appearance: none; font: inherit; font-size: 14px; font-weight: 650; text-overflow: ellipsis; }
+  .an-mobile-note-search { display: flex; align-items: center; gap: 6px; padding-inline: 8px; border-radius: 10px; background: var(--card); color: var(--muted); }
+  .an-mobile-note-search > svg { flex-shrink: 0; }
+  .apple-notes .an-mobile-note-search input { width: 100%; min-width: 0; height: 44px; padding: 0; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 16px; }
+  .an-mobile-note-search:focus-within { outline: 2px solid var(--blue); outline-offset: -2px; }
+  .an-mobile-note-filters { position: absolute; top: calc(100% + 4px); left: 12px; right: 12px; display: grid; gap: 12px; padding: 12px 16px 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 12px 36px #18243825; }
+  .an-mobile-note-filters header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .an-mobile-note-filters header b { font-size: 14px; color: var(--text); }
+  .an-mobile-note-filters > label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+  .an-mobile-note-filters select { width: 100%; min-width: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-subtle); color: var(--text); font: inherit; font-size: 16px; }
+  .an-mobile-note-filters footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .apple-notes .an-mobile-note-filters footer button { min-height: 44px; padding: 8px 12px; border-radius: 10px; color: var(--blue); font-size: 13px; }
+  .apple-notes .an-mobile-note-filters footer button:last-child { background: var(--blue-soft); font-weight: 650; }
+  .app-shell .apple-notes .an-note-list { padding-top: 4px; }
+}

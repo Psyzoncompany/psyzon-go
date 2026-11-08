@@ -38,6 +38,10 @@
   .production-checklist .checklist-table td { padding: 4px 7px; }
   .production-checklist .checklist-table input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue); }
   .production-checklist .checklist-table tbody tr:hover { background: var(--card-subtle); }
+  .checklist-table-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; align-items: start; }
+  .checklist-table-columns[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-checklist .checklist-table-columns[data-columns="2"] .checklist-table { min-width: 0; }
+  .production-checklist .checklist-table-columns[data-columns="2"] th:nth-child(3) { width: 72px; }
 }
 @container (min-width: 740px) {
   .checklist-setup { grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr); align-items: stretch; }

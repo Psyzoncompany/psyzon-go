@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardList, Plus, Printer, Sparkles, Trash2, X } from "lucide-react";
 import { getAuth } from "firebase/auth";
 import Modal from "./Modal";
+import { makeId } from "./notes-model";
+import "./checklist-entry.css";
 import ProductionSheets from "./ProductionSheets";
 import OrderPhotoField from "./OrderPhotoField";
 import { parseProductionOrder, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
@@ -12,6 +14,7 @@ import { defaultProductionColor, productionColorFromNotes, productionColorFromPr
 
 export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void; onChange: (value: Checklist | null) => void }) {
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [raw, setRaw] = useState(source);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +58,41 @@ export default function ProductionChecklist({ value, title, source, photoData, l
     <div className="checklist-product-photo"><OrderPhotoField label="Foto do produto no PDF" value={productPhoto} onPhotoChange={onPhotoChange} includeFormField={false} onBusyChange={setPhotoBusy} />{linkedPhotoData && linkedPhotoData !== productPhoto && <button className="secondary" disabled={photoBusy} onClick={() => onPhotoChange(linkedPhotoData)}>Usar foto do pedido vinculado</button>}<p className="form-help">A foto aparece no cabeçalho do PDF. Você pode trocar ou remover quando quiser.</p></div>
     {error && !open && <p className="form-error" role="alert">{error}</p>}
     {!value && <p className="form-help">Cole a mensagem do cliente. A lista fica separada por modelo e tamanho, com uma marcação por peça.</p>}
-    {value && <><div className="checklist-theme"><label>Cor da camisa no PDF<input type="color" value={color} onChange={event => onColorChange(event.target.value)} /></label><span>{customized ? "Cor personalizada" : automatic ? automatic.label : "Azul padrão"}</span>{customized && <button className="secondary" type="button" onClick={() => onColorChange("")}>Usar cor automática</button>}</div><div className="checklist-meta"><label>Cliente / pedido<input value={value.client} maxLength={120} onChange={(event) => onChange({ ...value, client: event.target.value })} /></label><label>Entrega<input type="date" value={value.deadline} onChange={(event) => onChange({ ...value, deadline: event.target.value })} /></label></div>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<div className="checklist-table-wrap"><table className="checklist-table"><thead><tr><th>OK</th><th>Modelo</th><th>Tamanho</th><th>Nome na peça</th><th><span className="sr-only">Excluir</span></th></tr></thead><tbody>{rows.map((row, index) => <tr key={row.id} className={row.done ? "done" : ""}><td><input type="checkbox" checked={row.done} onChange={(event) => updateRow(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${index + 1}: ${row.name}`} /></td><td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { model: event.target.value })} /></td><td><input value={row.size} maxLength={40} aria-label={`Tamanho da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { size: event.target.value })} /></td><td><input value={row.name} maxLength={160} aria-label={`Nome da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { name: event.target.value })} /></td><td><button aria-label={`Excluir peça ${index + 1}`} onClick={() => onChange({ ...value, rows: sortProductionRows(value.rows.filter((item) => item.id !== row.id)) })}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => onChange({ ...value, rows: sortProductionRows([...value.rows, { id: crypto.randomUUID(), model: rows.at(-1)?.model || "Geral", size: "P", name: "Sem nome", done: false }]) })}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div><label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={3} onChange={(event) => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label><p className="form-help">Os tamanhos são organizados automaticamente em ordem crescente dentro de cada modelo. Confira nomes e quantidades antes de imprimir. Use “Salvar como PDF” na janela de impressão.</p>{typeof document !== "undefined" && createPortal(<div className="production-print-root" style={theme}><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}</>}
+    {value && <><div className="checklist-theme"><label>Cor da camisa no PDF<input type="color" value={color} onChange={event => onColorChange(event.target.value)} /></label><span>{customized ? "Cor personalizada" : automatic ? automatic.label : "Azul padrão"}</span>{customized && <button className="secondary" type="button" onClick={() => onColorChange("")}>Usar cor automática</button>}</div><div className="checklist-meta"><label>Cliente / pedido<input value={value.client} maxLength={120} onChange={(event) => onChange({ ...value, client: event.target.value })} /></label><label>Entrega<input type="date" value={value.deadline} onChange={(event) => onChange({ ...value, deadline: event.target.value })} /></label></div>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<div className="checklist-table-wrap"><table className="checklist-table"><thead><tr><th>OK</th><th>Modelo</th><th>Tamanho</th><th>Nome na peça</th><th><span className="sr-only">Excluir</span></th></tr></thead><tbody>{rows.map((row, index) => <tr key={row.id} className={row.done ? "done" : ""}><td><input type="checkbox" checked={row.done} onChange={(event) => updateRow(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${index + 1}: ${row.name}`} /></td><td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { model: event.target.value })} /></td><td><input value={row.size} maxLength={40} aria-label={`Tamanho da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { size: event.target.value })} /></td><td><input value={row.name} maxLength={160} aria-label={`Nome da peça ${index + 1}`} onChange={(event) => updateRow(row.id, { name: event.target.value })} /></td><td><button aria-label={`Excluir peça ${index + 1}`} onClick={() => onChange({ ...value, rows: sortProductionRows(value.rows.filter((item) => item.id !== row.id)) })}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => setAdding(true)}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div><label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={3} onChange={(event) => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label><p className="form-help">Os tamanhos são organizados automaticamente em ordem crescente dentro de cada modelo. Confira nomes e quantidades antes de imprimir. Use “Salvar como PDF” na janela de impressão.</p>{typeof document !== "undefined" && createPortal(<div className="production-print-root" style={theme}><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}</>}
+    {adding && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel={rows.at(-1)?.model || ""} close={() => setAdding(false)} add={specification => {
+      if (value.rows.length >= 500) return "O checklist já atingiu o limite de 500 peças.";
+      onChange({ ...value, rows: sortProductionRows([...value.rows, { ...specification, id: makeId(), done: false }]) });
+      setAdding(false);
+    }} />}
     {open && <Modal titleId="checklist-title" busy={busy} close={() => setOpen(false)}><header><h2 id="checklist-title">Organizar pedido</h2><button disabled={busy} onClick={() => setOpen(false)} aria-label="Fechar"><X size={20} /></button></header><div className="checklist-import"><p>Cole o pedido recebido no WhatsApp. Você poderá corrigir a lista antes de imprimir.</p><label>Lista do pedido<textarea value={raw} maxLength={30000} rows={16} onChange={(event) => setRaw(event.target.value)} placeholder="MASCULINA - 8 UNIDADES…" /></label><button className="secondary" disabled={busy} onClick={() => setRaw(sampleProductionOrder)}>Usar exemplo JERFESSON</button>{value && <p className="form-help">Ao organizar outra lista, o checklist atual será substituído.</p>}{error && <p className="form-error" role="alert">{error}</p>}<button className="primary" disabled={busy || !raw.trim()} onClick={() => void organize(false)}><Check size={16} /> Organizar lista</button><button className="secondary" disabled={busy || !raw.trim()} onClick={() => void organize(true)}><Sparkles size={16} />{busy ? "Organizando…" : "Organizar com IA"}</button><p className="form-help">A organização por IA usa apenas o texto colado e pede sua revisão. A organização padrão funciona sem IA.</p></div></Modal>}
   </section>;
+}
+
+
+function AddPieceDialog({ models, defaultModel, close, add }: { models: string[]; defaultModel: string; close: () => void; add: (specification: Pick<ProductionRow, "model" | "size" | "name">) => string | void }) {
+  const [unnamed, setUnnamed] = useState(false);
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const model = String(form.get("model") ?? "").trim();
+    const size = String(form.get("size") ?? "").trim();
+    const name = unnamed ? "Sem nome" : String(form.get("name") ?? "").trim();
+    if (!model || !size || !name) return setError("Preencha o modelo, o tamanho e o nome, ou marque a opção de peça sem nome.");
+    setError(add({ model, size, name }) || "");
+  };
+  return <Modal titleId="add-piece-title" busy={false} close={close}>
+    <header><h2 id="add-piece-title">Adicionar peça</h2><button type="button" onClick={close} aria-label="Fechar especificações da peça"><X size={20} /></button></header>
+    <form className="checklist-entry-form" onSubmit={submit}>
+      <p>Preencha as especificações. A peça entra na lista ao confirmar.</p>
+      <label>Modelo<input name="model" list="checklist-model-options" defaultValue={defaultModel} required maxLength={80} data-initial-focus placeholder="Ex.: Masculina, feminina ou infantil" /></label>
+      <datalist id="checklist-model-options">{[...new Set([...models, "Masculina", "Feminina", "Infantil", "Unissex"])].map(model => <option key={model} value={model} />)}</datalist>
+      <label>Tamanho<input name="size" list="checklist-size-options" required maxLength={40} placeholder="Ex.: P, M, G, 10 anos ou sob medida" /></label>
+      <datalist id="checklist-size-options">{["PP", "P", "M", "G", "GG", "XGG", "G1", "G2", "Sob medida"].map(size => <option key={size} value={size} />)}</datalist>
+      <label>Nome na peça<input name="name" required={!unnamed} disabled={unnamed} maxLength={160} placeholder={unnamed ? "Sem nome" : "Digite o nome que será estampado"} /></label>
+      <label className="checklist-entry-unnamed"><input type="checkbox" checked={unnamed} onChange={event => setUnnamed(event.target.checked)} /> Peça sem nome</label>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary"><Plus size={16} /> Adicionar ao checklist</button></footer>
+    </form>
+  </Modal>;
 }

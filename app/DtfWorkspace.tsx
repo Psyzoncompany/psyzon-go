@@ -28,6 +28,7 @@ type Props = {
   clearCustomer: () => void;
   onSave: (input: DtfInput, previous?: DtfOrder) => Promise<void>;
   onMove: (id: string, stage: DtfStage) => Promise<void>;
+  onSeparate: (id: string, separated: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPrintChange: (id: string, change: DtfPrintChange) => Promise<void>;
   openNote: (id: string) => void;
@@ -37,7 +38,7 @@ const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const meterLabel = (lengthCm: number) => `${number.format(lengthCm / 100)} m`;
 const widthLabel = (widthCm: number) => widthCm ? `${number.format(widthCm)} cm` : "Largura livre";
 
-export default function DtfWorkspace({ orders, customers, productionOrders, notes, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onDelete, onPrintChange, openNote }: Props) {
+export default function DtfWorkspace({ orders, customers, productionOrders, notes, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onSeparate, onDelete, onPrintChange, openNote }: Props) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<DtfStage | "all">("all");
   const [link, setLink] = useState("all");
@@ -79,7 +80,7 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
 
   return <section className="dtf-workspace">
     <header className="dtf-header">
-      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1><p>Monte a lista de estampas de cada metro e acompanhe a separação.</p></div></div>
+      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1><p>Acompanhe quantidades, prazos e a separação das impressões.</p></div></div>
       <button className="primary" disabled={!live} onClick={() => setEditor("new")}><Plus size={17} /> Novo pedido DTF</button>
     </header>
     {customerId && <div className="dtf-customer-scope"><Link2 size={16} /> <strong>{customer?.name || "Cliente vinculado"}</strong><button type="button" onClick={clearCustomer}>Ver todos os pedidos <X size={14} /></button></div>}
@@ -118,7 +119,7 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
               <h2>{title}</h2><div className="dtf-client-line"><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p><DtfNamesLink noteId={links.get(order.customerId)?.noteId} openNote={openNote} /></div>
               {order.notes?.trim() && <p className="dtf-order-notes"><b>Observações</b><span>{order.notes}</span></p>}
             </div>
-            <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}</div>
+            <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}<label className="dtf-separated dtf-order-separated"><input type="checkbox" checked={order.separated === true} disabled={!live || !!workingId} aria-label={`Separada: ${title}`} onChange={event => { const checked = event.target.checked; void run(order.id, () => onSeparate(order.id, checked)); }} />Separada</label></div>
             <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}{linkedDeadlines.get(order.id) && <small>Prazo DTF vinculado</small>}</span></div>
             <div className="dtf-order-money"><b>{displayMoney(dtfTotal(order))}</b><span>{dtfPending(order) > 0 ? `${displayMoney(dtfPending(order))} pendente` : dtfTotal(order) ? "Quitado" : "Sem cobrança"}</span></div>
             <div className="dtf-order-actions">
@@ -126,7 +127,7 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
               {next && <button className="dtf-advance" type="button" disabled={!live || !!workingId} onClick={() => void run(order.id, () => onMove(order.id, next))}>{next === "Entregue" ? "Entregar" : "Avançar"} <ArrowRight size={14} /></button>}
               <button type="button" aria-label={`Editar DTF ${title}`} title="Editar pedido" disabled={!live || !!workingId} onClick={() => setEditor(order)}><Pencil size={16} /></button>
             </div>
-            <DtfPrints order={order} prints={prints} customers={customers} links={links} live={live} onChange={onPrintChange} openNote={openNote} />
+            {order.customerId ? prints.length > 0 && <details className="dtf-existing-prints"><summary>Estampas já cadastradas ({prints.length})</summary><DtfPrints order={order} prints={prints} customers={customers} links={links} live={live} onChange={onPrintChange} openNote={openNote} allowAdd={false} /></details> : <DtfPrints order={order} prints={prints} customers={customers} links={links} live={live} onChange={onPrintChange} openNote={openNote} />}
           </article>;
         })}
         {live && !visible.length && <div className="dtf-empty"><Printer size={29} /><h2>{scoped.length ? "Nenhum pedido com esses filtros" : "Nenhum pedido DTF por aqui"}</h2><p>{scoped.length ? "Altere a busca, o vínculo ou a etapa." : "Cadastre o primeiro pedido com um cliente vinculado ou como avulso."}</p>{!scoped.length && <button className="secondary" onClick={() => setEditor("new")}><Plus size={16} /> Novo pedido DTF</button>}</div>}
@@ -223,6 +224,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   const lines = [
     `Pedido #${dtfCode(order.id)}${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
     ...(order.quantity ? [`Quantidade: ${order.quantity} un.`] : []),
+    `${order.separated ? "☑" : "☐"} Impressão separada`,
     ...(order.dueDate ? [`Prazo DTF: ${dtfDate(order.dueDate)}`] : []),
     ...(order.lengthCm ? [`Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`] : []),
     ...(order.phone ? [`Contato: ${order.phone}`] : []), ...(link ? [`Arte: ${link}`] : []), ...(order.notes ? [`\nObservações\n${order.notes}`] : []),

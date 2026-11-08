@@ -9,7 +9,7 @@ import { dtfDate, maxDtfPrintPhoto, maxDtfPrints, type DtfOrder, type DtfPrint, 
 import type { DtfCustomerLink } from "./dtf-links";
 import type { Customer } from "./finance-model";
 
-export default function DtfPrints({ order, prints, customers, links, live, onChange, openNote }: { order: DtfOrder; prints: DtfPrint[]; customers: Customer[]; links: Map<string, DtfCustomerLink>; live: boolean; onChange: (id: string, change: DtfPrintChange) => Promise<void>; openNote: (id: string) => void }) {
+export default function DtfPrints({ order, prints, customers, links, live, onChange, openNote, allowAdd = true }: { order: DtfOrder; prints: DtfPrint[]; customers: Customer[]; links: Map<string, DtfCustomerLink>; live: boolean; onChange: (id: string, change: DtfPrintChange) => Promise<void>; openNote: (id: string) => void; allowAdd?: boolean }) {
   const [editor, setEditor] = useState<DtfPrint | "new" | null>(null);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -77,6 +77,6 @@ export default function DtfPrints({ order, prints, customers, links, live, onCha
         </li>;
         })}
       </ul>}
-      {!editor && <button className="dtf-add-print" type="button" disabled={blocked || prints.length >= maxDtfPrints} onClick={() => openEditor("new")}><Plus size={15} /> Adicionar estampa</button>}
+      {!editor && allowAdd && <button className="dtf-add-print" type="button" disabled={blocked || prints.length >= maxDtfPrints} onClick={() => openEditor("new")}><Plus size={15} /> Adicionar estampa</button>}
   </section>;
 }

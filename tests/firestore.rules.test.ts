@@ -126,6 +126,9 @@ test("DTF orders support linked and avulso work, exact cent rounding and owner-o
   await assertSucceeds(getDocs(collection(db, "users/user-a/dtfOrders")));
   await assertSucceeds(updateDoc(ref, { stage: "Em impressão", updatedAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref, { printsData: "[]", updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { separated: true, updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { separated: false, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(ref, { separated: "true", updatedAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref, { quantity: 3, referencePhotos: '["data:image/jpeg;base64,AAAA"]', updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { quantity: 1.5, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { printsData: [], updatedAt: serverTimestamp() }));

@@ -29,7 +29,7 @@
 .dtf-filters button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); font-weight: 700; }
 .dtf-filters button span { min-width: 14px; text-align: center; font-size: 10px; }
 .dtf-orders { padding: 0 14px; }
-.dtf-order { display: grid; grid-template-columns: 52px minmax(135px, 2fr) minmax(60px, .55fr) minmax(90px, .85fr) minmax(100px, .95fr) minmax(152px, auto); gap: 11px; align-items: center; padding: 12px 0; }
+.dtf-order { display: grid; grid-template-columns: 52px minmax(135px, 2fr) minmax(90px, .55fr) minmax(90px, .85fr) minmax(100px, .95fr) minmax(152px, auto); gap: 11px; align-items: center; padding: 12px 0; }
 .dtf-order + .dtf-order { border-top: 1px solid var(--border); }
 .dtf-thumb { width: 52px; height: 52px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 8px; background: var(--card-subtle); color: var(--muted); overflow: hidden; }
 .dtf-thumb img { width: 100%; height: 100%; object-fit: contain; }
@@ -68,6 +68,11 @@
 .dtf-print-list .dtf-client-line small { margin-top: 0; }
 .dtf-separated { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .dtf-separated input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--green); }
+.dtf-order-separated { min-height: 36px; cursor: pointer; }
+.dtf-order-separated:has(input:checked) { color: var(--green); }
+.dtf-existing-prints { grid-column: 1 / -1; min-width: 0; }
+.dtf-existing-prints > summary { padding-block: 10px; color: var(--muted); font-size: 11px; cursor: pointer; }
+.dtf-existing-prints .dtf-prints-panel { margin-left: 0; }
 .dtf-order-specs, .dtf-order-money { display: grid; gap: 3px; min-width: 0; font-size: 13px; }
 .dtf-order-deadline { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11px; color: var(--muted); }
 .dtf-order-deadline svg { flex-shrink: 0; }

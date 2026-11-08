@@ -26,6 +26,12 @@ usa React/Vinext, Cloud Firestore e Firebase Authentication com login Google.
   Em “Foto do produto no PDF”, anexe a referência visual para aparecer no cabeçalho
   das folhas. A foto do pedido vinculado é usada automaticamente e pode ser trocada
   ou removida na anotação.
+- No PDF, tamanhos que continuam em outra coluna ou página mantêm a quantidade
+  total do tamanho dentro do modelo, sem repetir o cabeçalho do modelo.
+- Pedidos DTF têm a marcação “Separada” junto da quantidade e do prazo. Pedidos
+  vinculados dispensam adicionar a mesma estampa novamente; estampas antigas
+  continuam disponíveis em “Estampas já cadastradas”. A marcação do pedido usa
+  o campo opcional `separated`, autorizado nas regras atualizadas do Firestore.
 
 Ao publicar esta versão, publique também `firestore.rules`: os campos de ajuste,
 foto e checklist dependem das regras atualizadas. Não é necessário Cloud Storage.

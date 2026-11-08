@@ -19,6 +19,7 @@ export type DtfInput = {
   photoData: string;
   referencePhotos?: string;
   quantity?: number;
+  separated?: boolean;
 };
 
 export type DtfOrder = DtfInput & { id: string; updatedAt?: unknown; printsData?: string };
@@ -112,6 +113,7 @@ export function dtfForCustomer(order: Pick<DtfInput, "customerId" | "customerNam
 
 
 export function validateDtf(input: DtfInput) {
+  if (input.separated !== undefined && typeof input.separated !== "boolean") throw new Error("Confira a separação do pedido.");
   if (input.customerId && !input.customerName) throw new Error("Selecione o cliente do pedido.");
   if (!Number.isInteger(input.lengthCm) || input.lengthCm < 0 || input.lengthCm > 1000000) throw new Error("Informe uma metragem de até 10.000 m.");
   if (input.quantity !== undefined && (!Number.isInteger(input.quantity) || input.quantity < 0 || input.quantity > 10000)) throw new Error("Confira a quantidade. Use um número inteiro de até 10.000.");

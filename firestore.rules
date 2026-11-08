@@ -71,7 +71,8 @@ service cloud.firestore {
 
     function validDtfOrder(data) {
       let fields = ["title", "customerId", "customerName", "phone", "lengthCm", "widthCm", "priceCents", "paidCents", "dueDate", "stage", "artworkUrl", "notes", "photoData", "createdAt", "updatedAt"];
-      return data.keys().hasOnly(fields.concat(["printsData", "referencePhotos", "quantity"])) && data.keys().hasAll(fields)
+      return data.keys().hasOnly(fields.concat(["printsData", "referencePhotos", "quantity", "separated"])) && data.keys().hasAll(fields)
+        && (!("separated" in data) || data.separated is bool)
         && text(data.title, 0, 160)
         && text(data.customerId, 0, 1500)
         && text(data.customerName, data.customerId == "" ? 0 : 1, 120)

@@ -15,9 +15,10 @@ import { makeId, millis } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
 import type { Task } from "./notes/task-model";
-import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, type RestockChange } from "./notes/restock-model";
+import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
+import NotesNavigation, { noteViews } from "./NotesNavigation";
 import AppearanceSettings from "./AppearanceSettings";
 import GlassOverview from "./GlassOverview";
 import useInterfaceAppearance from "./useInterfaceAppearance";
@@ -124,6 +125,7 @@ type AppNotification = {
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
+const RestockWorkspace = dynamic(() => import("./notes/RestockWorkspace"), { ssr: false });
 const TasksWorkspace = dynamic(() => import("./notes/TasksWorkspace"), { ssr: false });
 
 const firebaseConfig = {
@@ -559,9 +561,12 @@ export default function HomePage() {
 
   const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
   const dtfLinks = useMemo(() => dtfOrders.map(order => [order, ...readDtfPrints(order.printsData)]), [dtfOrders]);
+  const stockItems = useMemo(() => restockTasks(notes), [notes]);
+  const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
+  const allPayables = [...bills, ...stockPayables];
   const visibleCustomers = balances.filter((customer) => !customer.archived);
-  const { pending, toPay: payable, debtors } = financialSummary(balances, bills, calendarDate.slice(0, 7));
-  const nextPayables = view === "inicio" ? nextMonthPayables(bills, calendarDate.slice(0, 7)) : undefined;
+  const { pending, toPay: payable, debtors } = financialSummary(balances, allPayables, calendarDate.slice(0, 7));
+  const nextPayables = view === "inicio" ? nextMonthPayables(allPayables, calendarDate.slice(0, 7)) : undefined;
   const orderBalances = orderReceivables(balances, orders);
   const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
   const activeOrders = productionOrders.filter(order => order.status !== "Entregue");
@@ -591,8 +596,9 @@ export default function HomePage() {
       if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: money.format(bill.amount) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
     });
 
+    items.push(...restockAlerts(stockItems, calendarDate));
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [activeOrders, bills, calendarDate]);
+  }, [activeOrders, bills, calendarDate, stockItems]);
   const dtfAlertCount = notifications.filter(item => item.orderId).length;
 
   const openNotification = (item: AppNotification) => {
@@ -792,10 +798,10 @@ export default function HomePage() {
     });
   };
 
-  const saveRestock = async (text: string, id?: string) => {
+  const saveRestock = async (input: RestockInput, id?: string) => {
     if (!uid || firebaseState !== "live") throw new Error("Aguarde a sincronização do estoque.");
-    if (id) await updateRestock(id, { type: "edit", text });
-    else await setDoc(userDocument(uid, "notes", restockPrefix + makeId()), { ...newRestockNote(text), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    if (id) await updateRestock(id, { type: "edit", ...input });
+    else await setDoc(userDocument(uid, "notes", restockPrefix + makeId()), { ...newRestockNote(input), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   };
 
   const saveTask = async (title: string, id?: string) => {
@@ -1058,21 +1064,21 @@ export default function HomePage() {
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
         <nav>
-          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
+          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres", "reposicao"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
         </nav>
         <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
       </aside>
 
       <main className="main">
-        <header className="topbar">
+        <header className={`topbar ${noteViews.includes(view) ? "notes-topbar" : ""}`}>
           <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
-          <div className="search-wrap">
+          {noteViews.includes(view) ? <NotesNavigation view={view} navigate={setView} /> : <div className="search-wrap">
             <Search size={18} />
             <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar em tudo…" aria-label="Buscar cliente, pedido ou produto" />
             <kbd>/</kbd>
             {!!searchResults.length && <div className="search-results">{searchResults.map((order) => <button key={order.id} onClick={() => { setView("producao"); setSearch(""); }}><span><b>{order.customer}</b><small>Pedido #{order.id} · {order.product}</small></span><strong>{displayMoney(orderBalances.get(order.id) ?? 0)}<small>pendente</small></strong></button>)}</div>}
-          </div>
+          </div>}
           <div className="top-actions">
             <button className={`floating-mode-action ${floatingActive ? "active" : ""}`} onClick={toggleFloatingMode} aria-label={floatingActive ? "Desativar modo flutuante" : "Ativar modo flutuante"} aria-pressed={floatingActive}><PictureInPicture2 size={18} /><span>{floatingActive ? "Flutuante ativo" : "Modo flutuante"}</span></button>
             <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-haspopup="dialog" aria-label={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"} title={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
@@ -1086,10 +1092,11 @@ export default function HomePage() {
           {nextPayables && <Dashboard liquid={interfaceAppearance.appearance.theme === "liquid-glass-card"} pendingTasks={tasks.filter(task => !task.completed).length} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard liquid={interfaceAppearance.appearance.theme === "liquid-glass-card"} orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
-          {view === "afazeres" && <TasksWorkspace key={uid} restock={restockTasks(notes)} stockConnection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} onRestockSave={saveRestock} onRestockToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onRestockDelete={id => updateRestock(id, { type: "remove" })} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
+          {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
-          {view === "financeiro" && <FinanceWorkspace bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1105,7 +1112,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {view !== "notas" && view !== "historico" && view !== "afazeres" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "notas" && view !== "historico" && view !== "afazeres" && view !== "reposicao" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
       <MobileNavigation view={view} navigate={setView} />

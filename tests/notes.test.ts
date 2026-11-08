@@ -140,3 +140,28 @@ test("stock replenishment survives reload, editing, completion and recoverable r
   assert.throws(() => changeRestockNote(original, { type: "remove" }));
   assert.throws(() => changeRestockNote(note, { type: "toggle", completed: true }));
 });
+
+test("stock values feed payables once, follow edits and completion, and dates trigger only due reminders", async () => {
+  const { newRestockNote, changeRestockNote, restockTasks, restockPrefix, restockBills, restockAlerts } = await import("../app/notes/restock-model");
+  const { financialSummary, nextMonthPayables } = await import("../app/finance-model");
+  let first = { id: restockPrefix + "a", ...newRestockNote({ text: "Fotolito A4", amount: 100.10, purchaseDate: "2026-11-08" }) };
+  const second = { id: restockPrefix + "b", ...newRestockNote({ text: "Malha PV", amount: 50.20, purchaseDate: "2026-12-01" }) };
+  const legacy = { id: restockPrefix + "old", ...newRestockNote("Papel sem preço cadastrado") };
+  const read = () => restockTasks([first, second, legacy]);
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 150.30);
+  assert.equal(nextMonthPayables(restockBills(read()), "2026-11").total, 50.20);
+  assert.equal(restockAlerts(read(), "2026-11-07").length, 0);
+  assert.equal(restockAlerts(read(), "2026-11-08")[0].view, "reposicao");
+  assert.equal(restockAlerts(read(), "2026-11-09")[0].tone, "danger");
+  first = { ...first, ...changeRestockNote(first, { type: "edit", text: "Fotolito", amount: 0, purchaseDate: "" }) };
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 50.20);
+  assert.equal(restockAlerts(read(), "2026-11-09").length, 0);
+  first = { ...first, ...changeRestockNote(first, { type: "edit", text: "Fotolito", amount: 20, purchaseDate: "2026-11-08" }) };
+  first = { ...first, ...changeRestockNote(first, { type: "toggle", completed: true }) };
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 50.20);
+  assert.equal(restockTasks([JSON.parse(JSON.stringify(first))])[0].amount, 20);
+  assert.throws(() => newRestockNote({ text: "Item", amount: -1, purchaseDate: "" }));
+  assert.throws(() => newRestockNote({ text: "Item", amount: NaN, purchaseDate: "" }));
+  assert.throws(() => newRestockNote({ text: "Item", amount: 1, purchaseDate: "2026-02-31" }));
+  assert.throws(() => newRestockNote({ text: "Item", amount: 1, purchaseDate: "2026-99-99" }));
+});

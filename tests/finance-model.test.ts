@@ -51,6 +51,7 @@ test("the next-month payable forecast rolls over the year and respects due dates
   ], "2026-12");
   assert.deepEqual(result, { label: "janeiro de 2027", total: 740.25 });
   assert.equal(viewFromHash("#afazeres"), "afazeres");
+  assert.equal(viewFromHash("#reposicao"), "reposicao");
 });
 
 test("history separates order dates in Bahia, open due dates, actual payments, and manual counts", () => {

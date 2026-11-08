@@ -1,0 +1,10 @@
+.notes-page-nav { display:flex;align-items:center;gap:5px;flex:1;min-width:0; }
+.notes-page-nav button { display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:650;color:var(--muted);cursor:pointer;white-space:nowrap; }
+.notes-page-nav button[aria-current=page] { background:var(--blue-soft);color:var(--blue); }
+.notes-page-nav button:hover { background:var(--card-subtle); }
+.notes-page-nav button:focus-visible { outline:2px solid var(--blue);outline-offset:2px; }
+.notes-nav-short { display:none; }
+.app-shell .topbar.notes-topbar .mobile-logo,.app-shell .topbar.notes-topbar .top-actions>button:not(.notification) { display:none; }
+.app-shell .topbar.notes-topbar .top-actions { margin-left:auto; }
+@media(max-width:760px){.app-shell .topbar.notes-topbar{gap:4px;padding-inline:8px}.notes-page-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px}.notes-page-nav button{flex-direction:column;gap:3px;padding:5px 2px;font-size:10px;min-height:44px}.notes-nav-full{display:none}.notes-nav-short{display:inline}}
+@media print{.notes-page-nav{display:none}}

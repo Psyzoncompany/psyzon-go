@@ -9,6 +9,8 @@ export type BillInput = Omit<Bill, "id" | "createdAt" | "lastPaidMonth" | "paidI
 type Expense = { id: string; description: string; amount: number; type: string; transactionDate?: string; createdAt?: unknown; category?: string };
 type Props = {
   bills: Bill[];
+  restock: Bill[];
+  openRestock: () => void;
   transactions: Expense[];
   customers: CustomerBalance[];
   currentMonth: string;
@@ -28,7 +30,7 @@ export function expenseDate(item: Expense) {
   return date && Number.isFinite(date.getTime()) ? localDateValue(date) : "";
 }
 
-export default function FinanceWorkspace({ bills, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive }: Props) {
+export default function FinanceWorkspace({ bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive }: Props) {
   const [selectedMonth, setMonth] = useState<string | null>(null);
   const month = selectedMonth ?? currentMonth;
   const [editor, setEditor] = useState<{ bill: Bill | null } | null>(null);
@@ -36,8 +38,8 @@ export default function FinanceWorkspace({ bills, transactions, customers, curre
   const [showSettled, setShowSettled] = useState(false);
   const [error, setError] = useState("");
   const expenses = transactions.filter((item) => item.type === "expense" && expenseDate(item).startsWith(month)).sort((a, b) => expenseDate(b).localeCompare(expenseDate(a)));
-  const { debtors, payable, receivable, pending, toPay } = financialSummary(customers, bills, currentMonth);
-  const nextPayables = nextMonthPayables(bills, currentMonth);
+  const { debtors, payable, receivable, pending, toPay } = financialSummary(customers, [...bills, ...restock], currentMonth);
+  const nextPayables = nextMonthPayables([...bills, ...restock], currentMonth);
   const settledBills = bills.filter(bill => billIsSettled(bill, currentMonth));
   const run = async (action: () => Promise<void>) => {
     if (busy) return;
@@ -46,16 +48,17 @@ export default function FinanceWorkspace({ bills, transactions, customers, curre
     finally { setBusy(false); }
   };
   const billRows = (items: Bill[]) => items.sort((a, b) => billDueDate(a, currentMonth).localeCompare(billDueDate(b, currentMonth))).map((bill) => {
+    const stock = restock.some(item => item.id === bill.id);
     const settled = billIsSettled(bill, currentMonth);
     const due = billDueDate(bill, currentMonth);
     return <div className="commitment-row" key={bill.id}>
-      <div><b>{bill.description}</b><small className={!settled && due < localDateValue() ? "negative" : ""}>{new Intl.DateTimeFormat("pt-BR").format(new Date(`${due}T12:00:00`))} · {bill.billingType === "fixed" ? "Mensal" : bill.billingType === "installment" ? `Parcela ${(bill.paidInstallments ?? 0) + (settled ? 0 : 1)}/${bill.totalInstallments}` : "Única"}{bill.account === "personal" ? " · Pessoal" : ""}</small></div>
+      <div><b>{bill.description}</b><small className={!settled && due < localDateValue() ? "negative" : ""}>{stock && !bill.dueDate ? "Defina a data da compra" : new Intl.DateTimeFormat("pt-BR").format(new Date(`${due}T12:00:00`))} · {bill.billingType === "fixed" ? "Mensal" : bill.billingType === "installment" ? `Parcela ${(bill.paidInstallments ?? 0) + (settled ? 0 : 1)}/${bill.totalInstallments}` : "Única"}{bill.account === "personal" ? " · Pessoal" : ""}</small></div>
       <strong>{displayMoney(bill.amount)}</strong>
       <div className="commitment-actions">
-        {settled ? (bill.direction === "receivable" ? <span className="bill-received-label">Recebida</span> : <button className="secondary" disabled={busy} onClick={() => void run(() => onUndoPayment(bill))}><Undo2 size={14} /> Desfazer pagamento</button>)
+        {stock ? <button type="button" className="secondary" onClick={openRestock}>Ver reposição</button> : <>{settled ? (bill.direction === "receivable" ? <span className="bill-received-label">Recebida</span> : <button className="secondary" disabled={busy} onClick={() => void run(() => onUndoPayment(bill))}><Undo2 size={14} /> Desfazer pagamento</button>)
           : <button className="secondary" disabled={busy} onClick={() => void run(async () => { if (await onSettleBill(bill)) setShowSettled(true); })}>{bill.direction === "receivable" ? "Receber" : "Pagar"}</button>}
         <button aria-label={`Editar conta ${bill.description}`} disabled={busy} onClick={() => setEditor({ bill })}><Pencil size={15} /></button>
-        <button aria-label={`Excluir conta ${bill.description}`} disabled={busy} onClick={() => void run(() => onDeleteBill(bill))}><Trash2 size={15} /></button>
+        <button aria-label={`Excluir conta ${bill.description}`} disabled={busy} onClick={() => void run(() => onDeleteBill(bill))}><Trash2 size={15} /></button></>}
       </div>
     </div>;
   });

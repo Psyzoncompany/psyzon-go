@@ -32,32 +32,29 @@
   .production-attention { margin-top: 3mm; padding: 3mm 4mm; border: .25mm solid var(--sheet-line); border-radius: 2mm; break-inside: avoid; }
   .production-attention h2, .production-sheet-footer h2 { margin: 0 0 2mm; font-size: 9pt; }
   .production-attention p { margin: 1mm 0; color: #34435c; font-size: 9pt; white-space: pre-wrap; line-height: 1.45; }
-  .production-additions { margin-top: 3mm; break-inside: avoid; }
-  .production-additions h2 { margin: 0 0 1mm; font-size: 9pt; }
-  .production-additions p { margin: 0 0 2mm; font-size: 8pt; }
-  .production-additions table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .production-additions .addition-date { width: 10%; }
-  .production-additions .addition-name { width: 35%; }
-  .production-additions .addition-model { width: 20%; }
-  .production-additions .addition-size { width: 10%; }
-  .production-additions .addition-quantity { width: 8%; }
-  .production-additions .addition-price { width: 17%; }
-  .production-additions th, .production-additions td { border: .25mm solid var(--sheet-line); }
-  .production-additions th { padding: 1.5mm; background: var(--sheet-tint); font-size: 7pt; text-align: left; }
-  .production-additions td { height: 8mm; }
-  .production-additions-totals { display: flex; justify-content: space-between; gap: 4mm; margin-top: 2mm; font-size: 8pt; }
-  .production-additions-totals span { display: flex; align-items: end; gap: 2mm; }
-  .production-additions-totals b { display: inline-block; width: 18mm; height: 5mm; border-bottom: .25mm solid var(--sheet-line); }
-  .production-sheet-footer { margin-top: auto; padding-top: 3mm; }
-  .production-sheet-footer > div { display: flex; flex-wrap: wrap; gap: 2mm; padding-block: 2mm; border-bottom: .25mm solid var(--sheet-line); }
-  .production-summary-model { flex: 1; min-width: 45mm; padding: 2mm; border: .25mm solid var(--sheet-line); border-radius: 2mm; break-inside: avoid; }
-  .production-summary-model h3 { display: flex; justify-content: space-between; gap: 2mm; margin: 0 0 2mm; font-size: 8pt; text-transform: uppercase; }
+  .production-sheet-footer { margin-top: auto; padding-top: 3mm; break-inside: avoid; }
+  .production-sheet-bottom { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 4mm; align-items: start; }
+  .production-sheet-bottom.production-summary-only { grid-template-columns: 1fr; }
+  .production-summary-models { display: grid; gap: 1.5mm; }
+  .production-summary-model { padding: 1.5mm 2mm; border: .25mm solid var(--sheet-line); border-radius: 1.5mm; break-inside: avoid; }
+  .production-summary-model h3 { display: flex; justify-content: space-between; gap: 2mm; margin: 0 0 1mm; font-size: 8pt; text-transform: uppercase; }
   .production-summary-model h3 span { overflow-wrap: anywhere; }
   .production-summary-model h3 b { flex-shrink: 0; }
-  .production-summary-sizes { display: flex; flex-wrap: wrap; gap: 1.5mm; }
-  .production-summary-sizes > span { min-width: 12mm; padding: 2mm; border-radius: 1.5mm; background: var(--sheet-tint); display: flex; flex-direction: column; gap: 1mm; font-size: 8pt; }
-  .production-sheet-footer small { font-size: 8pt; }
-  .production-sheet-footer p { display: flex; justify-content: space-between; gap: 5mm; font-size: 8pt; margin-block: 3mm; }
+  .production-summary-sizes { display: flex; flex-wrap: wrap; gap: 1mm 2mm; }
+  .production-summary-sizes > span { display: inline-flex; gap: 1mm; font-size: 8pt; }
+  .production-summary-sizes small { font-size: inherit; }
+  .production-additions table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .production-additions .addition-name { width: 49%; }
+  .production-additions .addition-model { width: 25%; }
+  .production-additions .addition-size { width: 14%; }
+  .production-additions .addition-quantity { width: 12%; }
+  .production-additions th, .production-additions td { border: .25mm solid var(--sheet-line); }
+  .production-additions th { padding: 1mm; background: var(--sheet-tint); font-size: 7pt; text-align: left; }
+  .production-additions td { height: 6mm; }
+  .production-additions-totals { display: flex; justify-content: space-between; gap: 2mm; margin-top: 1mm; font-size: 7.5pt; }
+  .production-additions-totals span { display: flex; align-items: end; gap: 1mm; }
+  .production-additions-totals b { display: inline-block; width: 12mm; height: 4mm; border-bottom: .25mm solid var(--sheet-line); }
+  .production-sheet-footer > p { display: flex; justify-content: space-between; gap: 5mm; font-size: 8pt; margin-block: 2mm 0; padding-top: 2mm; border-top: .25mm solid var(--sheet-line); }
   .production-sheet:has(.production-product-photo) .production-sheet-header { padding-block: 2mm 3mm; }
   .production-sheet:has(.production-product-photo) .production-sheet-columns { padding-top: 2mm; }
   .production-sheet:has(.production-product-photo) .production-group { margin-bottom: 2mm; }

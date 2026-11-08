@@ -127,3 +127,31 @@ test("AI output is validated and invented names trigger fallback", async () => {
   await assert.rejects(organizeProductionWithAI(sampleProductionOrder, [candidate(bad)]), /PRODUCTION_AI_UNAVAILABLE/);
   await assert.rejects(organizeProductionWithAI(sampleProductionOrder, []), /PRODUCTION_AI_NOT_CONFIGURED/);
 });
+
+
+test("unspecified models default to masculine for every name and the PDF keeps one model", () => {
+  const checklist = parseProductionOrder("P\nAna\nJoão\nM\nMaria");
+  assert.ok(checklist.rows.every(row => row.model === "Masculina"));
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  assert.equal([...html.matchAll(/class="production-summary-model"/g)].length, 1);
+  assert.doesNotMatch(html, /Feminina/i);
+  const explicit = parseProductionOrder("Feminina:\nP\nJoão\nMasculina:\nM\nAna");
+  assert.equal(explicit.rows.find(row => row.name === "João")?.model, "Feminina");
+  assert.equal(explicit.rows.find(row => row.name === "Ana")?.model, "Masculina");
+});
+
+test("AI cannot infer female models from names, including mixed sections and inline table specifications", async () => {
+  const text = "P\nAna\nJoão\nFeminina:\nM\nMaria";
+  const output = { client: "", deadline: "", notes: "", warnings: [], rows: [
+    { name: "Ana", model: "Feminina", size: "P" },
+    { name: "João", model: "Masculina", size: "P" },
+    { name: "Maria", model: "Masculina", size: "M" },
+  ] };
+  const result = await organizeProductionWithAI(text, [candidate(output)]);
+  assert.equal(result.rows.find(row => row.name === "Ana")?.model, "Masculina");
+  assert.equal(result.rows.find(row => row.name === "João")?.model, "Masculina");
+  assert.equal(result.rows.find(row => row.name === "Maria")?.model, "Feminina");
+  const table = await organizeProductionWithAI("Nome | Tamanho | Modelo\nAna | P | Feminina\nJoão | P |\nMaria | M |", [candidate(output)]);
+  assert.equal(table.rows.find(row => row.name === "Ana")?.model, "Feminina");
+  assert.equal(table.rows.find(row => row.name === "Maria")?.model, "Masculina");
+});

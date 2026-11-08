@@ -58,7 +58,7 @@ Tamanho G (2)
 export function parseProductionOrder(text: string): ProductionChecklist {
   if (!text.trim() || text.length > 30000) throw new Error("Cole uma lista de até 30 mil caracteres.");
   const rows: ProductionRow[] = []; const warnings: string[] = []; const notes: string[] = [];
-  let model = "Geral"; let size = "A confirmar"; let client = ""; let deadline = "";
+  let model = "Masculina"; let size = "A confirmar"; let client = ""; let deadline = "";
   const expected: Array<{ label: string; count: number; start: number; end?: number; level: "model" | "size" }> = [];
   const close = (level: "model" | "size") => expected.filter((item) => item.end === undefined && (level === "model" || item.level === "size")).forEach((item) => { item.end = rows.length; });
   for (const raw of text.split(/\r?\n/)) {
@@ -66,7 +66,7 @@ export function parseProductionOrder(text: string): ProductionChecklist {
     if (!line) continue;
     if (/^(cliente|pedido)\s*:/i.test(line)) { client = line.split(":").slice(1).join(":").trim(); continue; }
     if (/^(prazo|entrega)\s*:/i.test(line)) { const value = line.split(":").slice(1).join(":").trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(value)) deadline = value; else notes.push(line); continue; }
-    const heading = line.match(/^(masculin[ao]|feminin[ao]|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
+    const heading = line.replace(/:\s*$/, "").match(/^(masculin[ao]s?|feminin[ao]s?|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
     if (heading) { close("model"); model = heading[1]; size = "A confirmar"; if (heading[2]) expected.push({ label: model, count: Number(heading[2]), start: rows.length, level: "model" }); continue; }
     const sizeHeading = line.match(/^(?:tamanho\s+)?(XGG|GG|G\d|PP|P|M|G|\d+\s*anos?|sob medida|único)\s*(?:\((\d+)\)|[-–—|:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
     if (sizeHeading) { close("size"); size = sizeHeading[1].toLocaleUpperCase("pt-BR"); const count = sizeHeading[2] ?? sizeHeading[3]; if (count) expected.push({ label: `${model} / ${size}`, count: Number(count), start: rows.length, level: "size" }); continue; }
@@ -83,6 +83,39 @@ export function parseProductionOrder(text: string): ProductionChecklist {
   rows.filter((row) => row.name.toLocaleLowerCase("pt-BR") !== "sem nome").forEach((row) => counts.set(row.name, (counts.get(row.name) ?? 0) + 1));
   counts.forEach((count, name) => { if (count > 1) warnings.push(`${name} aparece ${count} vezes. Confira se são peças diferentes.`); });
   return validateProductionChecklist({ client, deadline, notes: notes.join("\n"), rows, warnings });
+}
+
+// Model selection comes from the supplied list, never from a person's name.
+export function applyProductionSourceModels(checklist: ProductionChecklist, text: string): ProductionChecklist {
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  let currentModel = "Masculina";
+  const lines = text.split(/\r?\n/).map(raw => {
+    const line = raw.trim().replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "");
+    const heading = line.replace(/:\s*$/, "").match(/^(masculin[ao]s?|feminin[ao]s?|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*\d+\s*(?:unidades?|un\.?))?$/i);
+    if (heading) currentModel = heading[1];
+    return { line: normalize(line), model: currentModel, heading: !!heading };
+  });
+  const containsName = (line: string, name: string) => {
+    const start = line.indexOf(name);
+    if (start < 0) return false;
+    const letter = /[\p{L}\p{N}]/u;
+    return (start === 0 || !letter.test(line[start - 1])) && (start + name.length === line.length || !letter.test(line[start + name.length]));
+  };
+  const used = new Set<number>();
+  const rows = checklist.rows.map(row => {
+    const name = normalize(row.name);
+    const matches = lines.map((entry, index) => ({ ...entry, index })).filter(entry => !entry.heading && (name === "sem nome" ? /\bsem nome\b/.test(entry.line) : containsName(entry.line, name)));
+    const source = matches.find(entry => !used.has(entry.index)) ?? matches[0];
+    if (source) used.add(source.index);
+    // Inline specifications apply to this piece; headings apply to their section.
+    const details = source?.line.replace(name, " ");
+    const explicitModel = normalize(row.model).trim();
+    const customModel = explicitModel && !/^(geral|a confirmar)$/.test(explicitModel) && details && containsName(details, explicitModel) ? row.model : undefined;
+    const specification = details?.match(/\b(masculin[ao]s?|feminin[ao]s?|infantil|unissex|baby\s*look)\b/i)?.[1];
+    const model = customModel || specification || source?.model || "Masculina";
+    return { ...row, model: /^(geral|a confirmar)?$/i.test(model) ? "Masculina" : model };
+  });
+  return { ...checklist, rows: sortProductionRows(rows) };
 }
 
 export function validateProductionChecklist(value: unknown): ProductionChecklist {

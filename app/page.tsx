@@ -21,7 +21,6 @@ import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
 import NotesNavigation, { noteViews } from "./NotesNavigation";
 import AppearanceSettings from "./AppearanceSettings";
-import GlassOverview from "./GlassOverview";
 import useInterfaceAppearance from "./useInterfaceAppearance";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
@@ -1043,7 +1042,7 @@ export default function HomePage() {
   const floatingActive = floatingHost !== null;
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium">
       <aside className="sidebar">
         <div className="sidebar-brand-row">
           <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
@@ -1078,14 +1077,14 @@ export default function HomePage() {
         </header>
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard liquid={interfaceAppearance.appearance.theme === "liquid-glass-card"} pendingTasks={tasks.filter(task => !task.completed).length} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard liquid={interfaceAppearance.appearance.theme === "liquid-glass-card"} orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
+          {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
-          {view === "financeiro" && <FinanceWorkspace premium={interfaceAppearance.appearance.theme === "ios-premium"} today={calendarDate} restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1158,13 +1157,13 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ liquid, pendingTasks, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+function Dashboard({ userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
-    {liquid ? <GlassOverview userName={userName} orders={orders.length} tasks={pendingTasks} navigate={setView} create={() => setModal("pedido")} /> : <div className="page-heading">
+    <div className="page-heading">
       <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><h1>Bom dia, {userName}.</h1><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
-    </div>}
+    </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}
     <div className="metric-grid">
       <Metric icon={WalletCards} label="A pagar" value={displayTotal(payable)} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />

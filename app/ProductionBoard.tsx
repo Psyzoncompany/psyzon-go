@@ -20,7 +20,6 @@ type Props = {
   editOrder: (order: Order) => void;
   deleteOrder: (order: Order) => Promise<void>;
   openNote: (noteId: string) => void;
-  liquid?: boolean;
 };
 
 function indexOrderNotes(notes: BusinessNote[]) {
@@ -36,7 +35,7 @@ function indexOrderNotes(notes: BusinessNote[]) {
   return { byOrder, byCustomer };
 }
 
-export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote, liquid = false }: Props) {
+export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
@@ -79,14 +78,6 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
     });
   }
 
-  function jumpToStage(index: number) {
-    const lane = columns.current[index];
-    const container = board.current;
-    if (!lane || !container) return;
-    const reduced = document.documentElement.dataset.glassMotion === "reduced" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    container.scrollTo({ left: container.scrollLeft + lane.getBoundingClientRect().left - container.getBoundingClientRect().left, behavior: reduced ? "instant" : "smooth" });
-  }
-
   function actionsFor(order: Order) {
     return {
       order,
@@ -105,9 +96,6 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
       <button className="primary" onClick={onCreate}><Plus size={17} /> Novo pedido</button>
     </header>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {liquid && <nav className="glass-kanban-navigation" aria-label="Navegar pelas etapas da produção">
-      {productionStages.map((stage, index) => <button key={stage} type="button" data-stage={index} onClick={() => jumpToStage(index)}><span className="glass-stage-mark" /><span>{stage}</span><b>{grouped.get(stage)?.length ?? 0}</b></button>)}
-    </nav>}
     <label className="production-stage-jump">Ir para etapa
       <select value="" onChange={event => {
         if (!event.target.value) return;

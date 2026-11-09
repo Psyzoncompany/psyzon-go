@@ -18,9 +18,9 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
   const glass = appearance.theme === "liquid-glass-card";
   const premium = appearance.theme === "ios-premium";
   return <section className="appearance-settings panel" aria-labelledby="appearance-title">
-    <header><span className="appearance-symbol"><Palette size={21} /></span><div><h2 id="appearance-title">Estilo da interface</h2><p>Escolha manualmente. A preferência fica salva para sua conta neste navegador.</p></div></header>
+    <header><span className="appearance-symbol"><Palette size={21} /></span><div><h2 id="appearance-title">Estilo da interface</h2><p>A mesma organização em todos os modelos. Escolha as cores e o acabamento que preferir.</p></div></header>
     <fieldset className="appearance-options"><legend className="sr-only">Escolher interface</legend>
-      {[{ theme: "original", name: "Original", detail: "Seu visual de sempre, simples e direto.", icon: Layers }, { theme: "liquid-glass-card", name: "Liquid Glass Card", detail: "Vidro, luz e uma nova organização.", icon: Sparkles }, { theme: "ios-premium", name: "iOS Premium", detail: "Cards claros, listas compactas e ações ao toque.", icon: WalletCards }].map(({ theme, name, detail, icon: Icon }) => <label className="appearance-option" data-selected={appearance.theme === theme} key={theme}>
+      {[{ theme: "original", name: "Original", detail: "Azul, superfícies sólidas e acabamento simples.", icon: Layers }, { theme: "liquid-glass-card", name: "Liquid Glass Card", detail: "Transparência, luz e superfícies de vidro.", icon: Sparkles }, { theme: "ios-premium", name: "iOS Premium", detail: "Roxo, superfícies claras e acabamento suave.", icon: WalletCards }].map(({ theme, name, detail, icon: Icon }) => <label className="appearance-option" data-selected={appearance.theme === theme} key={theme}>
         <input type="radio" name="interface-theme" value={theme} checked={appearance.theme === theme} onChange={() => changeAppearance({ theme: theme as InterfaceAppearance["theme"] })} />
         <span className="appearance-preview" data-preview={theme} aria-hidden="true">
           <span className="preview-sidebar"><i /><i /><i /></span>

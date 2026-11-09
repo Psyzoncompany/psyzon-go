@@ -1,0 +1,89 @@
+/* One application layout for every visual model. Theme files own colors, materials and finishes. */
+@media screen {
+  :root { --structure-radius: 12px; --structure-dialog-radius: 20px; --structure-nav-radius: 16px; }
+  :root[data-ui-theme="liquid-glass-card"] { --structure-radius: 18px; --structure-dialog-radius: 26px; --structure-nav-radius: 26px; }
+  :root[data-ui-theme="ios-premium"] { --structure-radius: 24px; --structure-dialog-radius: 28px; --structure-nav-radius: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .main { margin-left: 236px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .main { margin-left: 74px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .sidebar { inset: 0 auto 0 0; width: 236px; padding: 22px 16px 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .sidebar { width: 74px; padding-inline: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .topbar { top: 0; margin: 0; height: 64px; padding: 0 32px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .sidebar nav { gap: 13px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .sidebar nav button { height: 42px; min-height: 42px; margin-bottom: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .sidebar nav { gap: 5px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .content { max-width: 1440px; padding: 28px 32px 80px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .content.notes-content { max-width: none; padding: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.page-heading, .production-heading, .dtf-header, .history-heading, .materials-heading, .tasks-heading) { gap: 16px; margin-bottom: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.page-heading, .production-heading, .dtf-title, .history-heading, .materials-heading, .tasks-heading) h1 { font-size: 30px; line-height: 1.15; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-grid, .dtf-metrics, .history-metrics, .materials-totals, .restock-summary) { gap: 16px; margin-bottom: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .metric-card { min-height: 146px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dashboard-grid { grid-template-columns: minmax(0, 1.6fr) minmax(270px, .66fr); gap: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.main-column, .side-column) { gap: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-card, .dtf-metrics article, .history-metrics article, .materials-totals article, .restock-summary article) { padding: 20px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.finance-list-card, .finance-premium-summary article) { border-radius: var(--structure-radius); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .customer-grid { grid-template-columns: repeat(auto-fit, minmax(min(275px, 100%), 1fr)); gap: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-kanban { grid-template-columns: repeat(4, minmax(183px, 1fr)); gap: 10px; padding-bottom: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-lane { padding: 9px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-lane > header { padding: 3px 2px 7px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-order-toggle { min-height: 56px; padding: 8px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-order-content { padding: 9px; gap: 6px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-orders { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 16px; padding: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order { grid-template-columns: 48px minmax(0, 1fr) auto; grid-template-areas: "photo description money" "photo description specs" "deadline deadline actions"; align-items: start; gap: 8px 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--structure-radius); background: var(--card-subtle); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-thumb { grid-area: photo; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-description { grid-area: description; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-specs { grid-area: specs; display: grid; justify-items: end; align-content: start; gap: 3px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order-separated { min-height: 28px; margin: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-deadline { grid-area: deadline; align-self: center; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-money { grid-area: money; text-align: right; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-actions { grid-area: actions; padding: 0; border: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > :is(.dtf-prints-panel, .dtf-existing-prints) { grid-area: auto; grid-column: 1 / -1; margin-left: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-orders > .dtf-empty { grid-column: 1 / -1; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes { grid-template-columns: 274px minmax(0, 1fr); height: calc(var(--ui-viewport-height) - 64px); min-height: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-sidebar-hidden { grid-template-columns: minmax(0, 1fr); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator { grid-template-columns: 235px minmax(340px, 1fr) 355px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator.an-sidebar-hidden { grid-template-columns: minmax(340px, 1fr) 355px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .tasks-workspace { max-width: 900px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .settings-grid { gap: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .appearance-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal-backdrop:not(.compact-modal-backdrop) { align-items: flex-end; justify-content: center; padding: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal) { width: min(100%, 520px); height: auto; max-height: 92dvh; border-radius: var(--structure-dialog-radius) var(--structure-dialog-radius) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal :is(label, input, select, textarea) { font-size: 14px; }
+  :root[data-ui-theme="liquid-glass-card"] .finance-detail-sheet { background: var(--glass-surface); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter); box-shadow: var(--glass-shadow); }
+}
+@media screen and (max-width: 1250px) {
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator,
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator.an-sidebar-hidden { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media screen and (max-width: 1100px) {
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dashboard-grid { grid-template-columns: minmax(0, 1fr); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-orders { grid-template-columns: minmax(0, 1fr); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .side-column { display: flex; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .side-column .quick-panel { display: block; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-stage-jump { display: inline-flex; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .notes-nav-full { display: none; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .notes-nav-short { display: inline; }
+}
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme] { --mobile-header: 64px; --mobile-nav: calc(94px + env(safe-area-inset-bottom, 0px)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .main,
+  :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .main { margin-left: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .sidebar { display: none; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .topbar { top: 0; margin: 0; height: 64px; padding: 0 12px; gap: 8px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .content { padding: 24px 16px calc(120px + env(safe-area-inset-bottom, 0px)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .content.notes-content { padding: 0 !important; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .mobile-nav { inset: auto 12px calc(10px + env(safe-area-inset-bottom, 0px)); width: auto; height: 72px; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--structure-nav-radius); grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .mobile-nav > button { height: 60px; padding: 4px 1px; gap: 4px; font-size: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-grid, .dtf-metrics, .history-metrics) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-card, .dtf-metrics article, .history-metrics article, .materials-totals article, .restock-summary article) { padding: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .metric-card:last-child { grid-column: 1 / -1; display: block; min-height: 146px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-kanban { grid-template-columns: repeat(4, clamp(216px, 65vw, 280px)); gap: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "photo description description" "specs specs money" "deadline deadline deadline" "actions actions actions"; gap: 6px 8px; padding: 12px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-specs { display: flex; flex-wrap: wrap; justify-content: start; align-items: center; align-self: center; gap: 4px 12px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order-separated { min-height: 44px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order-actions button { min-height: 44px; min-width: 44px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes { display: block; height: calc(100dvh - var(--mobile-header) - var(--mobile-nav)); min-height: 0; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .an-document { padding: 24px 20px 30px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .appearance-options { grid-template-columns: minmax(0, 1fr); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal :is(input, select, textarea) { font-size: 16px; }
+}

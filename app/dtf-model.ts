@@ -96,7 +96,7 @@ const totalCents = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => Math.flo
 export const dtfTotal = (item: Pick<DtfInput, "lengthCm" | "priceCents">) => totalCents(item) / 100;
 export const dtfPending = (item: DtfInput) => Math.max(0, totalCents(item) - item.paidCents) / 100;
 export const dtfCode = (id: string) => id.slice(0, 8).toUpperCase();
-export const dtfTitle = (order: Pick<DtfOrder, "id" | "title">) => order.title || `Pedido #${dtfCode(order.id)}`;
+export const dtfTitle = (order: Pick<DtfOrder, "id" | "title">) => order.title || "Pedido DTF";
 export const dtfDate = (value: string) => value ? value.split("-").reverse().join("/") : "Sem prazo";
 export const dtfOverdue = (item: DtfInput, today: string) => item.stage !== "Entregue" && !!item.dueDate && item.dueDate < today;
 

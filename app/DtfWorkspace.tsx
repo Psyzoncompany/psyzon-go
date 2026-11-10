@@ -119,7 +119,7 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
               {order.photoData ? <Image unoptimized src={order.photoData} width={88} height={88} alt="" /> : <FileImage size={23} />}
             </div>
             <div className="dtf-order-description">
-              <div><span className="dtf-code">#{dtfCode(order.id)}</span><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
+              <div><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
               <h2>{title}</h2><div className="dtf-client-line"><p>{nameFor(order)} <span className="dtf-link-tag">{order.customerId ? "Vinculado" : "Avulso"}</span></p><DtfNamesLink noteId={links.get(order.customerId)?.noteId} openNote={openNote} /></div>
               {order.notes?.trim() && <p className="dtf-order-notes"><b>Observações</b><span>{order.notes}</span></p>}
             </div>
@@ -227,7 +227,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   const prints = readDtfPrints(order.printsData);
   const photos = dtfPhotos(order);
   const lines = [
-    `Pedido #${dtfCode(order.id)}${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
+    `Pedido${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
     ...(order.quantity ? [`Quantidade: ${order.quantity} un.`] : []),
     `${order.separated ? "☑" : "☐"} Impressão separada`,
     ...(order.dueDate ? [`Prazo DTF: ${dtfDate(order.dueDate)}`] : []),
@@ -248,7 +248,7 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
     frame.title = "Ficha DTF para impressão";
     const escape = (value: string) => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
     const photo = photos.map((source, index) => `<img alt="Referência ${index + 1}" src="${source}">`).join("");
-    frame.srcdoc = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha DTF ${dtfCode(order.id).replace(/[^A-Z0-9]/g, "")}</title><style>@page{size:A4;margin:16mm}body{font:14px/1.5 system-ui,sans-serif;color:#111}h1{font-size:23px;margin:0 0 12px;border-bottom:2px solid #111;padding-bottom:8px}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}img{display:block;max-width:100%;max-height:85mm;object-fit:contain;break-inside:avoid;margin-top:12px}</style></head><body><h1>Ficha de impressão DTF</h1><pre>${escape(ticketText)}</pre>${photo}</body></html>`;
+    frame.srcdoc = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Ficha DTF </title><style>@page{size:A4;margin:16mm}body{font:14px/1.5 system-ui,sans-serif;color:#111}h1{font-size:23px;margin:0 0 12px;border-bottom:2px solid #111;padding-bottom:8px}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}img{display:block;max-width:100%;max-height:85mm;object-fit:contain;break-inside:avoid;margin-top:12px}</style></head><body><h1>Ficha de impressão DTF</h1><pre>${escape(ticketText)}</pre>${photo}</body></html>`;
     frame.onload = () => {
       const target = frame.contentWindow;
       if (!target) { frame.remove(); return; }

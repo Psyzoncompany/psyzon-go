@@ -197,7 +197,7 @@ test("DTF orders round fractional meters in cents and retain customer identity",
 test("quick DTF orders support blank inputs and multiple photos alongside legacy covers", () => {
   const empty: DtfInput = { title: "", customerId: "", customerName: "", phone: "", lengthCm: 0, widthCm: 0, priceCents: 0, paidCents: 0, dueDate: "", stage: "Aguardando arte", artworkUrl: "", notes: "", photoData: "", quantity: 0 };
   validateDtf(empty);
-  assert.equal(dtfTitle({ ...empty, id: "123456789" }), "Pedido #12345678");
+  assert.equal(dtfTitle({ ...empty, id: "123456789" }), "Pedido DTF");
   assert.throws(() => validateDtf({ ...empty, quantity: 1.5 }));
   const cover = "data:image/jpeg;base64,AA==";
   const extra = "data:image/jpeg;base64,BB==";

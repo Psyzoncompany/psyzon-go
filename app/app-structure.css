@@ -1,5 +1,8 @@
 /* One application layout for every visual model. Theme files own colors, materials and finishes. */
 @media screen {
+  :root[data-ui-theme] .app-shell .notification-panel { background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none; isolation: isolate; }
+  :root[data-ui-theme][data-theme="dark"] .app-shell .notification-panel { background: #20252d; }
+  :root[data-ui-theme] .app-shell .topbar:has(.notification-panel) { z-index: 95; }
   :root { --structure-radius: 12px; --structure-dialog-radius: 20px; --structure-nav-radius: 16px; }
   :root[data-ui-theme="liquid-glass-card"] { --structure-radius: 18px; --structure-dialog-radius: 26px; --structure-nav-radius: 26px; }
   :root[data-ui-theme="ios-premium"] { --structure-radius: 24px; --structure-dialog-radius: 28px; --structure-nav-radius: 24px; }
@@ -65,6 +68,7 @@
   :root[data-ui-theme] .app-shell[data-layout="premium"] .notes-nav-short { display: inline; }
 }
 @media screen and (max-width: 760px) {
+  :root[data-ui-theme] .app-shell .notification-panel { position: fixed; top: 72px; right: 12px; width: calc(100vw - 24px); }
   :root[data-ui-theme] { --mobile-header: 64px; --mobile-nav: calc(94px + env(safe-area-inset-bottom, 0px)); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .main,
   :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .main { margin-left: 0; }

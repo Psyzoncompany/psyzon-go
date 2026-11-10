@@ -146,7 +146,7 @@ function OrderCard({ order, busy, edit, remove, move, openChecklist, displayMone
         <span className="production-order-summary-meta"><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span>{order.quantity} un.</span></span>
         <ChevronDown size={16} />
       </button>
-      <button className="production-open-list" type="button" onClick={openChecklist} aria-label={`Abrir lista de ${order.customer}`}><ClipboardList size={14} /> Abrir lista</button>
+      <button className="production-open-list" type="button" onClick={openChecklist} aria-label={`Abrir lista de ${order.customer}`} title="Abrir lista"><ClipboardList size={16} /><span>Abrir lista</span></button>
     </header>
     <div id={detailsId} hidden={!expanded} className="production-order-details">
       {expanded && <>

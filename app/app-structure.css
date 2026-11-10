@@ -77,7 +77,8 @@
   :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-grid, .dtf-metrics, .history-metrics) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] :is(.metric-card, .dtf-metrics article, .history-metrics article, .materials-totals article, .restock-summary article) { padding: 16px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .metric-card:last-child { grid-column: 1 / -1; display: block; min-height: 146px; }
-  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-kanban { grid-template-columns: repeat(4, clamp(216px, 65vw, 280px)); gap: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-kanban { grid-template-columns: repeat(4, calc(100% - 12px)); gap: 12px; scroll-snap-type: x proximity; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .production-lane { scroll-snap-align: start; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "photo description description" "specs specs money" "deadline deadline deadline" "actions actions actions"; gap: 6px 8px; padding: 12px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order > .dtf-order-specs { display: flex; flex-wrap: wrap; justify-content: start; align-items: center; align-self: center; gap: 4px 12px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .dtf-order-separated { min-height: 44px; }

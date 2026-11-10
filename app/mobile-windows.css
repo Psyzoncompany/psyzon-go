@@ -2,6 +2,25 @@
   .modal-portal { position: fixed; inset: 0; z-index: 100; min-height: 0; }
   .an-dialog > header button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--card-subtle); color: var(--text); display: grid; place-items: center; cursor: pointer; }
 }
+@media screen and (min-width:761px) {
+  :root[data-ui-theme] { --overlay-width: min(1560px,calc(100vw - 48px)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal-backdrop:not(.compact-modal-backdrop) { align-items: center; padding: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal),
+  :root[data-ui-theme] .an-modal-backdrop .an-dialog,
+  :root[data-ui-theme] .finance-detail-sheet,
+  :root[data-ui-theme] .production-checklist-window { width: var(--overlay-width); max-width: 100%; border-radius: 24px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal.compact-modal { width: min(760px,calc(100vw - 48px)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal form > label.full { grid-column: auto; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal form > :is(.form-row,footer,.order-photo-field,.form-help,.form-error,fieldset),
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal form > label:has(textarea) { grid-column: 1/-1; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal.compact-modal form { grid-template-columns: minmax(0,1fr); }
+  .finance-sheet-actions { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .finance-sheet-data { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 24px; }
+  .material-entry-calculator .an-calc-body { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+  .material-entry-calculator .an-calc-body > :is(.an-help,.an-form-row,.an-segment,.an-settings,.an-profile-settings,.an-calc-result,.an-primary,.an-error) { grid-column: 1/-1; }
+  .an-export-preview { height: min(420px,45dvh); }
+}
 @media screen and (max-width:760px) {
   body:has(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { overflow: hidden; }
   :root[data-ui-theme] :is(.modal,.an-dialog,.finance-detail-sheet,.mobile-menu-dialog,.production-checklist-window) { animation: none !important; transform: none !important; }

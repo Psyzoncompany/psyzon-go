@@ -20,6 +20,7 @@ export type Order = {
   phone?: string;
   product: string;
   quantity: number;
+  checklistQuantity?: number;
   total: number;
   paid: number;
   receivable?: number;

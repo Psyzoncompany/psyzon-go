@@ -52,7 +52,7 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
   const links = useMemo(() => indexDtfCustomerLinks(customers, productionOrders, notes), [customers, productionOrders, notes]);
   const orders = useMemo(() => storedOrders.map(order => {
     const linked = links.get(order.customerId);
-    return linked?.orderId ? { ...order, photoData: linked.photoData ?? "" } : order;
+    return linked?.orderId ? { ...order, photoData: linked.photoData ?? "", ...(linked.checklistQuantity !== undefined ? { quantity: linked.checklistQuantity } : {}) } : order;
   }), [storedOrders, links]);
   const printsByOrder = useMemo(() => new Map(orders.map(order => [order.id, readDtfPrints(order.printsData)])), [orders]);
   const linkedDeadlines = new Map(orders.map(order => [order.id, [order, ...(printsByOrder.get(order.id) ?? [])]
@@ -145,6 +145,7 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
 function DtfEditor({ order, customers, links, customer, displayMoney, onSave, onDelete, close }: Pick<Props, "customers" | "displayMoney" | "onSave" | "onDelete"> & { order?: DtfOrder; customer?: Customer; links: Map<string, DtfCustomerLink>; close: () => void }) {
   const [selectedId, setSelectedId] = useState(order?.customerId ?? customer?.id ?? "");
   const [photoDraft, setPhotos] = useState<string[] | null>(null);
+  const [quantity, setQuantity] = useState(String(order?.quantity || ""));
   const [meters, setMeters] = useState(order?.lengthCm ? String(order.lengthCm / 100) : "");
   const [price, setPrice] = useState(order ? String(order.priceCents / 100) : "");
   const [paid, setPaid] = useState(order ? String(order.paidCents / 100) : "");
@@ -204,7 +205,7 @@ function DtfEditor({ order, customers, links, customer, displayMoney, onSave, on
         <label>Nome do pedido<input name="title" maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
         <div className="dtf-client-field"><label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><DtfNamesLink noteId={clientLink?.noteId} /></div>
         {clientLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(clientLink.deadline)} · 7 dias antes da entrega.</p>}
-        <label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" defaultValue={order?.quantity || ""} /></label>
+        <label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" readOnly={clientLink?.checklistQuantity !== undefined} title={clientLink?.checklistQuantity !== undefined ? "Quantidade definida pelo checklist de produção" : undefined} value={clientLink?.checklistQuantity ?? quantity} onChange={event => setQuantity(event.target.value)} /></label>
         <label>Observações<textarea name="notes" rows={3} maxLength={4000} placeholder="Detalhes para preparar e conferir a impressão" defaultValue={order?.notes} /></label>
       </fieldset>
       {order && <details className="dtf-editor-extra"><summary>Mais detalhes</summary><fieldset disabled={busy}>

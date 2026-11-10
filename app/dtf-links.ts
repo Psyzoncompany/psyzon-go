@@ -2,7 +2,7 @@ import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
 
-export type DtfCustomerLink = { noteId?: string; deadline?: string; orderId?: string; photoData?: string };
+export type DtfCustomerLink = { noteId?: string; deadline?: string; orderId?: string; photoData?: string; checklistQuantity?: number };
 
 export function dtfDeadline(delivery: string) {
   const date = Date.parse(`${delivery}T00:00:00Z`);
@@ -45,7 +45,7 @@ export function indexDtfCustomerLinks(customers: Customer[], productionOrders: O
     const active = matching.filter(order => order.status !== "Entregue");
     const candidates = active.length ? active : matching;
     const order = explicit && customerNameKey(explicit.customer) === customerNameKey(customer.name) ? explicit : candidates.length === 1 ? candidates[0] : undefined;
-    if (order) result.set(customer.id, { ...previous, orderId: order.id, ...(typeof order.photoData === "string" ? { photoData: order.photoData } : {}) });
+    if (order) result.set(customer.id, { ...previous, orderId: order.id, ...(typeof order.photoData === "string" ? { photoData: order.photoData } : {}), ...(order.checklistQuantity !== undefined ? { checklistQuantity: order.checklistQuantity } : {}) });
   }
   return result;
 }

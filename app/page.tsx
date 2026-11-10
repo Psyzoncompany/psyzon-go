@@ -9,6 +9,7 @@ import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
 import { synchronizedOrderPhotos } from "./order-photo-sync";
+import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { indexDtfCustomerLinks } from "./dtf-links";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
@@ -227,7 +228,7 @@ const navGroups = [
 export default function HomePage() {
   const [view, setView, noteId, dtfCustomerId] = useViewHistory();
   useEffect(() => { const timer = window.setInterval(() => setCalendarDate(localDateValue()), 30000); return () => window.clearInterval(timer); }, []);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [storedOrders, setOrders] = useState<Order[]>([]);
   const [dtfOrders, setDtfOrders] = useState<DtfOrder[]>([]);
   const [dtfConnection, setDtfConnection] = useState<"connecting" | "live" | "error">("connecting");
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
@@ -238,6 +239,7 @@ export default function HomePage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [notes, setNotes] = useState<BusinessNote[]>([]);
+  const orders = useMemo(() => synchronizedOrderQuantities(storedOrders,notes,customers),[storedOrders,notes,customers]);
   const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "error" | "unconfigured">("connecting");
   const [uid, setUid] = useState("");
   const interfaceAppearance = useInterfaceAppearance(uid);
@@ -893,7 +895,7 @@ export default function HomePage() {
         throw new Error("O valor do pedido mudou. Feche a edição, confira os valores e tente novamente.");
       }
       const linkedPayments = transactions.filter(item => item.orderId === editingOrder.id);
-      transaction.update(orderRef, { ...updatedOrder, photoData: updatedOrder.photoData === editingOrder.photoData ? current.data().photoData ?? updatedOrder.photoData : updatedOrder.photoData });
+      transaction.update(orderRef, { ...updatedOrder, quantity: editingOrder.checklistQuantity !== undefined || orders.find(order => order.id === editingOrder.id)?.checklistQuantity !== undefined ? current.data().quantity : updatedOrder.quantity, photoData: updatedOrder.photoData === editingOrder.photoData ? current.data().photoData ?? updatedOrder.photoData : updatedOrder.photoData });
       const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(updatedOrder.customer));
       transaction.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
       if (updatedOrder.paid !== editingOrder.paid) {
@@ -1251,5 +1253,5 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required readOnly={order.checklistQuantity !== undefined} title={order.checklistQuantity !== undefined ? "Quantidade definida pelo checklist de produção" : undefined} defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><p className="form-help">Ao corrigir o valor recebido, a entrada financeira vinculada também será ajustada.</p><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

@@ -6,6 +6,7 @@ import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, typ
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
 import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
 import { synchronizedOrderPhotos, notePhotoOrderId } from "../app/order-photo-sync";
+import { synchronizedOrderQuantities } from "../app/order-quantity-sync";
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, historyTotals, legacyFabricPurchases, materialHistoryId, pendingFabric, type HistoryEntry } from "../app/history-model";
 
@@ -22,6 +23,20 @@ test("order photos share one source, recover legacy photos and keep removal and 
   assert.equal(indexDtfCustomerLinks(customers, [order, two], []).get("ana")?.orderId, undefined);
   assert.equal(synchronizedOrderPhotos([order, two], [note], [], customers)[1].photoData, "");
   assert.equal(indexDtfCustomerLinks(customers, [order, two], [note]).get("ana")?.orderId, "one");
+});
+
+test("checklist counts override displayed quantities without losing the registered fallback", () => {
+  const order: Order = { id:"o",customer:"Ana",product:"Camisas",quantity:20,total:1000,paid:500,status:"Produção",dueDate:"2026-12-01" };
+  const note: BusinessNote = {id:"n",title:"Lista",category:"Produção",pinned:false,content:documentPrefix+JSON.stringify({version:2,blocks:[],status:"active",orderId:"o",customerId:"",productionChecklist:{client:"",deadline:"",notes:"",warnings:[],rows:Array.from({length:3},(_,i)=>({id:String(i),model:"Masculina",size:"M",name:"Sem nome",done:false}))}})};
+  assert.equal(synchronizedOrderQuantities([order],[],[])[0].quantity,20);
+  const derived=synchronizedOrderQuantities([order],[note],[])[0];
+  assert.equal(derived.quantity,3);assert.equal(derived.checklistQuantity,3);assert.equal(order.quantity,20);assert.equal(derived.total,1000);
+  const doc=JSON.parse(note.content.slice(documentPrefix.length));doc.productionChecklist.rows.pop();
+  assert.equal(synchronizedOrderQuantities([order],[{...note,content:documentPrefix+JSON.stringify(doc)}],[])[0].quantity,2);
+  doc.productionChecklist=null;
+  assert.equal(synchronizedOrderQuantities([order],[{...note,content:documentPrefix+JSON.stringify(doc)}],[])[0].quantity,20);
+  doc.productionChecklist={rows:[]};
+  assert.equal(synchronizedOrderQuantities([order],[{...note,content:documentPrefix+JSON.stringify(doc)}],[])[0].quantity,20);
 });
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {

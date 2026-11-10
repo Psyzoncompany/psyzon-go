@@ -213,7 +213,7 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
   { id: "historico", label: "Histórico", icon: History },
-  { id: "mais", label: "Mais", icon: MoreHorizontal },
+  { id: "mais", label: "Configuração", icon: Settings },
 ];
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "dtf", "notas", "clientes"].includes(item.id)) },

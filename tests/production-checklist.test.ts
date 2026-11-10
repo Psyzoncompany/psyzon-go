@@ -47,11 +47,15 @@ test("unnamed shirts print grouped sizes without repeated name rows or extra pag
   const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
   assert.equal([...html.matchAll(/class="production-sheet production-sizes-only"/g)].length, 1);
   assert.equal([...html.matchAll(/class="production-size"/g)].length, 4);
-  assert.doesNotMatch(html, /class="production-piece"|class="production-piece-head"|Sem nome/);
+  assert.doesNotMatch(html, /class="production-piece"|Sem nome/);
+  assert.equal([...html.matchAll(/class="production-piece production-size-checks"/g)].length, 4);
+  assert.equal([...html.matchAll(/<i /g)].length, 16);
+  for (const stage of ["Corte", "Estampa", "Prensagem", "Embalagem"]) assert.match(html, new RegExp(`aria-label="${stage} · Masculina · Tamanho G · 100 un.`));
   assert.match(html, /400 UNIDADES/);
   const mixed = renderToStaticMarkup(createElement(ProductionSheets, { checklist: parseProductionOrder("3G\nAna") }));
   assert.match(mixed, /Ana/);
   assert.match(mixed, /2 un. sem personalização de nome/);
+  assert.equal([...mixed.matchAll(/<i /g)].length, 8);
 });
 
 test("AI receives expanded codes and keeps the female suffix for unnamed shirts", async () => {

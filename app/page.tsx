@@ -8,10 +8,11 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
+import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
 import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
-import { makeId, millis } from "./notes-model";
+import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
 import type { Task } from "./notes/task-model";
@@ -252,6 +253,8 @@ export default function HomePage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [productionList, setProductionList] = useState<{ order: Order; noteId: string } | null>(null);
+  useEffect(() => { setProductionList(null); }, [uid, view]);
   const [search, setSearch] = useState("");
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
@@ -976,6 +979,31 @@ export default function HomePage() {
     showToast(bill ? "Conta atualizada" : "Conta cadastrada");
   };
 
+  const openProductionList = async (order: Order) => {
+    if (firebaseState !== "live") return showToast("Aguarde a conexão para abrir a lista.");
+    const linked = notes.filter(note => { const document = readDocument(note.content); return document.orderId === order.id && document.status !== "trash"; })
+      .sort((a, b) => Number(!!readDocument(b.content).productionChecklist) - Number(!!readDocument(a.content).productionChecklist) || millis(b.updatedAt) - millis(a.updatedAt))[0];
+    if (linked) { setProductionList({ order, noteId: linked.id }); return; }
+    try {
+      const noteId = `production-${order.id}`;
+      await runTransaction(getFirestore(getApps()[0]), async transaction => {
+        const reference = userDocument(uid, "notes", noteId);
+        const existing = await transaction.get(reference);
+        if (existing.exists()) {
+          if (readDocument(existing.data().content).status === "trash") throw new Error("A lista deste pedido está na lixeira. Restaure-a em Anotações.");
+          return;
+        }
+        const draft = newDraft(`${order.customer} · ${order.product}`.slice(0, 200));
+        draft.category = "Produção";
+        draft.document.orderId = order.id;
+        draft.document.customerId = visibleCustomers.find(customer => customerNameKey(customer.name) === customerNameKey(order.customer))?.id ?? "";
+        draft.document.blocks = readDocument(order.notes ?? "").blocks;
+        transaction.set(reference, { ...serializeDraft(draft), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      });
+      setProductionList({ order, noteId });
+    } catch (cause) { showToast(cause instanceof Error && !cause.name.startsWith("Firebase") ? cause.message : "Não foi possível abrir a lista. Tente novamente."); }
+  };
+
   const payBill = async (bill: Bill) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
     if (billIsSettled(bill)) return false;
@@ -1078,7 +1106,7 @@ export default function HomePage() {
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
+          {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={productionOrders} customers={visibleCustomers} notes={notes} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} openNote={id => setView("notas", id)} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
@@ -1104,6 +1132,9 @@ export default function HomePage() {
 
 
       <MobileNavigation view={view} navigate={setView} />
+      {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
+        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={orders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
+      </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}

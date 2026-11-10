@@ -20,6 +20,7 @@ type Props = {
   editOrder: (order: Order) => void;
   deleteOrder: (order: Order) => Promise<void>;
   openNote: (noteId: string) => void;
+  openChecklist: (order: Order) => void;
 };
 
 function indexOrderNotes(notes: BusinessNote[]) {
@@ -35,7 +36,7 @@ function indexOrderNotes(notes: BusinessNote[]) {
   return { byOrder, byCustomer };
 }
 
-export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote }: Props) {
+export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote, openChecklist }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
@@ -87,6 +88,7 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
       remove: () => void run(order, () => deleteOrder(order)),
       move: (status: OrderStatus) => moveOrder(order, status),
       openNote,
+      openChecklist: () => openChecklist(order),
     };
   }
 
@@ -123,7 +125,7 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
           <OrderPhoto order={order} />
           <div className="production-delivered-name"><b>{order.product}</b><small>{order.customer} · {order.quantity} un.</small></div>
           <strong className="production-delivered-value">{displayMoney(order.total)}</strong>
-          <div className="production-delivered-actions"><NoteShortcut note={actions.note} openNote={openNote} /><OrderActions {...actions} /></div>
+          <div className="production-delivered-actions"><button className="production-note-link" onClick={actions.openChecklist}><ClipboardList size={15} /> Abrir lista</button><NoteShortcut note={actions.note} openNote={openNote} /><OrderActions {...actions} /></div>
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
@@ -151,10 +153,11 @@ function OrderPhoto({ order }: { order: Order }) {
     : <span className="production-photo-empty" aria-hidden="true"><ImageIcon size={18} /></span>;
 }
 
-function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMoney, expanded, toggle, dragging, startDrag }: OrderActionsProps & {
+function OrderCard({ order, note, busy, edit, remove, move, openNote, openChecklist, displayMoney, expanded, toggle, dragging, startDrag }: OrderActionsProps & {
   note?: BusinessNote;
   move: (status: OrderStatus) => void;
   openNote: Props["openNote"];
+  openChecklist: () => void;
   displayMoney: Props["displayMoney"];
   expanded: boolean;
   toggle: () => void;
@@ -175,6 +178,7 @@ function OrderCard({ order, note, busy, edit, remove, move, openNote, displayMon
         <ChevronDown size={16} />
       </button>
     </header>
+    <div className="production-checklist-shortcut"><span>Checklist de produção</span><button type="button" onClick={openChecklist} aria-label={`Abrir lista de ${order.customer}`}><ClipboardList size={14} /> Abrir lista</button></div>
     <div id={detailsId} hidden={!expanded} className="production-order-details">
       {expanded && <>
         {order.photoData ? <OrderPhoto order={order} /> : <button type="button" className="production-add-photo" onClick={edit} disabled={busy}><Camera size={15} /> Adicionar foto</button>}

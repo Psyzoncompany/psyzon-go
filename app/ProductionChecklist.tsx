@@ -14,7 +14,7 @@ import OrderPhotoField from "./OrderPhotoField";
 import { parseProductionOrder, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
 import { defaultProductionColor, productionColorFromNotes, productionColorFromProduct, productionColorInk, validProductionColor } from "./production-theme";
 
-export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void; onChange: (value: Checklist | null) => void }) {
+export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, linkedDeadline, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; linkedDeadline?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void; onChange: (value: Checklist | null) => void }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [raw, setRaw] = useState(source);
@@ -50,7 +50,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
       if (importedColor && !productionColorFromNotes(result.notes)) {
         result.notes = [`Cor da camisa: ${importedColor.label}`, result.notes].filter(Boolean).join("\n").slice(0, 4000);
       }
-      onChange({ ...result, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || "" });
+      onChange({ ...result, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || linkedDeadline || "" });
       setOpen(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível organizar a lista."); }
     finally { setBusy(false); }

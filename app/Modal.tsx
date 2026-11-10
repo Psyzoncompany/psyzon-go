@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode } from "react";
 
 export default function Modal({ titleId, busy, close, children, compact = false }: { titleId: string; busy: boolean; close: () => void; children: ReactNode; compact?: boolean }) {
@@ -22,5 +23,6 @@ export default function Modal({ titleId, busy, close, children, compact = false 
     element?.addEventListener("keydown", onKey);
     return () => element?.removeEventListener("keydown", onKey);
   }, [busy, close]);
-  return <div className={`modal-backdrop${compact ? " compact-modal-backdrop" : ""}`}><button className="modal-dismiss" disabled={busy} aria-label="Fechar janela" onClick={close} /><div ref={ref} className={`modal${compact ? " compact-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>{children}</div></div>;
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="app-shell modal-portal" data-layout="premium"><div className={`modal-backdrop${compact ? " compact-modal-backdrop" : ""}`}><button className="modal-dismiss" disabled={busy} aria-label="Fechar janela" onClick={close} /><div ref={ref} className={`modal${compact ? " compact-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>{children}</div></div></div>, document.body);
 }

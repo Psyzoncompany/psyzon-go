@@ -1,4 +1,5 @@
 "use client";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
@@ -23,5 +24,6 @@ export default function NoteDialog({ title, close, children, wide = false }: { t
     root.addEventListener("keydown", keydown);
     return () => { root.removeEventListener("keydown", keydown); if (previous?.isConnected) previous.focus(); };
   }, []);
-  return <div className="an-modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}><div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`an-dialog ${wide ? "wide" : ""}`}><header><h2>{title}</h2><button className="an-icon" aria-label={`Fechar ${title.toLowerCase()}`} onClick={close}><X size={20} /></button></header>{children}</div></div>;
+  if (typeof document === "undefined") return null;
+  return createPortal(<div className="an-modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) close(); }}><div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={`an-dialog ${wide ? "wide" : ""}`}><header><h2>{title}</h2><button className="an-icon" aria-label={`Fechar ${title.toLowerCase()}`} onClick={close}><X size={20} /></button></header>{children}</div></div>, document.body);
 }

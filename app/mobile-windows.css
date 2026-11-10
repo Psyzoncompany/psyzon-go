@@ -1,0 +1,16 @@
+@media screen {
+  .modal-portal { position: fixed; inset: 0; z-index: 100; min-height: 0; }
+  .an-dialog > header button { width: 44px; height: 44px; border: 0; border-radius: 12px; background: var(--card-subtle); color: var(--text); display: grid; place-items: center; cursor: pointer; }
+}
+@media screen and (max-width:760px) {
+  body:has(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { overflow: hidden; }
+  :root[data-ui-theme] :is(.modal,.an-dialog,.finance-detail-sheet,.mobile-menu-dialog,.production-checklist-window) { animation: none !important; transform: none !important; }
+  :root[data-ui-theme] :is(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay) { position: fixed; inset: 0; width: 100%; height: 100dvh; padding: 0; align-items: stretch; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal),
+  :root[data-ui-theme] .an-modal-backdrop .an-dialog,
+  :root[data-ui-theme] .finance-detail-sheet,
+  :root[data-ui-theme] .mobile-menu-dialog[open] { position: fixed; inset: 0; margin: 0; width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; transform: none; overflow-y: auto; overscroll-behavior: contain; padding-top: env(safe-area-inset-top,0px); padding-bottom: calc(16px + env(safe-area-inset-bottom,0px)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal) > header,
+  :root[data-ui-theme] .an-dialog > header { position: sticky; top: 0; z-index: 2; flex-shrink: 0; background: var(--card); }
+  :root[data-ui-theme] .modal.compact-modal { position: relative; max-height: 90dvh; overflow-y: auto; }
+}

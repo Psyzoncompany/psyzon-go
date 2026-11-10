@@ -9,6 +9,8 @@ import "./mobile-design.css";
 import "./liquid-glass.css";
 import "./ios-premium.css";
 import "./app-structure.css";
+import "./kanban-redesign.css";
+import "./mobile-windows.css";
 import { appearanceBootstrap } from "./interface-appearance";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });

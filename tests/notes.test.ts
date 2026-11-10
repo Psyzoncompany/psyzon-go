@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
+import { materialBinding } from "../app/notes/material-binding";
+
 import test from "node:test";
 import { block, calculateMaterial, exportNote, newDraft, readDocument, recalculateMaterial, serializeDraft, toDraft, type NoteMaterial } from "../app/notes-model";
 import { NoteSaveQueue } from "../app/notes-save-queue";
 import { parseProductionOrder, sampleProductionOrder } from "../app/production-checklist";
 import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
 
+test("material links derive the order customer and reject missing or conflicting identities", () => {
+  const orders = [{id:"one",customer:"ANA",product:"Camisas"}];
+  const customers = [{id:"ana",name:"Ana"},{id:"bia",name:"Bia"}];
+  assert.deepEqual(materialBinding("one","",orders,customers),{orderId:"one",customerId:"ana"});
+  assert.deepEqual(materialBinding("","bia",orders,customers),{orderId:"",customerId:"bia"});
+  assert.throws(()=>materialBinding("one","bia",orders,customers),/outro cliente/);
+  assert.throws(()=>materialBinding("missing","",orders,customers),/removido/);
+  assert.throws(()=>materialBinding("","missing",orders,customers),/removido/);
+});
 test("production checklists survive queued saves, archive and restore without dropping text", () => {
   const draft = newDraft("JERFESSON");
   draft.document.blocks = [block("Conferir tecido antes do corte.")];

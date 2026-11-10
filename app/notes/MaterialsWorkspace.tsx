@@ -3,20 +3,29 @@
 import { ArrowLeft, ArrowUpRight, Clipboard, Download, Layers, PackageCheck, Printer, Search } from "lucide-react";
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { currency, decimal } from "../notes-model";
+import { currency, decimal, type NoteMaterial } from "../notes-model";
+import MaterialEntryDialog from "./MaterialEntryDialog";
+import type { MaterialTarget, MaterialProductionOrder, MaterialCustomer, MaterialSaveInput } from "./material-binding";
+import { Plus, Link2 } from "lucide-react";
 import { customerNameKey } from "../finance-model";
 import NoteDialog from "./NoteDialog";
 import { groupMaterialLines, materialLines, materialQuantity, materialsCsv, materialsText, materialTotals, splitMaterialOrders, type MaterialLine, type MaterialOrder } from "./materials-model";
 import "./materials.css";
 
 type Props = {
+  uid: string;
+  targets: MaterialTarget[];
+  productionOrders: MaterialProductionOrder[];
+  customers: MaterialCustomer[];
+  saveMaterial: (input: MaterialSaveInput) => Promise<void>;
   orders: MaterialOrder[];
   back: () => void;
   openNote: (id: string) => void;
   complete: (id: string, materialIds: string[], completed: boolean) => Promise<void>;
 };
 
-export default function MaterialsWorkspace({ orders, back, openNote, complete }: Props) {
+export default function MaterialsWorkspace({ uid, targets, productionOrders, customers, saveMaterial, orders, back, openNote, complete }: Props) {
+  const [entry,setEntry] = useState<{ id?: string; bindingOnly?: boolean; material?: NoteMaterial } | null>(null);
   const [completed, setCompleted] = useState(false);
   const [query, setQuery] = useState("");
   const [supplier, setSupplier] = useState("");
@@ -29,8 +38,8 @@ export default function MaterialsWorkspace({ orders, back, openNote, complete }:
   const suppliers = [...new Set(current.flatMap(order => order.materials.map(item => item.supplier)))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   const selectedSupplier = suppliers.includes(supplier) ? supplier : "";
   const search = customerNameKey(query);
-  const filtered = current.filter(order => (!selectedSupplier || order.materials.some(item => item.supplier === selectedSupplier)) && (!search || customerNameKey([order.title, order.client, ...order.materials.flatMap(item => [item.supplier, item.fabricType, item.color, item.collarColor ?? ""])].join(" ")).includes(search)));
-  const allLines = current.flatMap(materialLines);
+  const filtered = current.filter(order => (!selectedSupplier || order.materials.some(item => item.supplier === selectedSupplier)) && (!search || customerNameKey([order.title, order.client, ...order.materials.flatMap(item => [item.supplier, item.fabricType, item.color, item.collarColor ?? ""])].join(" ")).includes(search))).map(order => ({ ...order, materials: selectedSupplier ? order.materials.filter(material => material.supplier === selectedSupplier) : order.materials }));
+  const allLines = filtered.flatMap(materialLines);
   const totals = materialTotals(filtered.flatMap(materialLines));
 
   function show(next: boolean) {
@@ -54,8 +63,8 @@ export default function MaterialsWorkspace({ orders, back, openNote, complete }:
   return <section className="materials-workspace">
     <button type="button" className="materials-back" onClick={back}><ArrowLeft size={16} /> Bloco de notas</button>
     <header className="materials-heading">
-      <div><h1>Materiais</h1><p>Pedidos de compra das suas anotações, reunidos em um só lugar.</p></div>
-      <button type="button" className="primary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button>
+      <div><h1>Materiais</h1><p>Planeje compras e vincule materiais aos pedidos e clientes.</p></div>
+      <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
     </header>
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">
       <article><small>Pedidos na lista</small><strong>{filtered.length}</strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
@@ -77,11 +86,12 @@ export default function MaterialsWorkspace({ orders, back, openNote, complete }:
         return <article className="materials-order" key={order.id}>
           <header><div><h2>{order.title}</h2>{order.client && <p>{order.client}</p>}</div><strong>{currency(materialTotals(lines).cost)}</strong><button className="materials-note-link" type="button" aria-label={`Abrir anotação ${order.title}`} onClick={() => openNote(order.id)}><ArrowUpRight size={16} /></button></header>
           <MaterialTable lines={lines} prices />
-          <footer><label><input type="checkbox" checked={completed} disabled={!!busy} onChange={() => void change(order)} aria-label={`${completed ? "Reabrir" : "Concluir"} pedido ${order.title}`} />{busy === order.id ? "Salvando…" : completed ? "Reabrir pedido" : "Concluir pedido"}</label></footer>
+          <footer><div className="materials-order-actions"><button type="button" className="secondary" onClick={() => setEntry({id:order.id})}><Plus size={14} /> Adicionar material</button><button type="button" className="secondary" onClick={() => setEntry({id:order.id,bindingOnly:true})}><Link2 size={14} /> Vincular pedido / cliente</button><label><input type="checkbox" checked={completed} disabled={!!busy} onChange={() => void change(order)} aria-label={`${completed ? "Reabrir" : "Concluir"} pedido ${order.title}`} />{busy === order.id ? "Salvando…" : completed ? "Reabrir pedido" : "Concluir pedido"}</label></div>{!completed && <div className="materials-item-edit">{order.materials.map(material => <button key={material.id} onClick={() => setEntry({id:order.id,material})}>Editar {material.fabricType} · {material.color}</button>)}</div>}</footer>
         </article>;
       })}
-      {!filtered.length && <div className="materials-empty"><PackageCheck size={29} /><h2>{current.length ? "Nenhum pedido encontrado" : completed ? "Nenhum pedido concluído" : "Nenhum pedido pendente"}</h2><p>{current.length ? "Experimente outra busca ou fornecedor." : completed ? "Os pedidos marcados com check aparecem aqui." : "Adicione materiais em uma anotação para montar a lista de compras."}</p></div>}
+      {!filtered.length && <div className="materials-empty"><PackageCheck size={29} /><h2>{current.length ? "Nenhum pedido encontrado" : completed ? "Nenhum pedido concluído" : "Nenhum pedido pendente"}</h2><p>{current.length ? "Experimente outra busca ou fornecedor." : completed ? "Os pedidos marcados com check aparecem aqui." : "Use Adicionar materiais para começar o planejamento de compras."}</p></div>}
     </div>
+    {entry && <MaterialEntryDialog uid={uid} targets={targets} orders={productionOrders} customers={customers} initialId={entry.id} material={entry.material} bindingOnly={entry.bindingOnly} save={saveMaterial} close={() => setEntry(null)} />}
     {exportOpen && <MaterialsExport lines={allLines} title={completed ? "Materiais concluídos" : "Materiais pendentes"} close={() => setExportOpen(false)} />}
   </section>;
 }

@@ -2,7 +2,9 @@
 
 import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
-import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
+import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
+import { customerNameKey } from "./finance-model";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
@@ -15,7 +17,7 @@ import ProductionChecklist from "./ProductionChecklist";
 import { notePhotoOrderId } from "./order-photo-sync";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
+type Props = { productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
 type Filter = "all" | "pinned" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -132,6 +134,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     else change(d => ({ ...d, productionPhotoData: photo }));
   };
   const status = statuses[selectedId] || "saved";
+  const purchasedIds = new Set(notes.find(note => note.id === selectedId)?.purchasedMaterialIds);
   const locked = draft?.document.status === "trash";
   const showChecklist = productionOnly || (editorMode ?? (draft?.document.productionChecklist ? "production" : "text")) === "production";
   const groups = supplierGroups(draft?.materials || []);
@@ -209,6 +212,35 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     await onCompleteMaterials(id, materialIds, completed);
   }
 
+  async function saveMaterial(input: MaterialSaveInput) {
+    const binding = materialBinding(input.orderId,input.customerId,orders,customers);
+    const id = input.noteId || makeId();
+    await queueRef.current?.flush(id);
+    if (queueRef.current?.isPending(id)) throw new Error("Há alterações pendentes nessa anotação. Aguarde o salvamento antes de continuar.");
+    const reference = doc(getFirestore(getApps()[0]), "users", uid, "notes", id);
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const snapshot = await transaction.get(reference);
+      if (input.noteId && !snapshot.exists()) throw new Error("O planejamento foi removido. Atualize a lista.");
+      const stored = snapshot.exists() ? snapshot.data() as BusinessNote : undefined;
+      const next = stored ? toDraft({ ...stored, id }) : newDraft(input.title);
+      if (next.document.status === "trash") throw new Error("Restaure a anotação antes de alterar seus materiais.");
+      if (input.material) {
+        if (stored?.purchasedMaterialIds?.includes(input.material.id)) throw new Error("Reabra a compra antes de editar um material concluído. O histórico da compra foi preservado.");
+        const index = next.materials.findIndex(material => material.id === input.material!.id);
+        if (index < 0 && next.materials.length >= 100) throw new Error("Este planejamento já tem 100 materiais.");
+        if (index < 0) next.materials.push(input.material); else next.materials[index] = input.material;
+      }
+      next.title = input.title;
+      if (!stored) next.category = "Compras";
+      next.document = { ...next.document, ...binding };
+      const serialized = serializeDraft(next);
+      if (serialized.content.length > 100000) throw new Error("A anotação atingiu o limite. Crie outro planejamento.");
+      if (stored) transaction.update(reference, { ...serialized, updatedAt: serverTimestamp() });
+      else transaction.set(reference, { ...serialized, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    });
+    if (!queueRef.current?.isPending(id)) { const next = { ...overlaysRef.current }; delete next[id]; overlaysRef.current = next; setOverlays(next); }
+  }
+
   if (materialsOpen) {
     const purchases = new Map(notes.map(note => [note.id, note.purchasedMaterialIds]));
     const clientByOrder = new Map(orders.map(order => [order.id, order.customer]));
@@ -217,7 +249,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
       id, title: note.title || "Anotação sem título", materials: note.materials, purchasedIds: purchases.get(id),
       client: clientByOrder.get(note.document.orderId) || clientById.get(note.document.customerId) || "",
     }));
-    return <MaterialsWorkspace orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
+    return <MaterialsWorkspace uid={uid} targets={allNotes.filter(note => note.draft.document.status !== "trash").map(({id,draft}) => ({ id,title:draft.title || "Sem título",orderId:draft.document.orderId,customerId:draft.document.customerId,materials:draft.materials }))} productionOrders={orders} customers={customers} saveMaterial={saveMaterial} orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
   }
 
   return <div className={`apple-notes ${showChecklist ? "an-production-mode" : ""} ${sidebar ? "" : "an-sidebar-hidden"} ${mobileEditor ? "an-mobile-editor" : ""} ${calculator ? "an-has-calculator" : ""}`}>
@@ -247,16 +279,16 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
           {draft.document.blocks.map((b, index) => <div className={`an-text-block ${b.type} ${b.done ? "done" : ""} ${b.bold ? "bold" : ""}`} key={b.id}>{b.type === "check" ? <button className="an-check-circle" role="checkbox" aria-checked={!!b.done} aria-label={`Concluir: ${b.text || "tarefa"}`} disabled={locked} onClick={() => changeBlock(b.id, { done: !b.done })}>{b.done ? <Check size={13} /> : null}</button> : b.type === "bullet" ? <span className="an-bullet">•</span> : null}<EditableBlock value={b.text} id={b.id} readOnly={locked} placeholder={index === 0 ? "Comece a escrever…" : ""} onFocus={() => setActiveBlock(b.id)} onChange={text => changeBlock(b.id, { text }, true)} onEnter={(before, after) => { setActiveBlock(b.id); const added = block(after, b.type === "heading" ? "paragraph" : b.type); change(d => { const blocks = d.document.blocks.map(item => item.id === b.id ? { ...item, text: before } : item); blocks.splice(index + 1, 0, added); return { ...d, document: { ...d.document, blocks } }; }); requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${added.id}"]`)?.focus()); }} onRemoveEmpty={() => { if (draft.document.blocks.length <= 1 || b.text) return; change(d => ({ ...d, document: { ...d.document, blocks: d.document.blocks.filter(v => v.id !== b.id) } })); const previous = draft.document.blocks[Math.max(0, index - 1)]; requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${previous.id}"]`)?.focus()); }} /></div>)}
         </div>
         {!locked && <button className="an-new-line" onClick={() => addBlock()}><Plus size={14} />Adicionar linha</button>}
-        {!!draft.materials.length && <section className="an-materials" aria-label="Materiais da anotação"><header><h2>Materiais</h2><span>{draft.materials.length} {draft.materials.length === 1 ? "item" : "itens"}</span></header>{groups.map(group => <div className="an-supplier" key={group.supplier}><h3>{group.supplier}</h3>{group.materials.map(material => <div className="an-material" key={material.id}><div className="an-material-info"><span className="an-material-mark"><Circle size={16} /></span><div><b>Malha {material.fabricType}</b><small>{material.color} · {decimal(material.fabricKg)} kg</small><small>{material.collarType === "common" ? `Ribana · ${material.collarColor || material.color} · ${decimal(material.ribanaKg)} kg` : `Gola polo + punho · ${material.collarColor || material.color} · ${material.poloUnits} conjuntos`}</small></div></div><div className="an-material-right"><b>{currency(material.totalCost)}</b>{!locked && <div><button aria-label={`Editar material ${material.color}`} title="Editar material" onClick={() => setCalculator(material)}>Editar</button><button aria-label={`Duplicar material ${material.color}`} title="Duplicar material" onClick={() => change(d => ({ ...d, materials: [...d.materials, { ...material, id: makeId() }] }))}><Copy size={14} /></button><button className="danger" aria-label={`Remover material ${material.color}`} title="Remover material (pode desfazer)" onClick={() => change(d => ({ ...d, materials: d.materials.filter(m => m.id !== material.id) }))}><X size={15} /></button></div>}</div></div>)}<div className="an-supplier-total"><span>Subtotal · {group.supplier}</span><b>{currency(group.materials.reduce((sum, m) => sum + m.totalCost, 0))}</b></div><button className="an-link" onClick={() => copySupplier(group.supplier)}><Copy size={15} />Copiar pedido deste fornecedor</button></div>)}<div className="an-material-grand-total"><div><b>Total de materiais</b><small>Estimativa de compra</small></div><strong>{currency(total)}</strong></div></section>}
+        {!!draft.materials.length && <section className="an-materials" aria-label="Materiais da anotação"><header><h2>Materiais</h2><span>{draft.materials.length} {draft.materials.length === 1 ? "item" : "itens"}</span></header>{groups.map(group => <div className="an-supplier" key={group.supplier}><h3>{group.supplier}</h3>{group.materials.map(material => <div className="an-material" key={material.id}><div className="an-material-info"><span className="an-material-mark"><Circle size={16} /></span><div><b>Malha {material.fabricType}</b><small>{material.color} · {decimal(material.fabricKg)} kg</small><small>{material.collarType === "common" ? `Ribana · ${material.collarColor || material.color} · ${decimal(material.ribanaKg)} kg` : `Gola polo + punho · ${material.collarColor || material.color} · ${material.poloUnits} conjuntos`}</small></div></div><div className="an-material-right"><b>{currency(material.totalCost)}</b>{!locked && <div><button aria-label={`Editar material ${material.color}`} title={purchasedIds.has(material.id) ? "Reabra a compra em Materiais antes de editar" : "Editar material"} disabled={purchasedIds.has(material.id)} onClick={() => setCalculator(material)}>Editar</button><button aria-label={`Duplicar material ${material.color}`} title="Duplicar material" onClick={() => change(d => ({ ...d, materials: [...d.materials, { ...material, id: makeId() }] }))}><Copy size={14} /></button><button className="danger" aria-label={`Remover material ${material.color}`} title="Reabra a compra em Materiais antes de remover um item concluído" disabled={purchasedIds.has(material.id)} onClick={() => change(d => ({ ...d, materials: d.materials.filter(m => m.id !== material.id) }))}><X size={15} /></button></div>}</div></div>)}<div className="an-supplier-total"><span>Subtotal · {group.supplier}</span><b>{currency(group.materials.reduce((sum, m) => sum + m.totalCost, 0))}</b></div><button className="an-link" onClick={() => copySupplier(group.supplier)}><Copy size={15} />Copiar pedido deste fornecedor</button></div>)}<div className="an-material-grand-total"><div><b>Total de materiais</b><small>Estimativa de compra</small></div><strong>{currency(total)}</strong></div></section>}
         {!locked && !draft.materials.length && <button className="an-material-empty" onClick={() => setCalculator("new")}><Calculator size={18} /><span><b>Planejar materiais</b><small>Calcule tecido, ribana e conjuntos polo nesta anotação.</small></span><Plus size={17} /></button>}
         <footer className="an-document-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"} · {groups.length} {groups.length === 1 ? "fornecedor" : "fornecedores"}</span>{!locked && <button onClick={() => setCalculator("new")}><Calculator size={16} />Calculadora</button>}</footer>
       </article></div> : <div className="an-empty-document"><NotebookPen size={40} strokeWidth={1.2} /><h2>{filter === "trash" ? "Lixeira vazia" : "Um espaço para suas ideias"}</h2><p>{filter === "trash" ? "As anotações excluídas ficam aqui para restauração." : "Organize compras, produção e clientes em um só lugar."}</p><button className="an-primary" onClick={() => setModal("new")}><Plus size={17} />Nova anotação</button></div>}
     </section>
-    {calculator && <MaterialCalculator key={typeof calculator === "string" ? "new" : calculator.id} uid={uid} material={typeof calculator === "string" ? undefined : calculator} close={() => setCalculator(null)} add={material => { change(d => ({ ...d, materials: d.materials.some(m => m.id === material.id) ? d.materials.map(m => m.id === material.id ? material : m) : [...d.materials, material] })); setCalculator(null); notify("Material atualizado."); }} />}
+    {calculator && <MaterialCalculator key={typeof calculator === "string" ? "new" : calculator.id} uid={uid} initialQuantity={linkedOrder?.quantity} material={typeof calculator === "string" ? undefined : calculator} close={() => setCalculator(null)} add={material => { if (purchasedIds.has(material.id)) { notify("Reabra a compra em Materiais antes de editar um item concluído."); return; } change(d => ({ ...d, materials: d.materials.some(m => m.id === material.id) ? d.materials.map(m => m.id === material.id ? material : m) : [...d.materials, material] })); setCalculator(null); notify("Material atualizado."); }} />}
     {notice && <div className="an-toast" role="status"><CheckCheck size={17} />{notice}<button onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={15} /></button></div>}
     {modal === "new" && <NoteDialog title="Nova anotação" close={() => { if (!creating) setModal(null); }}><p className="an-dialog-description">Comece em branco ou escolha um modelo da confecção.</p><div className="an-templates">{templates.map((template, index) => <button key={template.title} disabled={creating} onClick={() => create(index)}><span><FileText size={21} /></span><div><b>{template.title}</b><small>{index ? template.category : "Texto livre, listas e ideias"}</small></div><Plus size={17} /></button>)}</div>{creating && <p className="an-dialog-description" role="status">Criando anotação…</p>}</NoteDialog>}
     {modal === "export" && draft && <ExportDialog draft={draft} close={() => setModal(null)} notify={notify} />}
-    {modal === "link" && draft && <NoteDialog title="Vincular à anotação" close={() => setModal(null)}><div className="an-link-form"><label>Pedido<select value={draft.document.orderId} onChange={e => change(d => ({ ...d, document: { ...d.document, orderId: e.target.value } }))}><option value="">Sem pedido vinculado</option>{orders.map(o => <option key={o.id} value={o.id}>{o.customer} · {o.product}</option>)}</select></label><label>Cliente<select value={draft.document.customerId} onChange={e => change(d => ({ ...d, document: { ...d.document, customerId: e.target.value } }))}><option value="">Sem cliente vinculado</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><p className="an-help">O vínculo organiza a anotação. Os valores permanecem como estimativa de materiais.</p><button className="an-primary" onClick={() => setModal(null)}>Concluir</button></div></NoteDialog>}
+    {modal === "link" && draft && <NoteDialog title="Vincular à anotação" close={() => setModal(null)}><div className="an-link-form"><label>Pedido<select aria-label="Pedido" value={draft.document.orderId} onChange={e => change(d => ({ ...d, document: { ...d.document, orderId: e.target.value, customerId: customers.find(customer => customerNameKey(customer.name) === customerNameKey(orders.find(order => order.id === e.target.value)?.customer ?? ""))?.id ?? "" } }))}><option value="">Sem pedido vinculado</option>{orders.map(o => <option key={o.id} value={o.id}>{o.customer} · {o.product}</option>)}</select></label><label>Cliente<select aria-label="Cliente" value={draft.document.customerId} onChange={e => change(d => ({ ...d, document: { ...d.document, customerId: e.target.value, orderId: orders.find(order => order.id === d.document.orderId && customerNameKey(order.customer) === customerNameKey(customers.find(customer => customer.id === e.target.value)?.name ?? ""))?.id ?? "" } }))}><option value="">Sem cliente vinculado</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><p className="an-help">O vínculo organiza a anotação. Os valores permanecem como estimativa de materiais.</p><button className="an-primary" onClick={() => setModal(null)}>Concluir</button></div></NoteDialog>}
   </div>;
 }
 

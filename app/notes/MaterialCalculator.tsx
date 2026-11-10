@@ -8,7 +8,7 @@ const defaults: Profile = { yieldPerKg: "4.2", ribanaPercent: "5", fabricPrice: 
 function loadProfile(uid: string, supplier: string, fabric: string): Profile {
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(`psyzon:material:${uid}:${supplier}:${fabric}`) || "{}") }; } catch { return defaults; }
 }
-export default function MaterialCalculator({ uid, material, close, add }: { uid: string; material?: NoteMaterial; close: () => void; add: (material: NoteMaterial) => void }) {
+export default function MaterialCalculator({ uid, material, initialQuantity, close, add }: { uid: string; material?: NoteMaterial; initialQuantity?: number; close: () => void; add: (material: NoteMaterial) => void }) {
   const [supplier, setSupplier] = useState(material?.supplier || "Costa Rica");
   const [fabricType, setFabricType] = useState<NoteMaterial["fabricType"]>(material?.fabricType || "PV");
   const [profile, setProfile] = useState<Profile>(() => material ? { yieldPerKg: String(material.yieldPerKg ?? 4.2), ribanaPercent: String(material.ribanaPercent ?? 5), fabricPrice: String(material.fabricPricePerKg ?? (material.fabricKg ? material.fabricCost / material.fabricKg : 43.9)), ribanaPrice: String(material.ribanaPricePerKg), poloPrice: String(material.poloPricePerUnit ?? 2.5) } : loadProfile(uid, "Costa Rica", "PV"));
@@ -17,7 +17,7 @@ export default function MaterialCalculator({ uid, material, close, add }: { uid:
   const [sameColor, setSameColor] = useState(!material || !material.collarColor || material.collarColor === material.color);
   const [collarColor, setCollarColor] = useState(material?.collarColor || "");
   const [mode, setMode] = useState<"pieces" | "kg">(material ? "kg" : "pieces");
-  const [quantity, setQuantity] = useState(String(material?.fabricKg ?? 100));
+  const [quantity, setQuantity] = useState(String(material?.fabricKg ?? initialQuantity ?? ""));
   const [ribanaOverride, setRibanaOverride] = useState(material ? String(material.ribanaKg) : "");
   const [poloQuantity, setPoloQuantity] = useState(material?.collarType === "polo" ? String(material.poloUnits) : "");
   const [waste, setWaste] = useState("0");
@@ -37,7 +37,7 @@ export default function MaterialCalculator({ uid, material, close, add }: { uid:
       result.total = result.fabricCost + result.ribanaCost + result.poloCost;
       result.perPiece = result.pieces ? result.total / result.pieces : 0;
     }
-  } catch (e) { error = (e as Error).message; }
+  } catch (e) { error = quantity.trim() ? (e as Error).message : ""; }
   const save = () => {
     if (!result || !color.trim() || !supplier.trim() || (!sameColor && !collarColor.trim())) return;
     add({ id: material?.id || makeId(), supplier: supplier.trim(), fabricType, color: color.trim(), collarColor: sameColor ? color.trim() : collarColor.trim(), collarType, fabricKg: result.kg, fabricPricePerKg: numeric(profile.fabricPrice), fabricCost: result.fabricCost, ribanaKg: result.ribanaKg, ribanaPricePerKg: numeric(profile.ribanaPrice), ribanaCost: result.ribanaCost, poloUnits: result.poloUnits, poloPricePerUnit: numeric(profile.poloPrice), poloCost: result.poloCost, totalCost: result.total, yieldPerKg: numeric(profile.yieldPerKg), ribanaPercent: numeric(profile.ribanaPercent) });
@@ -47,8 +47,8 @@ export default function MaterialCalculator({ uid, material, close, add }: { uid:
     <header><div><Calculator size={18} /><b>{material ? "Editar material" : "Calculadora"}</b></div><button className="an-icon" onClick={close} aria-label="Fechar calculadora"><X size={20} /></button></header>
     <div className="an-segment"><button aria-pressed={tab === "fabric"} onClick={() => setTab("fabric")}>Tecido e peças</button><button aria-pressed={tab === "general"} onClick={() => setTab("general")}>Conta rápida</button></div>
     {tab === "fabric" ? <form className="an-calc-body" onSubmit={e => { e.preventDefault(); save(); }}>
-      <p className="an-help">Planeje os materiais sem sair da anotação.</p>
-      <label>Fornecedor<input list="an-suppliers" maxLength={120} value={supplier} onChange={e => changeProfile(e.target.value, fabricType)} required /><datalist id="an-suppliers"><option>Costa Rica</option><option>Atual Têxtil</option></datalist></label>
+      <p className="an-help">Calcule os materiais do pedido e confira os valores antes de adicionar.</p>
+      <label>Fornecedor<input aria-label="Fornecedor" list="an-suppliers" maxLength={120} value={supplier} onChange={e => changeProfile(e.target.value, fabricType)} required /><datalist id="an-suppliers"><option>Costa Rica</option><option>Atual Têxtil</option></datalist></label>
       <div className="an-form-row"><label>Tipo de malha<select value={fabricType} onChange={e => changeProfile(supplier, e.target.value as NoteMaterial["fabricType"])}>{["PV", "PP", "PIQUET", "Algodão", "Dry Fit"].map(v => <option key={v}>{v}</option>)}</select></label><label>Cor da malha<input placeholder="Ex.: Azul royal" maxLength={100} value={color} onChange={e => setColor(e.target.value)} required /></label></div>
       <div className="an-segment"><button type="button" aria-pressed={mode === "pieces"} onClick={() => { setMode("pieces"); setQuantity(""); }}>Quero produzir</button><button type="button" aria-pressed={mode === "kg"} onClick={() => { setMode("kg"); setQuantity(""); }}>Tenho tecido</button></div>
       <div className="an-form-row"><label>{mode === "pieces" ? "Quantidade de camisas" : "Quantidade de tecido (kg)"}<input type="number" min={mode === "pieces" ? 1 : 0.001} step={mode === "pieces" ? 1 : "any"} value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><label>Perda de tecido (%)<input type="number" min="0" max="99" step="any" value={waste} onChange={e => setWaste(e.target.value)} required /></label></div>

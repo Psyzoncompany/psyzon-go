@@ -1,0 +1,18 @@
+@media screen {
+ .material-entry { border:0; margin:0; padding:20px; display:grid; gap:16px; min-width:0; }
+ .material-entry > label,.material-entry-links label { display:grid; gap:6px; color:var(--muted); font-size:13px; min-width:0; }
+ .material-entry :is(input,select) { min-width:0; width:100%; min-height:42px; padding:9px; background:var(--card); color:var(--text); border:1px solid var(--border); border-radius:10px; font:inherit; }
+ .material-entry-links { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+ .material-entry-calculator .an-calculator { position:static; border:0; width:100%; height:auto; overflow:visible; background:var(--card-subtle); border-radius:16px; }
+ .material-entry-calculator .an-calc-body { overflow:visible; max-width:none; width:100%; }
+ .material-entry-calculator .an-calc-body label { display:grid; gap:6px; min-width:0; font-size:13px; }
+ .material-entry-calculator .an-calc-body .an-check-label { display:flex; }
+ .material-entry-calculator input[type="checkbox"] { min-height:0; width:18px; height:18px; }
+ .material-entry-calculator .an-primary { min-height:44px; padding:12px; border:0; border-radius:10px; background:var(--blue); color:white; cursor:pointer; }
+ .material-entry-calculator button { cursor:pointer; border:0; background:transparent; color:var(--text); }
+ .material-entry-calculator .an-primary { background:var(--blue); color:white; }
+ .materials-heading-actions,.materials-order-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+ .materials-item-edit { display:flex; flex-wrap:wrap; gap:6px; }
+ .materials-item-edit button { padding:6px 8px; border:1px solid var(--border); border-radius:8px; color:var(--blue); background:var(--card); cursor:pointer; font-size:11px; }
+ @media(max-width:760px) { .material-entry-links { grid-template-columns:1fr; } .material-entry :is(input,select) { font-size:16px; } .materials-heading-actions { width:100%; } .materials-heading-actions button { flex:1; } }
+}

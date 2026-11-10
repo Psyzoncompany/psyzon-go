@@ -2,41 +2,23 @@
 
 import Image from "next/image";
 import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState, type PointerEvent } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { customerNameKey, type Customer } from "./finance-model";
-import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
 import { dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
 import useProductionDrag from "./useProductionDrag";
 import "./production-board.css";
 
 type Props = {
   orders: Order[];
-  customers: Customer[];
-  notes: BusinessNote[];
   displayMoney: (value: number) => string;
   updateStatus: (order: Order, status: OrderStatus) => Promise<void>;
   onCreate: () => void;
   editOrder: (order: Order) => void;
   deleteOrder: (order: Order) => Promise<void>;
-  openNote: (noteId: string) => void;
   openChecklist: (order: Order) => void;
 };
 
-function indexOrderNotes(notes: BusinessNote[]) {
-  const byOrder = new Map<string, BusinessNote>();
-  const byCustomer = new Map<string, BusinessNote>();
-  for (const note of [...notes].sort((a, b) => millis(b.updatedAt) - millis(a.updatedAt))) {
-    if (!note.content.startsWith(documentPrefix)) continue;
-    const { status, orderId, customerId } = readDocument(note.content);
-    if (status === "trash") continue;
-    if (orderId && !byOrder.has(orderId)) byOrder.set(orderId, note);
-    if (customerId && !byCustomer.has(customerId)) byCustomer.set(customerId, note);
-  }
-  return { byOrder, byCustomer };
-}
-
-export default function ProductionBoard({ orders, customers, notes, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openNote, openChecklist }: Props) {
+export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [error, setError] = useState("");
@@ -46,14 +28,10 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
     if (order && !expanded.has(id) && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
   });
   const columns = useRef<Array<HTMLElement | null>>([]);
-  const links = useMemo(() => indexOrderNotes(notes), [notes]);
-  const customerIds = useMemo(() => new Map(customers.map(customer => [customerNameKey(customer.name), customer.id])), [customers]);
   const grouped = new Map(orderStatuses.map(status => [status, [] as Order[]]));
   for (const order of orders) grouped.get(order.status)?.push(order);
   for (const stage of productionStages) grouped.get(stage)?.sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
   const delivered = grouped.get("Entregue") ?? [];
-  const noteFor = (order: Order) => links.byOrder.get(order.id) ?? links.byCustomer.get(customerIds.get(customerNameKey(order.customer)) ?? "");
-
   async function run(order: Order, action: () => Promise<void>) {
     setError("");
     setWorking(current => new Set(current).add(order.id));
@@ -82,12 +60,10 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
   function actionsFor(order: Order) {
     return {
       order,
-      note: noteFor(order),
       busy: working.has(order.id),
       edit: () => editOrder(order),
       remove: () => void run(order, () => deleteOrder(order)),
       move: (status: OrderStatus) => moveOrder(order, status),
-      openNote,
       openChecklist: () => openChecklist(order),
     };
   }
@@ -125,7 +101,7 @@ export default function ProductionBoard({ orders, customers, notes, displayMoney
           <OrderPhoto order={order} />
           <div className="production-delivered-name"><b>{order.product}</b><small>{order.customer} · {order.quantity} un.</small></div>
           <strong className="production-delivered-value">{displayMoney(order.total)}</strong>
-          <div className="production-delivered-actions"><button className="production-note-link" onClick={actions.openChecklist}><ClipboardList size={15} /> Abrir lista</button><NoteShortcut note={actions.note} openNote={openNote} /><OrderActions {...actions} /></div>
+          <div className="production-delivered-actions"><button className="production-note-link" onClick={actions.openChecklist}><ClipboardList size={15} /> Abrir lista</button><OrderActions {...actions} /></div>
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
@@ -142,21 +118,14 @@ function OrderActions({ order, busy, edit, remove }: OrderActionsProps) {
   </div>;
 }
 
-function NoteShortcut({ note, openNote }: { note?: BusinessNote; openNote: Props["openNote"] }) {
-  if (!note) return null;
-  return <button type="button" className="production-note-link" title={note.title || "Anotação vinculada"} aria-label={`Abrir anotação ${note.title || "vinculada"}`} onClick={() => openNote(note.id)}><ClipboardList size={15} /> <span>Anotação</span></button>;
-}
-
 function OrderPhoto({ order }: { order: Order }) {
   return order.photoData
     ? <Image unoptimized className="production-photo" src={order.photoData} alt={`Foto de ${order.product}`} width={480} height={300} />
     : <span className="production-photo-empty" aria-hidden="true"><ImageIcon size={18} /></span>;
 }
 
-function OrderCard({ order, note, busy, edit, remove, move, openNote, openChecklist, displayMoney, expanded, toggle, dragging, startDrag }: OrderActionsProps & {
-  note?: BusinessNote;
+function OrderCard({ order, busy, edit, remove, move, openChecklist, displayMoney, expanded, toggle, dragging, startDrag }: OrderActionsProps & {
   move: (status: OrderStatus) => void;
-  openNote: Props["openNote"];
   openChecklist: () => void;
   displayMoney: Props["displayMoney"];
   expanded: boolean;
@@ -177,8 +146,8 @@ function OrderCard({ order, note, busy, edit, remove, move, openNote, openCheckl
         <span className="production-order-summary-meta"><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><span>{order.quantity} un.</span></span>
         <ChevronDown size={16} />
       </button>
+      <button className="production-open-list" type="button" onClick={openChecklist} aria-label={`Abrir lista de ${order.customer}`}><ClipboardList size={14} /> Abrir lista</button>
     </header>
-    <div className="production-checklist-shortcut"><span>Checklist de produção</span><button type="button" onClick={openChecklist} aria-label={`Abrir lista de ${order.customer}`}><ClipboardList size={14} /> Abrir lista</button></div>
     <div id={detailsId} hidden={!expanded} className="production-order-details">
       {expanded && <>
         {order.photoData ? <OrderPhoto order={order} /> : <button type="button" className="production-add-photo" onClick={edit} disabled={busy}><Camera size={15} /> Adicionar foto</button>}
@@ -188,7 +157,6 @@ function OrderCard({ order, note, busy, edit, remove, move, openNote, openCheckl
           {order.dtfStatus && order.dtfStatus !== "none" && <span className={`due ${order.dtfStatus === "pending" ? "warning" : "normal"}`}>{orderDtfStatus[order.dtfStatus]}</span>}
           <div className="production-order-value"><strong>{displayMoney(order.total)}</strong><small>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))} pendente</small></div>
           <div className="production-order-links">
-            <NoteShortcut note={note} openNote={openNote} />
             {order.status === "Pronto" && contact && <a href={contact} target="_blank" rel="noopener noreferrer" className="production-note-link"><MessageCircle size={15} /> Avisar</a>}
           </div>
           <label className="production-order-move"><span>Etapa</span><select aria-label={`Etapa do pedido de ${order.customer}`} disabled={busy} value={order.status} onChange={event => move(event.target.value as OrderStatus)}>{orderStatuses.map(status => <option key={status}>{status}</option>)}</select></label>

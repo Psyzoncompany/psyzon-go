@@ -10,9 +10,9 @@
   .production-checklist-window .an-editor-panel { flex: 1; min-height: 0; display: flex; }
   .production-checklist-window :is(.an-list-panel,.an-editor-topbar,.an-document-date,.an-title,.an-properties,.an-editor-modes,.an-document-footer,.an-new-line,.an-format-toolbar,.an-blocks,.an-materials,.an-material-empty) { display: none !important; }
   .production-window-save { margin: 0; padding: 8px 24px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); }
-  .production-checklist-shortcut { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
-  .production-checklist-shortcut span { color: var(--muted); font-size: 11px; }
-  .production-checklist-shortcut button { min-height: 36px; padding: 6px 9px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 8px; background: var(--blue-soft); color: var(--blue); cursor: pointer; font-size: 12px; font-weight: 600; }
+  .production-order-summary { grid-template-columns: 28px minmax(0,1fr) auto; align-items: stretch; }
+  .production-order-summary:has(.production-order-toggle[aria-expanded="true"]) { grid-template-columns: minmax(0,1fr) auto; }
+  .production-open-list { align-self: center; min-height: 36px; margin-right: 6px; padding: 6px; display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 8px; background: var(--blue-soft); color: var(--blue); cursor: pointer; white-space: nowrap; font-size: 10px; font-weight: 600; }
   @media (max-width:760px) {
     .production-checklist-overlay { padding: 0; }
     .production-checklist-window { width: 100%; height: 100dvh; border-radius: 0; padding-top: env(safe-area-inset-top,0px); padding-bottom: env(safe-area-inset-bottom,0px); }

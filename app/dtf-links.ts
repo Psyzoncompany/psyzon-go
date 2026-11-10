@@ -2,7 +2,7 @@ import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
 
-export type DtfCustomerLink = { noteId?: string; deadline?: string };
+export type DtfCustomerLink = { noteId?: string; deadline?: string; orderId?: string; photoData?: string };
 
 export function dtfDeadline(delivery: string) {
   const date = Date.parse(`${delivery}T00:00:00Z`);
@@ -36,6 +36,16 @@ export function indexDtfCustomerLinks(customers: Customer[], productionOrders: O
     if (previous?.noteId) continue;
     const linkedDeadline = order && order.status !== "Entregue" ? dtfDeadline(order.dueDate) : undefined;
     result.set(id, { noteId: note.id, deadline: linkedDeadline ?? previous?.deadline ?? dtfDeadline(noteDeadline ?? "") });
+  }
+  for (const customer of customers) {
+    const previous = result.get(customer.id) ?? {};
+    const note = notes.find(note => note.id === previous.noteId);
+    const explicit = note ? orders.get(readDocument(note.content).orderId) : undefined;
+    const matching = productionOrders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
+    const active = matching.filter(order => order.status !== "Entregue");
+    const candidates = active.length ? active : matching;
+    const order = explicit && customerNameKey(explicit.customer) === customerNameKey(customer.name) ? explicit : candidates.length === 1 ? candidates[0] : undefined;
+    if (order) result.set(customer.id, { ...previous, orderId: order.id, ...(typeof order.photoData === "string" ? { photoData: order.photoData } : {}) });
   }
   return result;
 }

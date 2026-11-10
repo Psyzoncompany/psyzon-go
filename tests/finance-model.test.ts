@@ -5,8 +5,24 @@ import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
 import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
+import { synchronizedOrderPhotos, notePhotoOrderId } from "../app/order-photo-sync";
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, historyTotals, legacyFabricPurchases, materialHistoryId, pendingFabric, type HistoryEntry } from "../app/history-model";
+
+test("order photos share one source, recover legacy photos and keep removal and order identity", () => {
+  const order: Order = { id: "one", customer: "ANA", product: "Camisa", quantity: 1, total: 0, paid: 0, dueDate: "2026-12-01", status: "Produção" };
+  const customers = [{ id: "ana", name: "ANA" }];
+  const note: BusinessNote = { id: "note", title: "Lista", category: "Produção", pinned: false, productionPhotoData: "legacy", content: documentPrefix + JSON.stringify({ version: 2, blocks: [], status: "active", orderId: "one", customerId: "ana" }) };
+  assert.equal(synchronizedOrderPhotos([order], [note], [], customers)[0].photoData, "legacy");
+  assert.equal(synchronizedOrderPhotos([{ ...order, photoData: "current" }], [note], [], customers)[0].photoData, "current");
+  assert.equal(synchronizedOrderPhotos([{ ...order, photoData: "" }], [note], [], customers)[0].photoData, "");
+  assert.equal(notePhotoOrderId({ orderId: "", customerId: "ana" }, [order], customers), "one");
+  const two = { ...order, id: "two" };
+  assert.equal(notePhotoOrderId({ orderId: "", customerId: "ana" }, [order, two], customers), undefined);
+  assert.equal(indexDtfCustomerLinks(customers, [order, two], []).get("ana")?.orderId, undefined);
+  assert.equal(synchronizedOrderPhotos([order, two], [note], [], customers)[1].photoData, "");
+  assert.equal(indexDtfCustomerLinks(customers, [order, two], [note]).get("ana")?.orderId, "one");
+});
 
 test("customer corrections preserve historical orders and include subsequent purchases", () => {
   const orders = [{ customer: "ANA", total: 880, paid: 520 }];
@@ -200,8 +216,8 @@ test("DTF customer links prefer the names checklist and follow the linked produc
   ];
   const links = indexDtfCustomerLinks(customers, [base, { ...base, id: "two", dueDate: "2026-11-20" }, { ...base, id: "jef-1", customer: " JEFERSSON ", dueDate: "2026-11-15" }], notes);
   assert.equal(dtfDeadline("2026-01-03"), "2025-12-27");
-  assert.deepEqual(links.get("ana"), { noteId: "names", deadline: "2026-11-27" });
-  assert.deepEqual(links.get("jef"), { deadline: "2026-11-08" });
+  assert.deepEqual(links.get("ana"), { noteId: "names", deadline: "2026-11-27", orderId: "one" });
+  assert.deepEqual(links.get("jef"), { deadline: "2026-11-08", orderId: "jef-1" });
   assert.equal(indexDtfCustomerLinks(customers, [{ ...base, dueDate: "2026-12-05" }], notes).get("ana")?.deadline, "2026-11-28");
 });
 

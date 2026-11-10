@@ -8,6 +8,8 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
+import { synchronizedOrderPhotos } from "./order-photo-sync";
+import { indexDtfCustomerLinks } from "./dtf-links";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
@@ -742,8 +744,12 @@ export default function HomePage() {
     const changes = original ? Object.fromEntries(Object.entries(input).filter(([field, value]) => original[field as keyof DtfInput] !== value)) : input;
     const data = { ...changes, updatedAt: serverTimestamp() };
     try {
-      if (previous) await updateDoc(userDocument(uid, "dtfOrders", previous.id), data);
-      else await addDoc(userCollection(uid, "dtfOrders"), { ...data, createdAt: serverTimestamp() });
+      const batch = writeBatch(getFirestore(getApps()[0]));
+      if (previous) batch.update(userDocument(uid, "dtfOrders", previous.id), data);
+      else batch.set(doc(userCollection(uid, "dtfOrders")), { ...data, createdAt: serverTimestamp() });
+      const linked = indexDtfCustomerLinks(visibleCustomers, orders, notes).get(input.customerId);
+      if (linked?.orderId && (previous ? input.photoData !== previous.photoData : !!input.photoData)) batch.update(userDocument(uid, "orders", linked.orderId), { photoData: input.photoData });
+      await batch.commit();
       showToast(previous ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
     } catch { throw new Error("Não foi possível salvar o pedido DTF. Confira a conexão e tente novamente."); }
   };
@@ -887,7 +893,7 @@ export default function HomePage() {
         throw new Error("O valor do pedido mudou. Feche a edição, confira os valores e tente novamente.");
       }
       const linkedPayments = transactions.filter(item => item.orderId === editingOrder.id);
-      transaction.update(orderRef, updatedOrder);
+      transaction.update(orderRef, { ...updatedOrder, photoData: updatedOrder.photoData === editingOrder.photoData ? current.data().photoData ?? updatedOrder.photoData : updatedOrder.photoData });
       const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(updatedOrder.customer));
       transaction.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
       if (updatedOrder.paid !== editingOrder.paid) {
@@ -1068,6 +1074,8 @@ export default function HomePage() {
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const floatingActive = floatingHost !== null;
+  const photoOrders = synchronizedOrderPhotos(orders, notes, dtfOrders, visibleCustomers);
+  const photoProductionOrders = productionOrders.map(order => photoOrders.find(item => item.id === order.id) ?? order);
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium">
@@ -1106,9 +1114,9 @@ export default function HomePage() {
 
         <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={productionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
-          {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={orders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={orders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
@@ -1133,7 +1141,7 @@ export default function HomePage() {
 
       <MobileNavigation view={view} navigate={setView} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
-        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={orders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
+        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 

@@ -38,7 +38,7 @@ const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const meterLabel = (lengthCm: number) => `${number.format(lengthCm / 100)} m`;
 const widthLabel = (widthCm: number) => widthCm ? `${number.format(widthCm)} cm` : "Largura livre";
 
-export default function DtfWorkspace({ orders, customers, productionOrders, notes, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onSeparate, onDelete, onPrintChange, openNote }: Props) {
+export default function DtfWorkspace({ orders: storedOrders, customers, productionOrders, notes, customerId, connection, today, displayMoney, displayTotal, clearCustomer, onSave, onMove, onSeparate, onDelete, onPrintChange, openNote }: Props) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState<DtfStage | "all">("all");
   const [link, setLink] = useState("all");
@@ -49,8 +49,12 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
 
   const customer = customers.find(item => item.id === customerId);
   const names = new Map(customers.map(item => [item.id, item.name]));
-  const printsByOrder = useMemo(() => new Map(orders.map(order => [order.id, readDtfPrints(order.printsData)])), [orders]);
   const links = useMemo(() => indexDtfCustomerLinks(customers, productionOrders, notes), [customers, productionOrders, notes]);
+  const orders = useMemo(() => storedOrders.map(order => {
+    const linked = links.get(order.customerId);
+    return linked?.orderId ? { ...order, photoData: linked.photoData ?? "" } : order;
+  }), [storedOrders, links]);
+  const printsByOrder = useMemo(() => new Map(orders.map(order => [order.id, readDtfPrints(order.printsData)])), [orders]);
   const linkedDeadlines = new Map(orders.map(order => [order.id, [order, ...(printsByOrder.get(order.id) ?? [])]
     .flatMap(item => links.get(item.customerId)?.deadline ?? []).sort()[0]]));
   const deadlineFor = (order: DtfOrder) => linkedDeadlines.get(order.id) ?? order.dueDate;
@@ -133,14 +137,14 @@ export default function DtfWorkspace({ orders, customers, productionOrders, note
         {live && !visible.length && <div className="dtf-empty"><Printer size={29} /><h2>{scoped.length ? "Nenhum pedido com esses filtros" : "Nenhum pedido DTF por aqui"}</h2><p>{scoped.length ? "Altere a busca, o vínculo ou a etapa." : "Cadastre o primeiro pedido com um cliente vinculado ou como avulso."}</p>{!scoped.length && <button className="secondary" onClick={() => setEditor("new")}><Plus size={16} /> Novo pedido DTF</button>}</div>}
       </div>
     </section>
-    {editor && <DtfEditor order={editor === "new" ? undefined : editor} customers={customers} links={links} customer={customer} displayMoney={displayMoney} onSave={onSave} onDelete={onDelete} close={() => setEditor(null)} />}
+    {editor && <DtfEditor order={editor === "new" ? undefined : orders.find(order => order.id === editor.id) ?? editor} customers={customers} links={links} customer={customer} displayMoney={displayMoney} onSave={onSave} onDelete={onDelete} close={() => setEditor(null)} />}
     {ticket && <DtfTicket order={{ ...ticket, dueDate: deadlineFor(ticket) }} customerName={nameFor(ticket)} close={() => setTicketId("")} />}
   </section>;
 }
 
 function DtfEditor({ order, customers, links, customer, displayMoney, onSave, onDelete, close }: Pick<Props, "customers" | "displayMoney" | "onSave" | "onDelete"> & { order?: DtfOrder; customer?: Customer; links: Map<string, DtfCustomerLink>; close: () => void }) {
   const [selectedId, setSelectedId] = useState(order?.customerId ?? customer?.id ?? "");
-  const [photos, setPhotos] = useState(() => order ? dtfPhotos(order) : []);
+  const [photoDraft, setPhotos] = useState<string[] | null>(null);
   const [meters, setMeters] = useState(order?.lengthCm ? String(order.lengthCm / 100) : "");
   const [price, setPrice] = useState(order ? String(order.priceCents / 100) : "");
   const [paid, setPaid] = useState(order ? String(order.paidCents / 100) : "");
@@ -149,6 +153,7 @@ function DtfEditor({ order, customers, links, customer, displayMoney, onSave, on
   const [error, setError] = useState("");
   const linked = customers.find(item => item.id === selectedId);
   const clientLink = links.get(selectedId);
+  const photos = photoDraft ?? (order && order.customerId === selectedId ? dtfPhotos(order) : clientLink?.photoData ? [clientLink.photoData] : []);
   const blocked = busy || photoBusy;
   const lengthCm = Math.round(Number(meters) * 100);
   const priceCents = Math.round(Number(price) * 100);

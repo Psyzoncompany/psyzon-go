@@ -14,7 +14,7 @@ import OrderPhotoField from "./OrderPhotoField";
 import { parseProductionOrder, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
 import { defaultProductionColor, productionColorFromNotes, productionColorFromProduct, productionColorInk, validProductionColor } from "./production-theme";
 
-export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, linkedDeadline, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; linkedDeadline?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void; onChange: (value: Checklist | null) => void }) {
+export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, linkedDeadline, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; linkedDeadline?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void | Promise<void>; onChange: (value: Checklist | null) => void }) {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [raw, setRaw] = useState(source);

@@ -19,6 +19,51 @@ test("JERFESSON has 16 shirts, eight per model, with one unnamed shirt", () => {
   assert.ok(checklist.rows.some((row) => row.name === "João Vítor"));
 });
 
+test("quantity size codes identify models and preserve the number of physical shirts", () => {
+  const result = parseProductionOrder("1G\n1M\n1MF\n2GF");
+  assert.equal(result.rows.length, 5);
+  assert.deepEqual(result.rows.map(row => [row.model, row.size]), [["Masculina", "M"], ["Masculina", "G"], ["Feminina", "M"], ["Feminina", "G"], ["Feminina", "G"]]);
+  assert.ok(result.rows.every(row => row.name === "Sem nome"));
+  assert.deepEqual(result.warnings, []);
+  assert.equal(parseProductionOrder("1G, 1M; 1MF + 2GF").rows.length, 5);
+  assert.equal(parseProductionOrder("2 x GGF\n3PP\n1G2M").rows.length, 6);
+  assert.throws(() => parseProductionOrder("0G"), /500/);
+  assert.throws(() => parseProductionOrder("500G\n1M"), /500/);
+});
+
+test("compact groups accept names, keep explicit sections and warn about excess names", () => {
+  const result = parseProductionOrder("Feminina\n2M\nAna\nJoão\nMasculina\n1GF: Maria\n1G - Pedro\nCor: azul");
+  assert.equal(result.rows.find(row => row.name === "João")?.model, "Feminina");
+  assert.equal(result.rows.find(row => row.name === "Maria")?.model, "Feminina");
+  assert.equal(result.rows.find(row => row.name === "Pedro")?.model, "Masculina");
+  assert.equal(result.notes, "Cor: azul");
+  assert.equal(parseProductionOrder("2GF\n2 unidades sem nome").rows.length, 2);
+  assert.deepEqual(parseProductionOrder("FEMININA — 3 UNIDADES\n1MF\n2GF").warnings, []);
+  assert.equal(parseProductionOrder("1G\nAna\nPedro").warnings.length, 1);
+});
+
+test("unnamed shirts print grouped sizes without repeated name rows or extra pages", () => {
+  const checklist = parseProductionOrder("100G\n100M\n100GF\n100MF");
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  assert.equal([...html.matchAll(/class="production-sheet production-sizes-only"/g)].length, 1);
+  assert.equal([...html.matchAll(/class="production-size"/g)].length, 4);
+  assert.doesNotMatch(html, /class="production-piece"|class="production-piece-head"|Sem nome/);
+  assert.match(html, /400 UNIDADES/);
+  const mixed = renderToStaticMarkup(createElement(ProductionSheets, { checklist: parseProductionOrder("3G\nAna") }));
+  assert.match(mixed, /Ana/);
+  assert.match(mixed, /2 un. sem personalização de nome/);
+});
+
+test("AI receives expanded codes and keeps the female suffix for unnamed shirts", async () => {
+  const checklist = parseProductionOrder("1G\n1M\n1MF\n2GF");
+  const result = await organizeProductionWithAI("1G\n1M\n1MF\n2GF", [candidate(checklist)]);
+  assert.equal(result.rows.filter(row => /feminina/i.test(row.model)).length, 3);
+  assert.equal(result.rows.length, 5);
+  const interleaved = parseProductionOrder("1GF\n1M\n1G");
+  const reordered = await organizeProductionWithAI("1GF\n1M\n1G", [candidate(interleaved)]);
+  assert.deepEqual(reordered.rows.map(row => [row.model, row.size]), interleaved.rows.map(row => [row.model, row.size]));
+});
+
 test("parser flags mismatched counts and duplicates without dropping names", () => {
   const checklist = parseProductionOrder("MASCULINA — 3 UNIDADES\nTamanho P (3)\n- João\n- João\nTamanho M (2)\n- 2 unidades sem nome\nCor: azul");
   assert.equal(checklist.rows.length, 4);
@@ -90,7 +135,7 @@ test("each printed name has independent cut, print, pressing and packaging check
   checklist.rows[0].done = true;
   const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
   const pieces = [...html.matchAll(/<div class="production-piece">([\s\S]*?)<\/div>/g)].map(match => match[1]);
-  assert.equal(pieces.length, 16);
+  assert.equal(pieces.length, 15);
   for (const piece of pieces) {
     assert.equal([...piece.matchAll(/<i /g)].length, 4);
     for (const stage of ["Corte", "Estampa", "Prensagem", "Embalagem"]) assert.ok(piece.includes(`aria-label="${stage} · `));

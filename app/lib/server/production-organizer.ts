@@ -1,5 +1,6 @@
 import { applyProductionSourceModels, validateProductionChecklist, type ProductionChecklist } from "../../production-checklist";
 import { configuredAIProviders, type ProviderCandidate } from "./ai-agent";
+import { expandProductionShorthand } from "../../production-shorthand";
 
 const schema = {
   type: "object", properties: {
@@ -12,6 +13,7 @@ Uma linha em rows por peça física. Preserve exatamente os nomes, modelos, tama
 
 export async function organizeProductionWithAI(text: string, candidates?: ProviderCandidate[]): Promise<ProductionChecklist> {
   if (!text.trim() || text.length > 30000) throw new Error("INVALID_PRODUCTION_TEXT");
+  text = expandProductionShorthand(text);
   const providers = candidates ?? configuredAIProviders(process.env, schema);
   if (!providers.length) throw new Error("PRODUCTION_AI_NOT_CONFIGURED");
   const source = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");

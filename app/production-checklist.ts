@@ -1,3 +1,4 @@
+import { expandProductionShorthand } from "./production-shorthand";
 export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean };
 export type ProductionChecklist = { client: string; deadline: string; notes: string; rows: ProductionRow[]; warnings: string[] };
 
@@ -61,7 +62,7 @@ export function parseProductionOrder(text: string): ProductionChecklist {
   let model = "Masculina"; let size = "A confirmar"; let client = ""; let deadline = "";
   const expected: Array<{ label: string; count: number; start: number; end?: number; level: "model" | "size" }> = [];
   const close = (level: "model" | "size") => expected.filter((item) => item.end === undefined && (level === "model" || item.level === "size")).forEach((item) => { item.end = rows.length; });
-  for (const raw of text.split(/\r?\n/)) {
+  for (const raw of expandProductionShorthand(text).split(/\r?\n/)) {
     const line = raw.trim().replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "");
     if (!line) continue;
     if (/^(cliente|pedido)\s*:/i.test(line)) { client = line.split(":").slice(1).join(":").trim(); continue; }
@@ -102,8 +103,17 @@ export function applyProductionSourceModels(checklist: ProductionChecklist, text
     return (start === 0 || !letter.test(line[start - 1])) && (start + name.length === line.length || !letter.test(line[start + name.length]));
   };
   const used = new Set<number>();
+  // Anonymous pieces cannot be matched by a person's name. Match their explicit
+  // source sizes/models instead, so AI reordering cannot swap masculine/feminine.
+  let anonymous: ProductionRow[] = [];
+  try { anonymous = parseProductionOrder(text).rows.filter(row => row.name.toLocaleLowerCase("pt-BR") === "sem nome"); } catch { /* Unstructured lists still use the source-line rules below. */ }
   const rows = checklist.rows.map(row => {
     const name = normalize(row.name);
+    if (name === "sem nome") {
+      let index = anonymous.findIndex(piece => normalize(piece.size) === normalize(row.size) && normalize(piece.model) === normalize(row.model));
+      if (index < 0) index = anonymous.findIndex(piece => normalize(piece.size) === normalize(row.size));
+      if (index >= 0) return { ...row, model: anonymous.splice(index, 1)[0].model };
+    }
     const matches = lines.map((entry, index) => ({ ...entry, index })).filter(entry => !entry.heading && (name === "sem nome" ? /\bsem nome\b/.test(entry.line) : containsName(entry.line, name)));
     const source = matches.find(entry => !used.has(entry.index)) ?? matches[0];
     if (source) used.add(source.index);

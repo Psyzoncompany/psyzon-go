@@ -9,7 +9,24 @@ function groups(rows: ProductionRow[], key: "model" | "size") {
 }
 
 export default function ProductionSheets({ checklist, photoData }: { checklist: ProductionChecklist; photoData?: string }) {
-  const pages = productionPages(checklist.rows);
+  const unnamedTotals = new Map<string, number>();
+  const printedUnnamed = new Set<string>();
+  const unnamedKey = (row: ProductionRow) => JSON.stringify([row.model, row.size]);
+  const isUnnamed = (row: ProductionRow) => !row.name.trim() || row.name.trim().toLocaleLowerCase("pt-BR") === "sem nome";
+  checklist.rows.filter(isUnnamed).forEach(row => { const key = unnamedKey(row); unnamedTotals.set(key, (unnamedTotals.get(key) ?? 0) + 1); });
+  const printRows = checklist.rows.filter(row => {
+    if (!isUnnamed(row)) return true;
+    const key = unnamedKey(row);
+    if (printedUnnamed.has(key)) return false;
+    printedUnnamed.add(key); return true;
+  });
+  const pages = productionPages(printRows);
+  const sizesOnly = checklist.rows.every(isUnnamed);
+  if (sizesOnly && pages.length === 1) {
+    const models = groups(printRows, "model");
+    const middle = Math.ceil(models.length / 2);
+    pages[0] = [models.slice(0, middle).flatMap(([, rows]) => rows), models.slice(middle).flatMap(([, rows]) => rows)];
+  }
   const summary = groups(checklist.rows, "model");
   const modelTotals = new Map(summary.map(([model, items]) => [model, items.length]));
   const sizeTotals = new Map(summary.flatMap(([model, items]) => productionSummary(items).map(item => [JSON.stringify([model, item.size]), item.quantity] as const)));
@@ -31,12 +48,12 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   </header>;
   const footer = (index: number) => <footer className="production-sheet-footer">
     <div className={`production-sheet-bottom ${index >= pages.length ? "production-summary-only" : ""}`}>
-      <section className="production-summary"><h2>RESUMO POR TAMANHO</h2>
+      {!sizesOnly && <section className="production-summary"><h2>RESUMO POR TAMANHO</h2>
         <div className="production-summary-models">{summary.map(([model, items]) => <section className="production-summary-model" key={model}>
           <h3><span>{model}</span><b>{items.length} un.</b></h3>
           <div className="production-summary-sizes">{productionSummary(items).map(item => <span key={item.size}><small>{item.size}</small><b>{item.quantity} un.</b></span>)}</div>
         </section>)}</div>
-      </section>
+      </section>}
       {index < pages.length && <section className="production-additions" aria-label="Pedidos adicionais para preencher à mão">
         <h2>PEDIDOS ADICIONAIS</h2>
         <table><colgroup><col className="addition-name" /><col className="addition-model" /><col className="addition-size" /><col className="addition-quantity" /></colgroup>
@@ -48,17 +65,18 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
     </div>
     <p>{checklist.rows.filter((row) => row.name === "Sem nome").length} peça(s) sem nome · {checklist.rows.length} peças no total <span>A4 · Página {index + 1} de {totalPages}</span></p>
   </footer>;
-  return <>{pages.map((columns, pageIndex) => <article className="production-sheet" key={pageIndex}>
+  return <>{pages.map((columns, pageIndex) => <article className={`production-sheet${sizesOnly ? " production-sizes-only" : ""}`} key={pageIndex}>
     {header}
     <div className="production-sheet-columns">{columns.map((rows, column) => <div key={column}>{groups(rows, "model").map(([model, items]) => <section className="production-group" key={model}>
       {firstModel.get(model) === items[0].id && <h2><span>{model}</span><b>{modelTotals.get(model)} un.</b></h2>}
       {groups(items, "size").map(([size, pieces]) => <div className="production-size" key={size}>
         <h3><span>TAMANHO {size}{firstSize.get(JSON.stringify([model, size])) !== pieces[0].id && <small className="production-continuation"> · continuação</small>}</span><b>{sizeTotals.get(JSON.stringify([model, size]))} un.</b></h3>
-        <div className="production-piece-head"><span>Nome</span>{productionStages.map(stage => <span key={stage}>{stage}</span>)}</div>
-        {pieces.map(row => <div className="production-piece" key={row.id}>
+        {pieces.some(row => !isUnnamed(row)) && <div className="production-piece-head"><span>Nome</span>{productionStages.map(stage => <span key={stage}>{stage}</span>)}</div>}
+        {pieces.filter(row => !isUnnamed(row)).map(row => <div className="production-piece" key={row.id}>
           <span>{row.name}</span>
           {productionStages.map(stage => <i key={stage} aria-label={`${stage} · ${row.name}`} />)}
         </div>)}
+        {pieces.some(isUnnamed) && pieces.some(row => !isUnnamed(row)) && <p className="production-unnamed-total">{unnamedTotals.get(unnamedKey(pieces[0]))} un. sem personalização de nome</p>}
       </div>)}
     </section>)}</div>)}</div>
     {attention && !extra.length && !photoNotes && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}

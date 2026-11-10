@@ -36,6 +36,9 @@
   .production-piece-head > span:not(:first-child) { text-align: center; }
   .production-piece { padding-block: 1.4mm; font-size: 10pt; color: #1a2436; break-inside: avoid; }
   .production-piece span { overflow-wrap: anywhere; }
+  .production-unnamed-total { margin: 1mm; padding-block: 1mm; font-size: 8pt; color: #34435c; }
+  .production-sizes-only .production-sheet-bottom { grid-template-columns: 1fr; }
+  .production-sizes-only .production-sheet-columns:has(> div:last-child:empty) { grid-template-columns: 1fr; }
   .production-attention { margin-top: 3mm; padding: 3mm 4mm; border: .25mm solid var(--sheet-line); border-radius: 2mm; break-inside: avoid; }
   .production-attention h2, .production-sheet-footer h2 { margin: 0 0 2mm; font-size: 9pt; }
   .production-attention p { margin: 1mm 0; color: #34435c; font-size: 9pt; white-space: pre-wrap; line-height: 1.45; }

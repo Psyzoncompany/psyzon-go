@@ -75,12 +75,15 @@ function finiteAmount(args: ToolArguments, key: string) {
 }
 
 async function getBusinessData(identity: FirebaseIdentity) {
-  const [orders, transactions, customers, bills] = await Promise.all([
+  const [stored, transactions, customers, bills, notes] = await Promise.all([
     listUserCollection(identity, "orders"),
     listUserCollection(identity, "transactions", 500),
     listUserCollection(identity, "customers"),
     listUserCollection(identity, "bills"),
+    listUserCollection(identity, "notes",500),
   ]);
+  const effective = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order=>[order.id,order]));
+  const orders = stored.map((order): (typeof stored)[number]=>({...order,quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total}));
   return { orders, transactions, customers, bills };
 }
 
@@ -150,8 +153,8 @@ const getOrders: ToolDefinition = {
     const query = text(args.query).toLocaleLowerCase("pt-BR");
     const limit = Math.min(50, Math.max(1, number(args.limit, 20)));
     const [stored, notes, customers] = await Promise.all([listUserCollection(identity,"orders",500),listUserCollection(identity,"notes",500),listUserCollection(identity,"customers",500)]);
-    const quantities = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order => [order.id,order.quantity]));
-    const orders = stored.map((item): (typeof stored)[number] => ({ ...item,quantity:quantities.get(item.id) ?? item.quantity })).filter((item) => {
+    const quantities = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order => [order.id,order]));
+    const orders = stored.map((item): (typeof stored)[number] => ({ ...item,quantity:quantities.get(item.id)?.quantity ?? item.quantity,total:quantities.get(item.id)?.total??item.total })).filter((item) => {
       if (args.status && text(item.status) !== text(args.status)) return false;
       if (args.overdueOnly === true && !isOverdue(item)) return false;
       if (query && !`${item.id} ${text(item.customer)} ${text(item.product)}`.toLocaleLowerCase("pt-BR").includes(query)) return false;
@@ -165,7 +168,9 @@ const getClients: ToolDefinition = {
   declaration: { type: "function", name: "get_clients", description: "Consulta clientes e calcula histórico real de compras e valores pendentes.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 30 } } } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
-    const [clients, orders] = await Promise.all([listUserCollection(identity, "customers"), listUserCollection(identity, "orders", 500)]);
+    const [clients, stored, notes] = await Promise.all([listUserCollection(identity, "customers"), listUserCollection(identity, "orders", 500),listUserCollection(identity,"notes",500)]);
+    const effective=new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],clients as unknown as Customer[]).map(order=>[order.id,order]));
+    const orders=stored.map((order): (typeof stored)[number]=>({...order,total:effective.get(order.id)?.total??order.total,quantity:effective.get(order.id)?.quantity??order.quantity}));
     const query = text(args.query).toLocaleLowerCase("pt-BR");
     const rows = clients.map((client) => {
       const related = orders.filter((order) => text(order.customer).toLocaleLowerCase("pt-BR") === text(client.name).toLocaleLowerCase("pt-BR"));

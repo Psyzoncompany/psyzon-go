@@ -8,6 +8,7 @@ import {
   type SewingLedger,
   type SewingEntry,
 } from "./sewing-model";
+import { poloExtra } from "./order-pricing";
 import { CountUp } from "./MotionValue";
 import "./sewing.css";
 import NoteDialog from "./notes/NoteDialog";
@@ -365,7 +366,7 @@ export default function SewingWorkspace({
                   person: e.target.value,
                   rate:
                     ledger.rates[order.id] ??
-                    (/\bpolo\b/i.test(order.product) ? 7 : 4),
+                    (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4),
                 })
               }
             >
@@ -378,7 +379,7 @@ export default function SewingWorkspace({
               disabled={busy}
               value={
                 ledger.rates[order.id] ??
-                (/\bpolo\b/i.test(order.product) ? 7 : 4)
+                (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)
               }
               onChange={(e) =>
                 void run({

@@ -20,6 +20,11 @@ export type Order = {
   phone?: string;
   product: string;
   quantity: number;
+  unitPrice?: number;
+  pricingMode?: "quantity" | "manual";
+  shirtType?: "standard" | "polo";
+  childQuantity?: number;
+  checklistChildQuantity?: number;
   checklistQuantity?: number;
   total: number;
   paid: number;

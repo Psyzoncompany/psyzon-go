@@ -1,0 +1,29 @@
+.order-pricing-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  grid-column: 1/-1;
+}
+.order-pricing-fields small {
+  grid-column: 1/-1;
+  color: var(--muted);
+}
+.order-pricing-fields input {
+  min-width: 0;
+  width: 100%;
+}
+.order-pricing-mode {
+  grid-column: 1/-1;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+.order-pricing-fields .order-pricing-mode input {
+  width: 18px;
+  min-height: 18px;
+}

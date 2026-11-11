@@ -49,6 +49,17 @@ before(async () => {
 beforeEach(async () => environment.clearFirestore());
 after(async () => environment.cleanup());
 
+test("orders accept unit pricing and reject invalid child counts", async () => {
+ const db=environment.authenticatedContext("pricing-user").firestore();
+ const reference=doc(db,"users/pricing-user/orders/a");
+ await assertSucceeds(setDoc(reference,{...validOrder(),unitPrice:100,childQuantity:2,pricingMode:"quantity",shirtType:"polo"}));
+ await assertFails(updateDoc(reference,{shirtType:"invalid"}));
+ await assertFails(updateDoc(reference,{pricingMode:"invalid"}));
+ await assertFails(updateDoc(reference,{unitPrice:-1}));
+ await assertFails(updateDoc(reference,{childQuantity:11}));
+ await assertFails(updateDoc(reference,{childQuantity:1.5}));
+});
+
 test("unauthenticated users cannot read or write", async () => {
   const db = environment.unauthenticatedContext().firestore();
   await assertFails(getDoc(doc(db, "users/user-a/orders/order-1")));

@@ -1,5 +1,6 @@
 import type { BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
+import { poloExtra } from "./order-pricing";
 import type { Bill } from "./finance-model";
 import { millis } from "./notes-model";
 export const sewingNoteId = "psyzon-sewing-ledger";
@@ -41,7 +42,8 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
       (sum, order) =>
         sum +
         order.quantity *
-          (ledger.rates[order.id] ?? (/\bpolo\b/i.test(order.product) ? 7 : 4)),
+          (ledger.rates[order.id] ??
+            (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       0,
     );
     const entries = ledger.entries.filter((entry) => entry.person === person);
@@ -77,7 +79,8 @@ export function sewingOrderBalances(
       order,
       cost:
         order.quantity *
-        (ledger.rates[order.id] ?? (/\bpolo\b/i.test(order.product) ? 7 : 4)),
+        (ledger.rates[order.id] ??
+          (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       paid: 0,
       credit: 0,
     }));

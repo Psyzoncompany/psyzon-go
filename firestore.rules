@@ -42,13 +42,17 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childQuantity", "pricingMode", "shirtType"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
         && text(data.product, 1, 160)
         && data.quantity is int && data.quantity > 0 && data.quantity <= 1000000
+        && (!("shirtType" in data) || data.shirtType in ["standard","polo"])
         && money(data.total, true)
+        && (!("unitPrice" in data) || money(data.unitPrice, true))
+        && (!("pricingMode" in data) || (("unitPrice" in data) && data.pricingMode in ["quantity","manual"]))
+        && (!("childQuantity" in data) || (data.childQuantity is int && data.childQuantity >= 0 && data.childQuantity <= data.quantity))
         && money(data.paid, true) && data.paid <= data.total
         && calendarDate(data.dueDate)
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]

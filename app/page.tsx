@@ -5,6 +5,8 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
 import OrderPhotoField from "./OrderPhotoField";
+import OrderPricingFields from "./OrderPricingFields";
+import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
@@ -868,6 +870,14 @@ export default function HomePage() {
           phone: String(form.get("phone") || ""),
           product: String(form.get("product")),
           quantity: Number(form.get("quantity")),
+          unitPrice:
+            form.get("pricingMode") === "quantity"
+              ? suggestedShirtPrice(Number(form.get("quantity")))
+              : Number(form.get("unitPrice")),
+          pricingMode:
+            form.get("pricingMode") === "quantity" ? "quantity" : "manual",
+          childQuantity: Number(form.get("childQuantity")),
+          shirtType: form.get("shirtType") === "polo" ? "polo" : "standard",
           total: Number(form.get("total")),
           paid: Number(form.get("paid")),
           dueDate: String(form.get("dueDate")),
@@ -877,33 +887,119 @@ export default function HomePage() {
           photoData: String(form.get("photoData") || ""),
           createdAt: serverTimestamp(),
         };
-        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        if (firebaseState !== "live")
+          throw new Error("Firestore ainda não está conectado");
         const db = getFirestore(getApps()[0]);
+        validateShirtPrice(
+          nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
+          nextOrder.quantity,
+          nextOrder.childQuantity!,
+        );
+        nextOrder.total = shirtTotal(
+          nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
+          nextOrder.quantity,
+          nextOrder.childQuantity!,
+        );
+        if (
+          !Number.isFinite(nextOrder.paid) ||
+          nextOrder.paid < 0 ||
+          nextOrder.paid > nextOrder.total
+        )
+          throw new Error("O recebido excede o total do pedido.");
         const orderReference = doc(userCollection(uid, "orders"));
         const orderKey = orderReference.id;
-        const customerKey = nextOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || orderKey;
+        const customerKey =
+          nextOrder.customer
+            .toLocaleLowerCase("pt-BR")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "") || orderKey;
         const batch = writeBatch(db);
         batch.set(orderReference, nextOrder);
-        const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(nextOrder.customer));
-        batch.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: nextOrder.customer.trim(), phone: nextOrder.phone ?? "", archived: false, ...(existingCustomer?.archived ? customerAdjustments(0, 0, orders.filter(order => customerNameKey(order.customer) === customerNameKey(nextOrder.customer))) : {}) }, { merge: true });
+        const existingCustomer = customers.find(
+          (customer) =>
+            customerNameKey(customer.name) ===
+            customerNameKey(nextOrder.customer),
+        );
+        batch.set(
+          userDocument(uid, "customers", existingCustomer?.id ?? customerKey),
+          {
+            name: nextOrder.customer.trim(),
+            phone: nextOrder.phone ?? "",
+            archived: false,
+            ...(existingCustomer?.archived
+              ? customerAdjustments(
+                  0,
+                  0,
+                  orders.filter(
+                    (order) =>
+                      customerNameKey(order.customer) ===
+                      customerNameKey(nextOrder.customer),
+                  ),
+                )
+              : {}),
+          },
+          { merge: true },
+        );
         if (nextOrder.paid > 0) {
-          batch.set(doc(userCollection(uid, "transactions")), { description: `Entrada · ${nextOrder.customer}`, amount: nextOrder.paid, type: "income", account: "business", category: "Vendas", orderId: orderKey, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+          batch.set(doc(userCollection(uid, "transactions")), {
+            description: `Entrada · ${nextOrder.customer}`,
+            amount: nextOrder.paid,
+            type: "income",
+            account: "business",
+            category: "Vendas",
+            orderId: orderKey,
+            transactionDate: localDateValue(),
+            createdAt: serverTimestamp(),
+          });
         }
         await batch.commit();
         showToast("Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
         const name = String(form.get("name")).trim();
-        const existing = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(name));
-        const customer = { name, phone: String(form.get("phone") || ""), company: String(form.get("company") || ""), archived: false };
-        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-        if (existing) await setDoc(userDocument(uid, "customers", existing.id), { ...customer, ...(existing.archived ? customerAdjustments(0, 0, orders.filter(order => customerNameKey(order.customer) === customerNameKey(name))) : {}) }, { merge: true });
+        const existing = customers.find(
+          (customer) =>
+            customerNameKey(customer.name) === customerNameKey(name),
+        );
+        const customer = {
+          name,
+          phone: String(form.get("phone") || ""),
+          company: String(form.get("company") || ""),
+          archived: false,
+        };
+        if (firebaseState !== "live")
+          throw new Error("Firestore ainda não está conectado");
+        if (existing)
+          await setDoc(
+            userDocument(uid, "customers", existing.id),
+            {
+              ...customer,
+              ...(existing.archived
+                ? customerAdjustments(
+                    0,
+                    0,
+                    orders.filter(
+                      (order) =>
+                        customerNameKey(order.customer) ===
+                        customerNameKey(name),
+                    ),
+                  )
+                : {}),
+            },
+            { merge: true },
+          );
         else await addDoc(userCollection(uid, "customers"), customer);
         showToast("Cliente adicionado");
       }
       setModal(null);
     } catch (error) {
       console.error(error);
-      showToast("Não foi possível concluir agora");
+      showToast(
+        error instanceof Error && !error.name.startsWith("Firebase")
+          ? error.message
+          : "Não foi possível concluir agora",
+      );
     }
   };
 
@@ -1059,13 +1155,31 @@ export default function HomePage() {
 
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!editingOrder || firebaseState !== "live") return showToast("Firestore ainda não está conectado");
+    if (!editingOrder || firebaseState !== "live")
+      return showToast("Firestore ainda não está conectado");
     const form = new FormData(event.currentTarget);
     const updatedOrder = {
+      shirtType:
+        form.get("shirtType") === "polo"
+          ? ("polo" as const)
+          : ("standard" as const),
       customer: String(form.get("customer")).trim(),
       phone: String(form.get("phone") || ""),
       product: String(form.get("product")),
       quantity: Number(form.get("quantity")),
+      ...(String(form.get("unitPrice") || "").trim() !== ""
+        ? {
+            unitPrice:
+              form.get("pricingMode") === "quantity"
+                ? suggestedShirtPrice(Number(form.get("quantity")))
+                : Number(form.get("unitPrice")),
+            childQuantity: Number(form.get("childQuantity")),
+            pricingMode:
+              form.get("pricingMode") === "quantity"
+                ? ("quantity" as const)
+                : ("manual" as const),
+          }
+        : {}),
       total: Number(form.get("total")),
       paid: Number(form.get("paid")),
       dueDate: String(form.get("dueDate")),
@@ -1074,51 +1188,199 @@ export default function HomePage() {
       notes: String(form.get("notes") || ""),
       photoData: String(form.get("photoData") || ""),
     };
+    if (updatedOrder.unitPrice !== undefined) {
+      validateShirtPrice(
+        updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
+        updatedOrder.quantity,
+        updatedOrder.childQuantity || 0,
+      );
+      updatedOrder.total = shirtTotal(
+        updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
+        updatedOrder.quantity,
+        updatedOrder.childQuantity || 0,
+      );
+    }
+    if (updatedOrder.paid < 0 || updatedOrder.paid > updatedOrder.total)
+      throw new Error("O recebido excede o total do pedido.");
     const db = getFirestore(getApps()[0]);
-    const customerKey = updatedOrder.customer.toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || editingOrder.id;
-    await runTransaction(db, async transaction => {
+    const customerKey =
+      updatedOrder.customer
+        .toLocaleLowerCase("pt-BR")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || editingOrder.id;
+    await runTransaction(db, async (transaction) => {
       const orderRef = userDocument(uid, "orders", editingOrder.id);
       const current = await transaction.get(orderRef);
       if (!current.exists()) throw new Error("Este pedido foi excluído.");
-      if (current.data().paid !== editingOrder.paid || current.data().total !== editingOrder.total) {
-        throw new Error("O valor do pedido mudou. Feche a edição, confira os valores e tente novamente.");
+      const latestNotes = await Promise.all(
+        notes
+          .filter((note) => note.id !== sewingNoteId)
+          .map((note) => transaction.get(userDocument(uid, "notes", note.id))),
+      );
+      const sourceNotes = latestNotes
+        .filter((note) => note.exists())
+        .map((note) => ({ ...note.data(), id: note.id }) as BusinessNote);
+      const latestRaw = { ...current.data(), id: current.id } as Order;
+      const effective = synchronizedOrderQuantities(
+        storedOrders.map((order) =>
+          order.id === latestRaw.id ? latestRaw : order,
+        ),
+        sourceNotes,
+        customers,
+      ).find((order) => order.id === latestRaw.id)!;
+      if (
+        current.data().paid !== editingOrder.paid ||
+        effective.total !== editingOrder.total ||
+        effective.quantity !== editingOrder.quantity
+      ) {
+        throw new Error(
+          "O valor do pedido mudou. Feche a edição, confira os valores e tente novamente.",
+        );
       }
-      const linkedPayments = transactions.filter(item => item.orderId === editingOrder.id);
-      transaction.update(orderRef, { ...updatedOrder, quantity: editingOrder.checklistQuantity !== undefined || orders.find(order => order.id === editingOrder.id)?.checklistQuantity !== undefined ? current.data().quantity : updatedOrder.quantity, photoData: updatedOrder.photoData === editingOrder.photoData ? current.data().photoData ?? updatedOrder.photoData : updatedOrder.photoData });
-      const existingCustomer = customers.find((customer) => customerNameKey(customer.name) === customerNameKey(updatedOrder.customer));
-      transaction.set(userDocument(uid, "customers", existingCustomer?.id ?? customerKey), { name: updatedOrder.customer, phone: updatedOrder.phone }, { merge: true });
+      const linkedPayments = transactions.filter(
+        (item) => item.orderId === editingOrder.id,
+      );
+      transaction.update(orderRef, {
+        ...updatedOrder,
+        quantity:
+          effective.checklistQuantity !== undefined
+            ? current.data().quantity
+            : updatedOrder.quantity,
+        ...(effective.checklistQuantity !== undefined &&
+        updatedOrder.unitPrice !== undefined
+          ? { childQuantity: current.data().childQuantity || 0 }
+          : {}),
+        photoData:
+          updatedOrder.photoData === editingOrder.photoData
+            ? (current.data().photoData ?? updatedOrder.photoData)
+            : updatedOrder.photoData,
+      });
+      const existingCustomer = customers.find(
+        (customer) =>
+          customerNameKey(customer.name) ===
+          customerNameKey(updatedOrder.customer),
+      );
+      transaction.set(
+        userDocument(uid, "customers", existingCustomer?.id ?? customerKey),
+        { name: updatedOrder.customer, phone: updatedOrder.phone },
+        { merge: true },
+      );
       if (updatedOrder.paid !== editingOrder.paid) {
-        const manual = linkedPayments.filter(item => !item.source || item.source === "order_payment");
-        const recorded = roundMoney(linkedPayments.filter(item => item.type === "income" && item.source && item.source !== "order_payment").reduce((sum, item) => sum + item.amount, 0));
+        const manual = linkedPayments.filter(
+          (item) => !item.source || item.source === "order_payment",
+        );
+        const recorded = roundMoney(
+          linkedPayments
+            .filter(
+              (item) =>
+                item.type === "income" &&
+                item.source &&
+                item.source !== "order_payment",
+            )
+            .reduce((sum, item) => sum + item.amount, 0),
+        );
         const amount = roundMoney(updatedOrder.paid - recorded);
-        if (amount < 0) throw new Error("O valor é menor que os recebimentos já registrados para este pedido.");
-        const payment = { description: `Entrada · ${updatedOrder.customer}`, amount, type: "income", account: "business", category: "Vendas", orderId: editingOrder.id };
+        if (amount < 0)
+          throw new Error(
+            "O valor é menor que os recebimentos já registrados para este pedido.",
+          );
+        const payment = {
+          description: `Entrada · ${updatedOrder.customer}`,
+          amount,
+          type: "income",
+          account: "business",
+          category: "Vendas",
+          orderId: editingOrder.id,
+        };
         if (amount > 0) {
-          if (manual[0]) transaction.update(userDocument(uid, "transactions", manual[0].id), payment);
-          else transaction.set(doc(userCollection(uid, "transactions")), { ...payment, source: "order_payment", transactionDate: localDateValue(), createdAt: serverTimestamp() });
+          if (manual[0])
+            transaction.update(
+              userDocument(uid, "transactions", manual[0].id),
+              payment,
+            );
+          else
+            transaction.set(doc(userCollection(uid, "transactions")), {
+              ...payment,
+              source: "order_payment",
+              transactionDate: localDateValue(),
+              createdAt: serverTimestamp(),
+            });
         }
-        manual.slice(amount > 0 ? 1 : 0).forEach(item => transaction.delete(userDocument(uid, "transactions", item.id)));
+        manual
+          .slice(amount > 0 ? 1 : 0)
+          .forEach((item) =>
+            transaction.delete(userDocument(uid, "transactions", item.id)),
+          );
       }
     });
     setEditingOrder(null);
     showToast("Pedido e financeiro atualizados");
   };
 
-  const saveCustomerValues = async (customer: CustomerBalance, total: number, pending: number) => {
-    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+  const saveCustomerValues = async (
+    customer: CustomerBalance,
+    total: number,
+    pending: number,
+  ) => {
+    if (firebaseState !== "live")
+      throw new Error("Firestore ainda não está conectado");
     const key = customerNameKey(customer.name);
-    const related = orders.filter(order => customerNameKey(order.customer) === key);
-    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+    const related = orders.filter(
+      (order) => customerNameKey(order.customer) === key,
+    );
+    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const reference = userDocument(uid, "customers", customer.id);
       const snapshot = await transaction.get(reference);
-      const orderSnapshots = await Promise.all(related.map(order => transaction.get(userDocument(uid, "orders", order.id))));
-      const currentOrders = orderSnapshots.filter(item => item.exists()).map(item => item.data() as Order).filter(order => customerNameKey(order.customer) === key);
-      const current = snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as Customer : customer;
+      const orderSnapshots = await Promise.all(
+        related.map((order) =>
+          transaction.get(userDocument(uid, "orders", order.id)),
+        ),
+      );
+      const sourceOrders = orderSnapshots
+        .filter((item) => item.exists())
+        .map((item) => ({ ...item.data(), id: item.id }) as Order);
+      const noteSnapshots = await Promise.all(
+        notes
+          .filter((note) => note.id !== sewingNoteId)
+          .map((note) => transaction.get(userDocument(uid, "notes", note.id))),
+      );
+      const liveNotes = noteSnapshots
+        .filter((note) => note.exists())
+        .map((note) => ({ ...note.data(), id: note.id }) as BusinessNote);
+      const currentOrders = synchronizedOrderQuantities(
+        [
+          ...storedOrders.filter(
+            (order) => !related.some((item) => item.id === order.id),
+          ),
+          ...sourceOrders,
+        ],
+        liveNotes,
+        customers,
+      ).filter((order) => customerNameKey(order.customer) === key);
+      const current = snapshot.exists()
+        ? ({ ...snapshot.data(), id: snapshot.id } as Customer)
+        : customer;
       const [balance] = customerBalances([current], currentOrders);
-      if (current.archived || balance.total !== customer.total || balance.pending !== customer.pending) {
-        throw new Error("Os valores do cliente mudaram. Abra a edição novamente para conferir o saldo atualizado.");
+      if (
+        current.archived ||
+        balance.total !== customer.total ||
+        balance.pending !== customer.pending
+      ) {
+        throw new Error(
+          "Os valores do cliente mudaram. Abra a edição novamente para conferir o saldo atualizado.",
+        );
       }
-      transaction.set(reference, { name: current.name, phone: current.phone, ...customerAdjustments(total, pending, currentOrders) }, { merge: true });
+      transaction.set(
+        reference,
+        {
+          name: current.name,
+          phone: current.phone,
+          ...customerAdjustments(total, pending, currentOrders),
+        },
+        { merge: true },
+      );
     });
     showToast("Valores do cliente atualizados");
   };
@@ -1136,24 +1398,100 @@ export default function HomePage() {
   };
 
   const receiveCustomer = async (customer: CustomerBalance) => {
-    if (!window.confirm("Confirmar o recebimento de " + displayMoney(customer.pending) + " de " + customer.name + "?")) return;
-    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
-    const related = orders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
-    if (related.length > 180) throw new Error("Receba os pedidos em lotes menores.");
-    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+    if (
+      !window.confirm(
+        "Confirmar o recebimento de " +
+          displayMoney(customer.pending) +
+          " de " +
+          customer.name +
+          "?",
+      )
+    )
+      return;
+    if (firebaseState !== "live")
+      throw new Error("Firestore ainda não está conectado");
+    const related = orders.filter(
+      (order) =>
+        customerNameKey(order.customer) === customerNameKey(customer.name),
+    );
+    if (related.length > 180)
+      throw new Error("Receba os pedidos em lotes menores.");
+    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const customerRef = userDocument(uid, "customers", customer.id);
       const customerSnapshot = await transaction.get(customerRef);
-      const orderSnapshots = await Promise.all(related.map(order => transaction.get(userDocument(uid, "orders", order.id))));
-      const currentOrders = orderSnapshots.filter(snapshot => snapshot.exists()).map(snapshot => ({ ...snapshot.data(), id: snapshot.id } as Order)).filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
-      const current = customerSnapshot.exists() ? { ...customerSnapshot.data(), id: customerSnapshot.id } as Customer : customer;
+      const orderSnapshots = await Promise.all(
+        related.map((order) =>
+          transaction.get(userDocument(uid, "orders", order.id)),
+        ),
+      );
+      const sourceOrders = orderSnapshots
+        .filter((snapshot) => snapshot.exists())
+        .map((snapshot) => ({ ...snapshot.data(), id: snapshot.id }) as Order);
+      const noteSnapshots = await Promise.all(
+        notes
+          .filter((note) => note.id !== sewingNoteId)
+          .map((note) => transaction.get(userDocument(uid, "notes", note.id))),
+      );
+      const liveNotes = noteSnapshots
+        .filter((note) => note.exists())
+        .map((note) => ({ ...note.data(), id: note.id }) as BusinessNote);
+      const currentOrders = synchronizedOrderQuantities(
+        [
+          ...storedOrders.filter(
+            (order) => !related.some((item) => item.id === order.id),
+          ),
+          ...sourceOrders,
+        ],
+        liveNotes,
+        customers,
+      ).filter(
+        (order) =>
+          customerNameKey(order.customer) === customerNameKey(customer.name),
+      );
+      const current = customerSnapshot.exists()
+        ? ({ ...customerSnapshot.data(), id: customerSnapshot.id } as Customer)
+        : customer;
       const receipt = customerReceipt(current, currentOrders);
-      if (roundMoney(receipt.amount) !== roundMoney(customer.pending)) throw new Error("O saldo mudou. Confira o valor atualizado e tente novamente.");
+      if (roundMoney(receipt.amount) !== roundMoney(customer.pending))
+        throw new Error(
+          "O saldo mudou. Confira o valor atualizado e tente novamente.",
+        );
       for (const payment of receipt.payments) {
-        transaction.update(userDocument(uid, "orders", payment.orderId), { paid: payment.paid });
-        transaction.set(doc(userCollection(uid, "transactions")), { description: "Recebimento · " + current.name, amount: payment.amount, type: "income", account: "business", category: "Vendas", source: "customer_receipt", customerId: current.id, orderId: payment.orderId, transactionDate: localDateValue(), createdAt: serverTimestamp() });
+        transaction.update(userDocument(uid, "orders", payment.orderId), {
+          paid: payment.paid,
+          total: currentOrders.find((order) => order.id === payment.orderId)!
+            .total,
+        });
+        transaction.set(doc(userCollection(uid, "transactions")), {
+          description: "Recebimento · " + current.name,
+          amount: payment.amount,
+          type: "income",
+          account: "business",
+          category: "Vendas",
+          source: "customer_receipt",
+          customerId: current.id,
+          orderId: payment.orderId,
+          transactionDate: localDateValue(),
+          createdAt: serverTimestamp(),
+        });
       }
-      if (receipt.unallocated > 0) transaction.set(doc(userCollection(uid, "transactions")), { description: "Recebimento · " + current.name, amount: receipt.unallocated, type: "income", account: "business", category: "Vendas", source: "customer_receipt", customerId: current.id, transactionDate: localDateValue(), createdAt: serverTimestamp() });
-      transaction.set(customerRef, { name: current.name, phone: current.phone, ...receipt.adjustments }, { merge: true });
+      if (receipt.unallocated > 0)
+        transaction.set(doc(userCollection(uid, "transactions")), {
+          description: "Recebimento · " + current.name,
+          amount: receipt.unallocated,
+          type: "income",
+          account: "business",
+          category: "Vendas",
+          source: "customer_receipt",
+          customerId: current.id,
+          transactionDate: localDateValue(),
+          createdAt: serverTimestamp(),
+        });
+      transaction.set(
+        customerRef,
+        { name: current.name, phone: current.phone, ...receipt.adjustments },
+        { merge: true },
+      );
     });
     showToast("Recebimento e pedidos atualizados");
   };
@@ -1439,10 +1777,10 @@ function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {
 
 function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" defaultValue="1" required /></label><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
 }
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><div className="form-row"><label>Quantidade<input name="quantity" type="number" min="1" required readOnly={order.checklistQuantity !== undefined} title={order.checklistQuantity !== undefined ? "Quantidade definida pelo checklist de produção" : undefined} defaultValue={order.quantity} /></label><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label></div><div className="form-row"><label>Valor total<input name="total" type="number" min="0" step="0.01" required defaultValue={order.total} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

@@ -10,7 +10,7 @@ import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
-import { readSewing, sewingBills, sewingNoteId } from "./sewing-model";
+import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { indexDtfCustomerLinks } from "./dtf-links";
@@ -564,29 +564,120 @@ export default function HomePage() {
           ? [{ id: sewingNoteId, content: String(snapshot.data().content) }]
           : [],
       );
-      if (change.type === "person") {
+      let operation = change;
+      if (change.type === "pay-order") {
+        if (ledger.entries.some((entry) => entry.id === change.id)) return;
+        // Read the source documents in the same transaction as the settlement.
+        const [orderSnapshots, noteSnapshots] = await Promise.all([
+          Promise.all(
+            storedOrders.map((order) =>
+              transaction.get(userDocument(uid, "orders", order.id)),
+            ),
+          ),
+          Promise.all(
+            notes
+              .filter((note) => note.id !== sewingNoteId)
+              .map((note) =>
+                transaction.get(userDocument(uid, "notes", note.id)),
+              ),
+          ),
+        ]);
+        const latestOrders = orderSnapshots
+          .filter((snapshot) => snapshot.exists())
+          .map(
+            (snapshot) => ({ ...snapshot.data(), id: snapshot.id }) as Order,
+          );
+        const latestNotes = noteSnapshots
+          .filter((snapshot) => snapshot.exists())
+          .map(
+            (snapshot) =>
+              ({ ...snapshot.data(), id: snapshot.id }) as BusinessNote,
+          );
+        const effective = synchronizedOrderQuantities(
+          latestOrders,
+          latestNotes,
+          customers,
+        );
+        const person = sewingPerson(ledger, change.orderId);
+        const row = sewingOrderBalances(effective, ledger, person).find(
+          (row) => row.order.id === change.orderId,
+        );
+        if (!row || row.remaining <= 0 || row.remaining !== change.expected)
+          throw new Error(
+            "O saldo deste pedido mudou. Confira o valor atualizado antes de pagar.",
+          );
+        operation = {
+          type: "entry",
+          entry: {
+            id: change.id,
+            kind: "payment",
+            person,
+            quantity: 0,
+            amount: row.remaining,
+            date: change.date,
+            orderId: change.orderId,
+            name: "Costura · " + row.order.customer.slice(0, 140),
+          },
+        };
+      }
+      if (
+        operation.type === "person-rename" ||
+        operation.type === "person-remove"
+      ) {
+        const { from, name } = operation;
         if (
-          !change.name ||
-          change.name.length > 80 ||
-          ledger.people.includes(change.name)
+          !ledger.people.includes(from) ||
+          !name ||
+          name.length > 80 ||
+          name === from
+        )
+          throw new Error("Informe uma costureira válida.");
+        if (operation.type === "person-rename" && ledger.people.includes(name))
+          throw new Error("Já existe uma costureira com este nome.");
+        if (operation.type === "person-remove" && !ledger.people.includes(name))
+          throw new Error("Escolha a costureira que receberá os pedidos.");
+        ledger.people =
+          operation.type === "person-rename"
+            ? ledger.people.map((person) => (person === from ? name : person))
+            : ledger.people.filter((person) => person !== from);
+        if ((ledger.defaultPerson || "Zefa") === from)
+          ledger.defaultPerson = name;
+        for (const [id, person] of Object.entries(ledger.assignments))
+          if (person === from) ledger.assignments[id] = name;
+        for (const entry of ledger.entries)
+          if (entry.person === from) {
+            entry.person = name;
+            if (entry.kind === "payment")
+              transaction.update(
+                userDocument(uid, "transactions", "sewing-payment-" + entry.id),
+                { description: "Costura · " + name },
+              );
+          }
+      } else if (operation.type === "person") {
+        if (
+          !operation.name ||
+          operation.name.length > 80 ||
+          ledger.people.includes(operation.name)
         )
           throw new Error("Informe um nome novo válido.");
-        ledger.people.push(change.name);
-      } else if (change.type === "assign") {
+        ledger.people.push(operation.name);
+      } else if (operation.type === "assign") {
         if (
-          !ledger.people.includes(change.person) ||
-          ![4, 7].includes(change.rate)
+          !ledger.people.includes(operation.person) ||
+          ![4, 7].includes(operation.rate)
         )
           throw new Error("Costureira ou tarifa inválida.");
-        ledger.assignments[change.orderId] = change.person;
-        ledger.rates[change.orderId] = change.rate;
-      } else if (change.type === "entry") {
-        const entry = change.entry;
+        ledger.assignments[operation.orderId] = operation.person;
+        ledger.rates[operation.orderId] = operation.rate;
+      } else if (operation.type === "entry") {
+        const entry = operation.entry;
         if (
           !ledger.people.includes(entry.person) ||
           !Number.isFinite(entry.amount) ||
           entry.amount <= 0 ||
           entry.amount > 100000000 ||
+          (entry.name !== undefined && entry.name.length > 160) ||
+          !["print", "payment"].includes(entry.kind) ||
           !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(entry.date)
         )
           throw new Error("Lançamento inválido.");
@@ -612,13 +703,25 @@ export default function HomePage() {
               createdAt: serverTimestamp(),
             },
           );
-      } else {
-        const entry = ledger.entries.find((item) => item.id === change.id);
+      } else if (operation.type === "rename") {
+        const entry = ledger.entries.find((entry) => entry.id === operation.id);
+        if (
+          !entry ||
+          entry.kind !== "print" ||
+          !operation.name.trim() ||
+          operation.name.length > 160
+        )
+          throw new Error("Informe um nome válido para a estampagem.");
+        entry.name = operation.name.trim();
+      } else if (operation.type === "remove") {
+        const entry = ledger.entries.find((item) => item.id === operation.id);
         if (entry?.kind === "payment")
           transaction.delete(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
           );
-        ledger.entries = ledger.entries.filter((item) => item.id !== change.id);
+        ledger.entries = ledger.entries.filter(
+          (item) => item.id !== operation.id,
+        );
       }
       transaction.set(ref, {
         title: "Costureiras",

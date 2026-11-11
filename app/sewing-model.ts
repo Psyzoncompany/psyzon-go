@@ -1,6 +1,7 @@
 import type { BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
 import type { Bill } from "./finance-model";
+import { millis } from "./notes-model";
 export const sewingNoteId = "psyzon-sewing-ledger";
 export type SewingEntry = {
   id: string;
@@ -9,8 +10,11 @@ export type SewingEntry = {
   quantity: number;
   amount: number;
   date: string;
+  name?: string;
+  orderId?: string;
 };
 export type SewingLedger = {
+  defaultPerson?: string;
   people: string[];
   assignments: Record<string, string>;
   rates: Record<string, number>;
@@ -23,12 +27,15 @@ export function readSewing(
   if (!raw)
     return { people: ["Zefa"], assignments: {}, rates: {}, entries: [] };
   const value = JSON.parse(raw) as SewingLedger;
-  return { ...value, people: [...new Set(["Zefa", ...value.people])] };
+  return { ...value, people: [...new Set(value.people)] };
+}
+export function sewingPerson(ledger: SewingLedger, orderId: string) {
+  return ledger.assignments[orderId] || ledger.defaultPerson || "Zefa";
 }
 export function sewingBalances(orders: Order[], ledger: SewingLedger) {
   return ledger.people.map((person) => {
     const rows = orders.filter(
-      (order) => (ledger.assignments[order.id] || "Zefa") === person,
+      (order) => sewingPerson(ledger, order.id) === person,
     );
     const total = rows.reduce(
       (sum, order) =>
@@ -53,6 +60,59 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
       balance: Math.round((total - prints - paid) * 100) / 100,
     };
   });
+}
+
+export function sewingOrderBalances(
+  orders: Order[],
+  ledger: SewingLedger,
+  person: string,
+) {
+  const rows = orders
+    .filter((order) => sewingPerson(ledger, order.id) === person)
+    .sort(
+      (a, b) =>
+        millis(a.createdAt) - millis(b.createdAt) || a.id.localeCompare(b.id),
+    )
+    .map((order) => ({
+      order,
+      cost:
+        order.quantity *
+        (ledger.rates[order.id] ?? (/\bpolo\b/i.test(order.product) ? 7 : 4)),
+      paid: 0,
+      credit: 0,
+    }));
+  const funds = { payment: 0, print: 0 };
+  const apply = (
+    row: (typeof rows)[number],
+    kind: "payment" | "print",
+    amount: number,
+  ) => {
+    const used = Math.min(
+      Math.max(0, row.cost - row.paid - row.credit),
+      amount,
+    );
+    if (kind === "payment") row.paid += used;
+    else row.credit += used;
+    return amount - used;
+  };
+  for (const entry of ledger.entries.filter(
+    (entry) => entry.person === person,
+  )) {
+    const target = entry.orderId
+      ? rows.find((row) => row.order.id === entry.orderId)
+      : undefined;
+    funds[entry.kind] += target
+      ? apply(target, entry.kind, entry.amount)
+      : entry.amount;
+  }
+  for (const row of rows) {
+    funds.print = apply(row, "print", funds.print);
+    funds.payment = apply(row, "payment", funds.payment);
+  }
+  return rows.map((row) => ({
+    ...row,
+    remaining: Math.round((row.cost - row.paid - row.credit) * 100) / 100,
+  }));
 }
 export function sewingBills(orders: Order[], ledger: SewingLedger): Bill[] {
   return sewingBalances(orders, ledger)

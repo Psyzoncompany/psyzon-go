@@ -761,8 +761,9 @@ export default function HomePage() {
   const orderBalances = orderReceivables(balances, orders);
   const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
   const activeOrders = productionOrders.filter(order => order.status !== "Entregue");
-  const overdue = activeOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
-  const urgent = activeOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
+  const confirmedOrders = activeOrders.filter(order => order.status !== "Orçamento");
+  const overdue = confirmedOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
+  const urgent = confirmedOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
 
   const notifications = useMemo<AppNotification[]>(() => {
     const today = new Date();
@@ -770,7 +771,7 @@ export default function HomePage() {
     const month = localDateValue(today).slice(0, 7);
     const items: AppNotification[] = [];
 
-    activeOrders.forEach((order) => {
+    confirmedOrders.forEach((order) => {
       const dtfDays = dtfAlertDays(order, calendarDate);
       if (dtfDays !== undefined) items.push({ id: `dtf-${order.id}`, orderId: order.id, title: `Pedir DTF · ${order.customer}`, detail: `${order.product} · ${dueLabel(order.dueDate, order.status, today)}`, tone: dtfDays <= 0 ? "danger" : "warning", view: "producao" });
       const due = new Date(`${order.dueDate}T00:00:00`);
@@ -789,7 +790,7 @@ export default function HomePage() {
 
     items.push(...restockAlerts(stockItems, calendarDate));
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [activeOrders, bills, calendarDate, stockItems]);
+  }, [confirmedOrders, bills, calendarDate, stockItems]);
   const dtfAlertCount = notifications.filter(item => item.orderId).length;
 
   const openNotification = (item: AppNotification) => {
@@ -1611,13 +1612,14 @@ export default function HomePage() {
     showToast("Conta removida");
   };
 
-  if (!authReady) return <main className="loading-state" role="status">Carregando Psyzon GO…</main>;
+  if (!authReady) return <StartupLoading />;
   if (!isFirebaseConfigured) return <ConnectionErrorScreen message="Confira as variáveis NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID e NEXT_PUBLIC_FIREBASE_APP_ID." />;
   if (!user) return <AuthScreenV2 error={authError} onSignIn={signInGoogle} />;
-  if (!dataReady || !interfaceAppearance.ready) return <main className="loading-state" role="status">Carregando Psyzon GO…</main>;
+  const accountFirstName = user.displayName?.trim().split(/\s+/)[0];
+  if (!dataReady || !interfaceAppearance.ready) return <StartupLoading firstName={accountFirstName} />;
 
   const userName = user.displayName || "Usuário PSYZON";
-  const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
+  const firstName = accountFirstName || "";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const floatingActive = floatingHost !== null;
   const photoOrders = synchronizedOrderPhotos(orders, notes, dtfOrders, visibleCustomers);
@@ -1726,12 +1728,22 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function StartupLoading({ firstName }: { firstName?: string }) {
+  return <main className="loading-state" role="status" aria-label="Carregando Psyzon GO">
+    <div className="loading-brand">
+      <Image src="/icon-192-v3.png" alt="Psyzon GO" width={72} height={72} priority />
+      <h1>{firstName ? `Boas-vindas, ${firstName}!` : "Boas-vindas ao Psyzon GO"}</h1>
+      <div className="loading-track" aria-hidden="true"><span /></div>
+    </div>
+  </main>;
+}
+
 function Dashboard({ alerts, today, sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
-  const priorityOrders = [...orders].sort((a: Order,b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,3);
+  const priorityOrders = orders.filter((order: Order) => order.status !== "Orçamento").sort((a: Order,b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,3);
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
-      <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><TypedHeading>{`Bom dia, ${userName}.`}</TypedHeading><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
+      <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><TypedHeading>{userName ? `Bom dia, ${userName}.` : "Bom dia."}</TypedHeading><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}

@@ -1512,4 +1512,19 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
     .mobile-nav > button { min-width: 0; padding-inline: 2px; font-size: 7.5px; }
   }
 }
-.loading-state { display: grid; place-items: center; min-height: 100dvh; color: var(--muted); font-size: 14px; }
+.loading-state {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 44%, var(--blue-soft), transparent 60%), var(--bg);
+  color: var(--text);
+}
+.loading-brand { display: grid; justify-items: center; gap: 20px; animation: loading-brand-in 220ms ease-out both; }
+.loading-brand img { border-radius: 22px; box-shadow: 0 12px 35px color-mix(in srgb, var(--blue) 28%, transparent); }
+.loading-brand h1 { margin: 0; font-size: clamp(23px, 5vw, 33px); letter-spacing: -.035em; overflow-wrap: anywhere; }
+.loading-track { width: 88px; height: 3px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.loading-track span { display: block; width: 45%; height: 100%; border-radius: inherit; background: var(--blue); animation: loading-track-sweep 1050ms ease-in-out infinite; }
+@keyframes loading-brand-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes loading-track-sweep { from { translate: -100% 0; } to { translate: 225% 0; } }

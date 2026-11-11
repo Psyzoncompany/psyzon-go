@@ -8,6 +8,17 @@ import {
   type SewingLedger,
 } from "../app/sewing-model";
 import type { Order } from "../app/order-model";
+import { orderAlerts } from "../app/order-alerts";
+
+test("quotes create neither sewing charges nor production alerts until confirmed", () => {
+  const quote: Order = {...orders[0],status:"Orçamento",dtfStatus:"pending"};
+  const ledger=readSewing([]);
+  assert.deepEqual(sewingBills([quote],ledger),[]);
+  assert.deepEqual(orderAlerts([quote],[],[],[],ledger,String).get(quote.id),undefined);
+  const confirmed: Order={...quote,status:"Aguardando material"};
+  assert.equal(sewingBills([confirmed],ledger)[0].amount,64);
+  assert.equal(orderAlerts([confirmed],[],[],[],ledger,String).get(quote.id)?.length,3);
+});
 
 test("excluded orders remain visible but do not contribute to sewing charges", () => {
   const ledger = {...readSewing([]), excludedOrderIds:["a"]};

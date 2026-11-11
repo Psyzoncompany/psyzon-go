@@ -34,10 +34,15 @@ export function readSewing(
 export function sewingPerson(ledger: SewingLedger, orderId: string) {
   return ledger.assignments[orderId] || ledger.defaultPerson || "Zefa";
 }
+function confirmedEntries(orders: Order[], ledger: SewingLedger) {
+  const quotes = new Set(orders.filter(order => order.status === "Orçamento").map(order => order.id));
+  return ledger.entries.filter(entry => !entry.orderId || !quotes.has(entry.orderId));
+}
 export function sewingBalances(orders: Order[], ledger: SewingLedger) {
+  const confirmed = confirmedEntries(orders, ledger);
   return ledger.people.map((person) => {
     const rows = orders.filter(
-      (order) => sewingPerson(ledger, order.id) === person,
+      (order) => order.status !== "Orçamento" && sewingPerson(ledger, order.id) === person,
     );
     const total = rows.reduce(
       (sum, order) =>
@@ -47,7 +52,7 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
             (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       0,
     );
-    const entries = ledger.entries.filter((entry) => entry.person === person);
+    const entries = confirmed.filter((entry) => entry.person === person);
     const prints = entries
       .filter((entry) => entry.kind === "print")
       .reduce((sum, entry) => sum + entry.amount, 0);
@@ -71,7 +76,7 @@ export function sewingOrderBalances(
   person: string,
 ) {
   const rows = orders
-    .filter((order) => sewingPerson(ledger, order.id) === person)
+    .filter((order) => order.status !== "Orçamento" && sewingPerson(ledger, order.id) === person)
     .sort(
       (a, b) =>
         millis(a.createdAt) - millis(b.createdAt) || a.id.localeCompare(b.id),
@@ -100,7 +105,7 @@ export function sewingOrderBalances(
     else row.credit += used;
     return amount - used;
   };
-  for (const entry of ledger.entries.filter(
+  for (const entry of confirmedEntries(orders, ledger).filter(
     (entry) => entry.person === person,
   )) {
     const target = entry.orderId

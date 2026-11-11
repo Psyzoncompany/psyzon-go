@@ -40,7 +40,7 @@ export function orderAlerts(orders: Order[], notes: BusinessNote[], customers: C
   const links = indexDtfCustomerLinks(customers, orders, notes);
   const prints = dtfOrders.map(dtf => ({ dtf, items: [dtf, ...readDtfPrints(dtf.printsData)] }));
   for (const order of orders) {
-    if (order.status === "Entregue") continue;
+    if (order.status === "Entregue" || order.status === "Orçamento") continue;
     const material = materials.get(order.id);
     if (material && material.extra >= .005) {
       add(order.id, { title: "Revisar malha adicional", detail: `${decimal(material.extra)} kg de previsão adicional`, view: "materiais" });

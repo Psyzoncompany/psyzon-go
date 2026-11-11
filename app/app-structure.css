@@ -50,7 +50,7 @@
   :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator.an-sidebar-hidden { grid-template-columns: minmax(340px, 1fr) 355px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .tasks-workspace { max-width: 900px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .settings-grid { gap: 16px; }
-  :root[data-ui-theme] .app-shell[data-layout="premium"] .appearance-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .appearance-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal-backdrop:not(.compact-modal-backdrop) { align-items: flex-end; justify-content: center; padding: 0; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal) { width: min(100%, 520px); height: auto; max-height: 92dvh; border-radius: var(--structure-dialog-radius) var(--structure-dialog-radius) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal :is(label, input, select, textarea) { font-size: 14px; }
@@ -68,6 +68,7 @@
   :root[data-ui-theme] .app-shell[data-layout="premium"] .production-stage-jump { display: inline-flex; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .notes-nav-full { display: none; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .notes-nav-short { display: inline; }
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .appearance-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media screen and (max-width: 760px) {
   :root[data-ui-theme] .app-shell .notification-panel { position: fixed; top: 72px; right: 12px; width: calc(100vw - 24px); }

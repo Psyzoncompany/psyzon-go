@@ -1,0 +1,133 @@
+@media screen {
+  :root[data-ui-theme="studio-glass"] {
+    color-scheme: dark;
+    --bg: #1a1512;
+    --card: #29211d;
+    --card-subtle: #352c26;
+    --text: #fff7ee;
+    --muted: #e0d2c3;
+    --faint: #c2af9f;
+    --border: #ffffff25;
+    --blue: #ffb86f;
+    --blue-soft: #724724;
+    --green: #9ce4b6;
+    --green-soft: #284637;
+    --red: #ff9d98;
+    --red-soft: #572e2a;
+    --yellow: #ffd28d;
+    --yellow-soft: #574024;
+    --shadow: 0 8px 32px #120b0930;
+    --structure-radius: 18px;
+    --structure-dialog-radius: 22px;
+    --structure-nav-radius: 22px;
+    --studio-card: #20191588;
+    --studio-bar: #211916b3;
+    --studio-blur: blur(12px) saturate(.92);
+    --studio-shade: #1a120d29;
+  }
+
+  :root[data-ui-theme="studio-glass"][data-theme="dark"] {
+    --studio-card: #171210cc;
+    --studio-bar: #171210e0;
+    --studio-shade: #100b0870;
+  }
+
+  :root[data-ui-theme="studio-glass"][data-glass-transparency="reduced"] {
+    --studio-card: var(--card);
+    --studio-bar: var(--card);
+    --studio-blur: none;
+    --studio-shade: #120d0bb3;
+  }
+
+  .appearance-preview[data-preview="studio-glass"] {
+    border-color: #785f4e;
+    background: linear-gradient(#180f0b40, #180f0b78), #31241c url("/studio-glass/inicio-preview.webp") center / cover;
+  }
+  .appearance-preview[data-preview="studio-glass"] .preview-sidebar { width: 13%; background: #261a14b8; border: 1px solid #ffefdb40; }
+  .appearance-preview[data-preview="studio-glass"] i { background: #f2deca80; }
+  .appearance-preview[data-preview="studio-glass"] .preview-sidebar i:first-child { background: #ffae62; }
+  .appearance-preview[data-preview="studio-glass"] .preview-heading { background: #f8ebdb !important; }
+  .appearance-preview[data-preview="studio-glass"] :is(.preview-metrics i, .preview-list) { background: #2e211bcc !important; border: 1px solid #ffefdb40; }
+
+  :root[data-ui-theme="studio-glass"] .app-shell { isolation: isolate; }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="inicio"] { --studio-photo: url("/studio-glass/inicio.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="producao"] { --studio-photo: url("/studio-glass/producao.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="dtf"] { --studio-photo: url("/studio-glass/dtf.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="notas"] { --studio-photo: url("/studio-glass/notas.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="materiais"] { --studio-photo: url("/studio-glass/materiais.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="afazeres"] { --studio-photo: url("/studio-glass/afazeres.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="reposicao"] { --studio-photo: url("/studio-glass/reposicao.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="costureiras"] { --studio-photo: url("/studio-glass/costureiras.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="clientes"] { --studio-photo: url("/studio-glass/clientes.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="financeiro"] { --studio-photo: url("/studio-glass/financeiro.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="historico"] { --studio-photo: url("/studio-glass/historico.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="mais"] { --studio-photo: url("/studio-glass/mais.webp"); }
+
+  :root[data-ui-theme="studio-glass"] .app-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--studio-shade), var(--studio-shade)),
+      linear-gradient(180deg, #17100cb8, #17100c2b 47%, #17100c91),
+      var(--studio-photo, none) center / cover no-repeat,
+      var(--bg);
+  }
+
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"] :is(.sidebar, .topbar, .mobile-nav) {
+    border-color: var(--border);
+    background: var(--studio-bar);
+    backdrop-filter: var(--studio-blur);
+    -webkit-backdrop-filter: var(--studio-blur);
+    box-shadow: var(--shadow), inset 0 1px #ffffff12;
+  }
+  :root[data-ui-theme="studio-glass"] .app-shell .notification-panel { background: var(--card); }
+  :root[data-ui-theme="studio-glass"] .app-shell :is(.panel, .metric-card, .attention-card, .customer-card, .production-delivered, .dtf-pipeline, .materials-order, .materials-empty, .finance-list-card, .dtf-metrics article, .finance-premium-summary article, .history-metrics article, .materials-totals article, .restock-summary article, .sewing-summary article) {
+    background: var(--studio-card);
+    border: 1px solid var(--border);
+    border-radius: var(--structure-radius);
+    box-shadow: var(--shadow), inset 0 1px #ffffff12;
+    backdrop-filter: var(--studio-blur);
+    -webkit-backdrop-filter: var(--studio-blur);
+  }
+  :root[data-ui-theme="studio-glass"] .app-shell .production-lane { background: var(--studio-card); border-color: var(--border); }
+  :root[data-ui-theme="studio-glass"] .app-shell .finance-row { background: transparent; }
+  :root[data-ui-theme="studio-glass"] .app-shell .finance-row:active { background: var(--card-subtle); }
+  :root[data-ui-theme="studio-glass"] .app-shell .apple-notes { background: var(--studio-card); }
+  :root[data-ui-theme="studio-glass"] .app-shell .an-list-panel { --an-side: var(--studio-card); }
+  :root[data-ui-theme="studio-glass"] .app-shell .an-editor-panel { background: var(--studio-card); }
+  :root[data-ui-theme="studio-glass"] .app-shell .search-wrap input { background: #100c0a62; border-color: var(--border); }
+  :root[data-ui-theme="studio-glass"] :is(.primary, .an-primary, .floating-new, .apple-notes .production-checklist .primary) {
+    background: linear-gradient(180deg, #ffd09b, #ffa95c);
+    color: #2a170d;
+    border-color: #ffd9ad;
+    box-shadow: 0 4px 18px #f4933e32, inset 0 1px #fff4;
+  }
+  :root[data-ui-theme="studio-glass"] .primary kbd { color: inherit; border-color: #2a170d38; }
+  :root[data-ui-theme="studio-glass"] .app-shell .brand-mark { box-shadow: 0 4px 16px #0005; }
+  :root[data-ui-theme="studio-glass"] .app-shell :is(.metric-card > strong, .finance-premium-summary strong) { font-variant-numeric: tabular-nums; }
+}
+
+@media screen and (min-width: 761px) {
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"] .sidebar {
+    inset: 14px auto 14px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+  }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"] .main { margin-left: 250px; }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"].sidebar-collapsed .main { margin-left: 88px; }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"] .topbar {
+    margin: 14px 18px 0;
+    padding-inline: 18px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-layout="premium"] .apple-notes { height: calc(var(--ui-viewport-height) - 78px); }
+}
+
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="studio-glass"] .app-shell::before { background-position: center, center, 57% center, center; }
+  :root[data-ui-theme="studio-glass"] .app-shell .mobile-nav > button.active { color: var(--blue); }
+}

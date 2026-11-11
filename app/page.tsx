@@ -274,7 +274,11 @@ export default function HomePage() {
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
   const [floatingHost, setFloatingHost] = useState<Window | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [standardSidebarCollapsed, setStandardSidebarCollapsed] = useState(false);
+  const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
+  const studio = interfaceAppearance.appearance.theme === "studio-glass";
+  const sidebarCollapsed = studio ? studioSidebarCollapsed : standardSidebarCollapsed;
+  const setSidebarCollapsed = studio ? setStudioSidebarCollapsed : setStandardSidebarCollapsed;
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
   const floatingOpeningRef = useRef(false);

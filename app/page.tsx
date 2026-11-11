@@ -9,6 +9,8 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
+import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
+import { readSewing, sewingBills, sewingNoteId } from "./sewing-model";
 import { synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { indexDtfCustomerLinks } from "./dtf-links";
@@ -552,11 +554,91 @@ export default function HomePage() {
     }
   };
 
+  const saveSewing = async (change: SewingChange) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a sincronização.");
+    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
+      const ref = userDocument(uid, "notes", sewingNoteId);
+      const snapshot = await transaction.get(ref);
+      const ledger = readSewing(
+        snapshot.exists()
+          ? [{ id: sewingNoteId, content: String(snapshot.data().content) }]
+          : [],
+      );
+      if (change.type === "person") {
+        if (
+          !change.name ||
+          change.name.length > 80 ||
+          ledger.people.includes(change.name)
+        )
+          throw new Error("Informe um nome novo válido.");
+        ledger.people.push(change.name);
+      } else if (change.type === "assign") {
+        if (
+          !ledger.people.includes(change.person) ||
+          ![4, 7].includes(change.rate)
+        )
+          throw new Error("Costureira ou tarifa inválida.");
+        ledger.assignments[change.orderId] = change.person;
+        ledger.rates[change.orderId] = change.rate;
+      } else if (change.type === "entry") {
+        const entry = change.entry;
+        if (
+          !ledger.people.includes(entry.person) ||
+          !Number.isFinite(entry.amount) ||
+          entry.amount <= 0 ||
+          entry.amount > 100000000 ||
+          !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(entry.date)
+        )
+          throw new Error("Lançamento inválido.");
+        if (
+          entry.kind === "print" &&
+          (!Number.isInteger(entry.quantity) ||
+            entry.quantity < 1 ||
+            entry.amount !== entry.quantity * 4)
+        )
+          throw new Error("Quantidade inválida.");
+        if (ledger.entries.some((item) => item.id === entry.id)) return;
+        ledger.entries.push(entry);
+        if (entry.kind === "payment")
+          transaction.set(
+            userDocument(uid, "transactions", "sewing-payment-" + entry.id),
+            {
+              description: "Costura · " + entry.person,
+              amount: entry.amount,
+              type: "expense",
+              account: "business",
+              category: "Costura",
+              transactionDate: entry.date,
+              createdAt: serverTimestamp(),
+            },
+          );
+      } else {
+        const entry = ledger.entries.find((item) => item.id === change.id);
+        if (entry?.kind === "payment")
+          transaction.delete(
+            userDocument(uid, "transactions", "sewing-payment-" + entry.id),
+          );
+        ledger.entries = ledger.entries.filter((item) => item.id !== change.id);
+      }
+      transaction.set(ref, {
+        title: "Costureiras",
+        content: JSON.stringify(ledger),
+        category: "Geral",
+        pinned: false,
+        materials: [],
+        updatedAt: serverTimestamp(),
+      });
+    });
+  };
+
   const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
   const dtfLinks = useMemo(() => dtfOrders.map(order => [order, ...readDtfPrints(order.printsData)]), [dtfOrders]);
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
-  const allPayables = [...bills, ...stockPayables];
+  const sewingLedger = useMemo(() => readSewing(notes), [notes]);
+  const sewingPayables = sewingBills(orders, sewingLedger);
+  const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
+  const allPayables = [...bills, ...stockPayables, ...sewingPayables];
   const visibleCustomers = balances.filter((customer) => !customer.archived);
   const { pending, toPay: payable, debtors } = financialSummary(balances, allPayables, calendarDate.slice(0, 7));
   const nextPayables = view === "inicio" ? nextMonthPayables(allPayables, calendarDate.slice(0, 7)) : undefined;
@@ -1094,7 +1176,7 @@ export default function HomePage() {
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
         <nav>
-          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres", "reposicao"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
+          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres", "reposicao", "costureiras"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
         </nav>
         <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
@@ -1119,14 +1201,16 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {nextPayables && <Dashboard sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
-          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={stockPayables} openRestock={() => setView("reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
+
+          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1202,7 +1286,7 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+function Dashboard({ sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -1210,7 +1294,7 @@ function Dashboard({ userName, orders, pending, payable, nextPayables, debtorsCo
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}
-    <div className="metric-grid">
+    <div className="metric-grid sewing-metrics"><button className="metric-card sewing-home-card" onClick={() => setView("costureiras")}><div className="metric-top">Costureiras · A pagar</div><strong><CountUp value={sewingTotal} format={displayTotal}/></strong><small>Abrir saldo e descontos</small></button>
       <Metric icon={WalletCards} label="A pagar" value={<CountUp value={payable} format={displayTotal} />} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
       <Metric icon={CircleDollarSign} label="A receber" value={<CountUp value={pending} format={displayTotal} />} detail={<span className="metric-detail-stack"><span>{debtorsCount} clientes pendentes</span><span className="next-payables"><span>A pagar em {nextPayables.label}</span><b><CountUp value={nextPayables.total} format={displayTotal} /></b></span></span>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={<><CountUp value={orders.length} /> pedidos</>} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />

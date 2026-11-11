@@ -22,7 +22,7 @@ const destinations = [
 export default function MobileNavigation({ view, navigate }: { view: View; navigate: (view: View) => void }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const menuActive = !tabs.some(item => item.id === view) && !["materiais", "afazeres", "reposicao"].includes(view);
+  const menuActive = !tabs.some(item => item.id === view) && !["materiais", "afazeres", "reposicao", "costureiras"].includes(view);
   useEffect(() => {
     if (open) dialog.current?.showModal();
     else dialog.current?.close();
@@ -37,7 +37,7 @@ export default function MobileNavigation({ view, navigate }: { view: View; navig
   return <>
     <nav className="mobile-nav" aria-label="Navegação principal">
       {tabs.map(({ id, label, icon: Icon }) => {
-        const active = view === id || (id === "notas" && ["materiais", "afazeres", "reposicao"].includes(view));
+        const active = view === id || (id === "notas" && ["materiais", "afazeres", "reposicao", "costureiras"].includes(view));
         return <button key={id} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={() => go(id)}><Icon size={22} strokeWidth={1.8} /><span>{label}</span></button>;
       })}
       <button className={menuActive || open ? "active" : ""} aria-label="Mais opções" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}><MoreHorizontal size={23} /><span>Mais</span></button>

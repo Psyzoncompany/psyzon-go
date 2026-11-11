@@ -1,0 +1,87 @@
+.sewing-workspace {
+  display: grid;
+  gap: 16px;
+}
+.sewing-workspace .page-heading {
+  margin: 0;
+  flex-wrap: wrap;
+}
+.sewing-workspace form,
+.sewing-people {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sewing-workspace input,
+.sewing-workspace select {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--card);
+  color: var(--text);
+}
+.sewing-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.sewing-summary article {
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+}
+.sewing-summary strong {
+  font-size: 22px;
+}
+.sewing-entry {
+  padding: 16px;
+  align-items: end;
+}
+.sewing-entry label {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 150px;
+}
+.sewing-orders {
+  padding: 16px;
+}
+.sewing-orders h2 {
+  font-size: 17px;
+}
+.sewing-orders > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.sewing-orders > div > div {
+  flex: 1 1 180px;
+  display: grid;
+  gap: 6px;
+}
+.sewing-orders small {
+  color: var(--muted);
+}
+@media (max-width: 760px) {
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .metric-grid.sewing-metrics .metric-card:last-child { grid-column: auto; }
+  .sewing-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sewing-summary strong {
+    font-size: 18px;
+  }
+}
+.sewing-metrics .sewing-home-card small {
+  color: var(--muted);
+}
+@media (min-width: 1101px) {
+  :root[data-ui-theme]
+    .app-shell[data-layout="premium"]
+    .metric-grid.sewing-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}

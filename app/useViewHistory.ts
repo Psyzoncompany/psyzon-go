@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "clientes", "financeiro", "historico", "mais"] as const;
+export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "mais"] as const;
 export type View = (typeof views)[number];
 
 export function viewFromHash(hash: string): View {

@@ -6,21 +6,23 @@ import { useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { millis } from "../notes-model";
 import NoteDialog from "./NoteDialog";
+import type { Customer } from "../finance-model";
 import type { Task } from "./task-model";
 import "./notes.css";
 import "./tasks.css";
 
 type Props = {
   tasks: Task[];
+  customers: Customer[];
   connection: "connecting" | "live" | "error";
   today: string;
   back: () => void;
-  onSave: (title: string, id?: string) => Promise<void>;
+  onSave: (title: string, id?: string, customerId?: string) => Promise<void>;
   onToggle: (id: string, completed: boolean) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 };
 
-export default function TasksWorkspace({ tasks, connection, today, back, onSave, onToggle, onDelete }: Props) {
+export default function TasksWorkspace({ tasks, customers, connection, today, back, onSave, onToggle, onDelete }: Props) {
   const [title, setTitle] = useState("");
   const [editing, setEditing] = useState<string>();
   const [pendingAction, setPendingAction] = useState("");
@@ -28,6 +30,7 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
   const [feedback, setFeedback] = useState<{ message: string; error?: boolean }>();
   const [printOpen, setPrintOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const customerNames = new Map(customers.map(customer => [customer.id, customer.name]));
   const pending = tasks.filter(task => !task.completed).sort((a, b) => millis(a.createdAt) - millis(b.createdAt));
   const completed = tasks.filter(task => task.completed).sort((a, b) => millis(b.completedAt) - millis(a.completedAt));
   const ready = connection === "live";
@@ -46,9 +49,12 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
   function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const value = title.trim();
+    const form = event.currentTarget;
+    const customerId = String(new FormData(form).get("customerId") ?? "");
     if (!value) return;
     void run("new", async () => {
-      await onSave(value);
+      await onSave(value, undefined, customerId);
+      form.reset();
       setTitle(current => current.trim() === value ? "" : current);
       input.current?.focus();
     }, "Tarefa adicionada.");
@@ -56,10 +62,11 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
 
   function edit(event: FormEvent<HTMLFormElement>, task: Task) {
     event.preventDefault();
-    const value = String(new FormData(event.currentTarget).get("title") ?? "").trim();
+    const form = new FormData(event.currentTarget);
+    const value = String(form.get("title") ?? "").trim();
     if (!value) return;
     void run(task.id, async () => {
-      await onSave(value, task.id);
+      await onSave(value, task.id, String(form.get("customerId") ?? ""));
       setEditing(undefined);
     }, "Tarefa atualizada.");
   }
@@ -75,10 +82,11 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
       </label>
       {editing === task.id ? <form className="task-inline-edit" onSubmit={event => edit(event, task)}>
         <input name="title" aria-label="Editar nome da tarefa" defaultValue={task.title} maxLength={200} required ref={node => node?.focus()} onKeyDown={event => { if (event.key === "Escape") setEditing(undefined); }} />
+        <TaskCustomerSelect customers={customers} selected={task.customerId} />
         <button type="submit" aria-label="Salvar tarefa" disabled={disabled}><Check size={17} /></button>
         <button type="button" aria-label="Cancelar edição" disabled={disabled} onClick={() => setEditing(undefined)}><X size={17} /></button>
       </form> : <>
-        <span className={task.completed ? "task-title done" : "task-title"}>{task.title}</span>
+        <span className={task.completed ? "task-title done" : "task-title"}>{task.title}{task.customerId && <small className="task-customer-name">{customerNames.get(task.customerId) ?? "Cliente indisponível"}</small>}</span>
         <div className="task-actions">
           <button type="button" aria-label={`Editar ${task.title}`} title="Editar" disabled={disabled} onClick={() => setEditing(task.id)}><Pencil size={16} /></button>
           <button type="button" aria-label={`Excluir ${task.title}`} title="Excluir" disabled={disabled} onClick={() => {
@@ -103,6 +111,7 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
       </div>
       <form className="tasks-add" onSubmit={add}>
         <input ref={input} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} required aria-label="Nova tarefa" placeholder="O que você precisa fazer?" />
+        <TaskCustomerSelect customers={customers} />
         <button type="submit" className="primary" disabled={disabled || !title.trim()}><Plus size={18} /> {pendingAction === "new" ? "Salvando…" : "Adicionar"}</button>
       </form>
       {!ready && <p className="tasks-feedback" role="status">{connection === "error" ? "A lista não sincronizou. Confira a conexão e recarregue a página." : "Sincronizando afazeres…"}</p>}
@@ -116,11 +125,16 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
         <ul>{completed.map(renderTask)}</ul>
       </div>}
     </section>
-    {printOpen && <TasksPrint pending={pending} completed={completed} today={today} close={() => setPrintOpen(false)} />}
+    {printOpen && <TasksPrint customerNames={customerNames} pending={pending} completed={completed} today={today} close={() => setPrintOpen(false)} />}
   </section>;
 }
 
-function TasksPrint({ pending, completed, today, close }: { pending: Task[]; completed: Task[]; today: string; close: () => void }) {
+function TaskCustomerSelect({ customers, selected }: { customers: Customer[]; selected?: string }) {
+  const options = customers.filter(customer => !customer.archived || customer.id === selected).sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
+  return <select className="task-customer-select" aria-label="Cliente (opcional)" name="customerId" defaultValue={selected ?? ""}><option value="">Sem cliente</option>{selected && !options.some(customer => customer.id === selected) && <option value={selected}>Cliente indisponível</option>}{options.map(customer => <option value={customer.id} key={customer.id}>{customer.name}</option>)}</select>;
+}
+
+function TasksPrint({ pending, completed, today, close, customerNames }: { customerNames: Map<string,string>; pending: Task[]; completed: Task[]; today: string; close: () => void }) {
   const [includeDone, setIncludeDone] = useState(!pending.length);
   const selected = includeDone ? [...pending, ...completed] : pending;
   const issued = today.split("-").reverse().join("/");
@@ -138,7 +152,7 @@ function TasksPrint({ pending, completed, today, close }: { pending: Task[]; com
       </header>
       <table>
         <thead><tr><th scope="col">Nº</th><th scope="col">Feito</th><th scope="col">Tarefa</th></tr></thead>
-        <tbody>{selected.map((task, index) => <tr key={task.id}><td>{String(index + 1).padStart(2, "0")}</td><td><span className="tasks-print-check">{task.completed && <Check size={13} />}</span></td><td>{task.title}</td></tr>)}</tbody>
+        <tbody>{selected.map((task, index) => <tr key={task.id}><td>{String(index + 1).padStart(2, "0")}</td><td><span className="tasks-print-check">{task.completed && <Check size={13} />}</span></td><td>{task.title}{task.customerId && <small className="task-customer-name">{customerNames.get(task.customerId) ?? "Cliente indisponível"}</small>}</td></tr>)}</tbody>
       </table>
       <footer><span>Pendentes {pending.length}{includeDone ? ` · Concluídas ${completed.length}` : ""}</span><span>Formato A4</span></footer>
     </article>, document.body)}

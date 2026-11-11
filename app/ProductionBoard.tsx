@@ -1,19 +1,24 @@
 "use client";
+import NoteDialog from "./notes/NoteDialog";
+import type { OrderAlert } from "./order-alerts";
 import { TypedHeading } from "./Typewriter";
 import { poloExtra } from "./order-pricing";
 import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
-import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, CalendarDays, Shirt, MoreHorizontal, PackageOpen, Layers, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, CalendarDays, Shirt, MoreHorizontal, PackageOpen, Layers, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import useProductionDrag from "./useProductionDrag";
 import "./production-board.css";
+import "./notes/notes.css";
 
 type Props = {
   orders: Order[];
+  alerts: Map<string, OrderAlert[]>;
+  openAlert: (alert: OrderAlert) => void;
   displayMoney: (value: number) => string;
   updateStatus: (order: Order, status: OrderStatus) => Promise<void>;
   onCreate: () => void;
@@ -22,8 +27,11 @@ type Props = {
   openChecklist: (order: Order) => void;
 };
 
-export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist }: Props) {
+export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
+  const [alertId, setAlertId] = useState("");
+  const alertOrder = orders.find(order => order.id === alertId);
+  const currentAlerts = alerts.get(alertId) ?? [];
   const [selectedId, setSelectedId] = useState("");
   const [sort, setSort] = useState("deadline");
   const [filter, setFilter] = useState("all");
@@ -88,7 +96,7 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         const items = grouped.get(stage) ?? [];
         return <section className="production-lane" data-stage={index} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
           <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count"><CountUp value={items.length} /></span></header>
-          {items.length ? items.map(order => <OrderCard key={order.id} order={order} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
+          {items.length ? items.map(order => <OrderCard key={order.id} order={order} alertCount={alerts.get(order.id)?.length ?? 0} openAlerts={() => setAlertId(order.id)} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
         </section>;
       })}
     </div>
@@ -99,11 +107,12 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         return <li key={order.id} className="production-delivered-row">
           <OrderPhoto order={order} />
           <div className="production-delivered-name"><b>{order.product}</b><small>{order.customer} · {order.quantity} un.</small></div>
-          <button className="production-note-link" onClick={() => setSelectedId(order.id)}>Ver pedido</button>
+          <button className="production-note-link" onClick={() => setSelectedId(order.id)}>Ver pedido</button><button type="button" className="production-note-link" aria-haspopup="dialog" aria-label={`Pendências de ${order.customer} (${alerts.get(order.id)?.length ?? 0})`} onClick={() => setAlertId(order.id)}><AlertTriangle size={16} /></button>
           <div className="production-delivered-actions"><button className="production-note-link" onClick={actions.openChecklist}><ClipboardList size={15} /> Abrir lista</button><OrderActions {...actions} /></div>
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
+    {alertOrder && <NoteDialog title="Pendências do pedido" close={() => setAlertId("")}><div className="order-alert-panel"><b>{alertOrder.customer} · {alertOrder.product}</b>{currentAlerts.length ? <ul>{currentAlerts.map(alert => <li key={alert.view}><div><strong>{alert.title}</strong><small>{alert.detail}</small></div><button type="button" className="secondary" onClick={() => { setAlertId(""); openAlert(alert); }}>{alert.view === "materiais" ? "Materiais" : alert.view === "costureiras" ? "Costureiras" : "Abrir DTF"}</button></li>)}</ul> : <p>Nenhuma pendência para este pedido.</p>}</div></NoteDialog>}
     {selected && createPortal(<OrderDetails {...actionsFor(selected)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
     {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
   </section>;
@@ -124,14 +133,14 @@ function OrderPhoto({ order }: { order: Order }) {
     : <span className="production-photo-empty" aria-hidden="true"><ImageIcon size={18} /></span>;
 }
 
-function OrderCard({ order, busy, open, openChecklist, dragging, startDrag }: { order: Order; busy: boolean; open: () => void; openChecklist: () => void; dragging: boolean; startDrag: (event: PointerEvent<HTMLElement>) => void }) {
+function OrderCard({ order, busy, open, openChecklist, dragging, startDrag, alertCount, openAlerts }: { order: Order; alertCount: number; openAlerts: () => void; busy: boolean; open: () => void; openChecklist: () => void; dragging: boolean; startDrag: (event: PointerEvent<HTMLElement>) => void }) {
   return <article className="production-order-card kanban-order-card" data-moving={dragging}>
     <button className="kanban-card-open" type="button" aria-label={`Abrir pedido de ${order.customer}`} aria-haspopup="dialog" onClick={open}>
       <span className="kanban-card-photo"><OrderPhoto order={order} /></span>
       <span className="kanban-card-copy"><b>{order.customer}</b><small>{order.product}</small></span>
       <span className="kanban-card-meta"><span className={`due ${dueTone(order.dueDate, order.status)}`}><CalendarDays size={15} />{dueLabel(order.dueDate, order.status)}</span><span className="kanban-card-quantity"><Shirt size={17} />{order.quantity} un.</span></span>
     </button>
-    <div className="kanban-card-actions"><span className="kanban-drag" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={13} /></span><button className="production-open-list" type="button" aria-label={`Abrir lista de ${order.customer}`} title="Abrir lista" onClick={openChecklist}><ClipboardList size={16} /></button><button type="button" aria-label={`Opções do pedido de ${order.customer}`} title="Detalhes e ações" onClick={open}><MoreHorizontal size={17} /></button></div>
+    <div className="kanban-card-actions"><button type="button" className="kanban-alert-button" data-pending={alertCount > 0} aria-label={`Pendências de ${order.customer} (${alertCount})`} aria-haspopup="dialog" title={`${alertCount} pendência(s)`} onClick={openAlerts}><AlertTriangle size={16} /></button><span className="kanban-drag" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={13} /></span><button className="production-open-list" type="button" aria-label={`Abrir lista de ${order.customer}`} title="Abrir lista" onClick={openChecklist}><ClipboardList size={16} /></button><button type="button" aria-label={`Opções do pedido de ${order.customer}`} title="Detalhes e ações" onClick={open}><MoreHorizontal size={17} /></button></div>
   </article>;
 }
 

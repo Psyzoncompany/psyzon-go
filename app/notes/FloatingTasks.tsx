@@ -34,9 +34,10 @@ const styles = `
   input:disabled { opacity: .5; cursor: wait; }
 `;
 
-export default function FloatingTasks({ host, tasks, connection, dark, onToggle, openTasks }: {
+export default function FloatingTasks({ host, tasks, customers, connection, dark, onToggle, openTasks }: {
   host: Window;
   tasks: Task[];
+  customers: { id: string; name: string }[];
   connection: "connecting" | "live" | "error";
   dark: boolean;
   onToggle: (id: string, completed: boolean) => Promise<void>;
@@ -63,13 +64,13 @@ export default function FloatingTasks({ host, tasks, connection, dark, onToggle,
     <header className="ft-header"><span className="ft-symbol"><ListChecks size={21} /></span><div><h1>Afazeres</h1><p aria-live="polite">{pending.length} {pending.length === 1 ? "pendente" : "pendentes"} · PSYZON GO</p></div><button type="button" className="ft-open" aria-label="Abrir todos os afazeres" title="Abrir todos os afazeres" onClick={openTasks}><ArrowUpRight size={19} /></button></header>
     {!ready && <p className="ft-message" role="status">{connection === "error" ? "Não foi possível sincronizar os afazeres. Atualize a página do sistema." : "Sincronizando afazeres…"}</p>}
     {error && <p className="ft-message ft-error" role="alert">{error}</p>}
-    {pending.length > 0 ? <FloatingTaskRows items={pending} disabled={!ready || busy} onToggle={toggle} /> : ready && <div className="ft-empty"><CheckCheck size={24} /><p>{completed.length ? "Tudo em dia!" : "Nenhum afazer cadastrado."}</p></div>}
-    {completed.length > 0 && <details><summary>Concluídos · {completed.length}</summary><FloatingTaskRows items={completed} disabled={!ready || busy} onToggle={toggle} /></details>}
+    {pending.length > 0 ? <FloatingTaskRows customers={customers} items={pending} disabled={!ready || busy} onToggle={toggle} /> : ready && <div className="ft-empty"><CheckCheck size={24} /><p>{completed.length ? "Tudo em dia!" : "Nenhum afazer cadastrado."}</p></div>}
+    {completed.length > 0 && <details><summary>Concluídos · {completed.length}</summary><FloatingTaskRows customers={customers} items={completed} disabled={!ready || busy} onToggle={toggle} /></details>}
   </section></>, host.document.body);
 }
 
-function FloatingTaskRows({ items, disabled, onToggle }: { items: Task[]; disabled: boolean; onToggle: (task: Task) => Promise<void> }) {
+function FloatingTaskRows({ items, customers, disabled, onToggle }: { items: Task[]; customers: { id: string; name: string }[]; disabled: boolean; onToggle: (task: Task) => Promise<void> }) {
   return <ul>{items.map(task => <li key={task.id}>
-    <label className={task.completed ? "ft-done" : undefined}><input type="checkbox" checked={task.completed} disabled={disabled} aria-label={`${task.completed ? "Reabrir" : "Concluir"} ${task.title}`} onChange={() => void onToggle(task)} /><span>{task.title}</span></label>
+    <label className={task.completed ? "ft-done" : undefined}><input type="checkbox" checked={task.completed} disabled={disabled} aria-label={`${task.completed ? "Reabrir" : "Concluir"} ${task.title}`} onChange={() => void onToggle(task)} /><span>{task.title}{task.customerId && <small style={{display:"block",opacity:.75}}>{customers.find(customer => customer.id === task.customerId)?.name ?? "Cliente indisponível"}</small>}</span></label>
   </li>)}</ul>;
 }

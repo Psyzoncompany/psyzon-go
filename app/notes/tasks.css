@@ -15,6 +15,13 @@
 .tasks-progress progress::-webkit-progress-value { background: var(--blue); transition: width .3s ease; }
 .tasks-progress progress::-moz-progress-bar { background: var(--blue); }
 .tasks-add { display: flex; gap: 8px; margin: 16px 18px; }
+.task-customer-select { min-width: 0; max-width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--text); }
+.task-customer-name { display: block; margin-top: 3px; color: var(--muted); font-size: .85em; }
+@media (max-width: 760px) {
+  .tasks-add, .task-inline-edit { flex-wrap: wrap; }
+  .tasks-add > input, .task-inline-edit > input { flex-basis: 100%; }
+  .task-customer-select { flex: 1; }
+}
 .tasks-add input, .task-inline-edit input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 9px; padding: 8px 11px; color: var(--text); background: var(--bg); font-size: 14px; }
 .tasks-add input:focus, .task-inline-edit input:focus { outline: 2px solid var(--blue); outline-offset: -1px; }
 .tasks-add .primary { min-height: 41px; height: auto; }

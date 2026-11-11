@@ -11,6 +11,7 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
+import { orderAlerts } from "./order-alerts";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { synchronizedOrderPhotos } from "./order-photo-sync";
@@ -253,7 +254,7 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [dataReady, setDataReady] = useState(false);
-  const [introComplete, setIntroComplete] = useState(false);
+
   const [authError, setAuthError] = useState("");
   const [resetting, setResetting] = useState(false);
   const [dark, setDark] = useState(false);
@@ -275,17 +276,14 @@ export default function HomePage() {
   const floatingWindowRef = useRef<Window | null>(null);
   const floatingOpeningRef = useRef(false);
   const dailyRemindersSignature = useRef("");
-  const contentRef = useInterfaceMotion(view, introComplete && authReady && !!user && dataReady && interfaceAppearance.ready, interfaceAppearance.appearance.motion);
+  const contentRef = useInterfaceMotion(view, authReady && !!user && dataReady && interfaceAppearance.ready, interfaceAppearance.appearance.motion);
 
   useEffect(() => () => {
     floatingWindowRef.current?.close();
     floatingWindowRef.current = null;
   }, [uid]);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIntroComplete(true), 1900);
-    return () => window.clearTimeout(timer);
-  }, []);
+
 
   useEffect(() => {
     const storedTheme = localStorage.getItem("psy-theme");
@@ -741,6 +739,7 @@ export default function HomePage() {
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
+  const alerts = useMemo(() => view === "producao" ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
   const allPayables = [...bills, ...stockPayables, ...sewingPayables];
@@ -1088,12 +1087,13 @@ export default function HomePage() {
     else await setDoc(userDocument(uid, "notes", restockPrefix + makeId()), { ...newRestockNote(input), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   };
 
-  const saveTask = async (title: string, id?: string) => {
+  const saveTask = async (title: string, id?: string, customerId = "") => {
     if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
     const clean = title.trim();
     if (!clean || clean.length > 200) throw new Error("Escreva uma tarefa de até 200 caracteres.");
-    if (id) await updateDoc(userDocument(uid, "tasks", id), { title: clean });
-    else await addDoc(userCollection(uid, "tasks"), { title: clean, completed: false, createdAt: serverTimestamp(), completedAt: null });
+    if (customerId && !customers.some(customer => customer.id === customerId && !customer.archived) && !tasks.some(task => task.id === id && task.customerId === customerId)) throw new Error("Cliente indisponível.");
+    if (id) await updateDoc(userDocument(uid, "tasks", id), { title: clean, customerId: customerId || deleteField() });
+    else await addDoc(userCollection(uid, "tasks"), { title: clean, ...(customerId ? { customerId } : {}), completed: false, createdAt: serverTimestamp(), completedAt: null });
   };
 
   const toggleTask = async (id: string, completed: boolean) => {
@@ -1594,10 +1594,10 @@ export default function HomePage() {
     showToast("Conta removida");
   };
 
-  if (!introComplete || !authReady) return <SplashScreen />;
+  if (!authReady) return <main className="loading-state" role="status">Carregando Psyzon GO…</main>;
   if (!isFirebaseConfigured) return <ConnectionErrorScreen message="Confira as variáveis NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID e NEXT_PUBLIC_FIREBASE_APP_ID." />;
   if (!user) return <AuthScreenV2 error={authError} onSignIn={signInGoogle} />;
-  if (!dataReady || !interfaceAppearance.ready) return <SplashScreen />;
+  if (!dataReady || !interfaceAppearance.ready) return <main className="loading-state" role="status">Carregando Psyzon GO…</main>;
 
   const userName = user.displayName || "Usuário PSYZON";
   const firstName = userName.trim().split(/\s+/)[0] || "Rodrigo";
@@ -1643,10 +1643,10 @@ export default function HomePage() {
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && <Dashboard sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {view === "producao" && <ProductionBoard alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
-          {view === "afazeres" && <TasksWorkspace key={uid} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
+          {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
@@ -1674,7 +1674,7 @@ export default function HomePage() {
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
         {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
-      {floatingHost && <FloatingTasks key={uid} host={floatingHost} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
+      {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}
@@ -1687,24 +1687,6 @@ export default function HomePage() {
   );
 }
 
-function SplashScreen() {
-  return (
-    <main className="splash-screen" aria-label="PSYZON GO carregando" aria-busy="true">
-      <div className="splash-orbit splash-orbit-one" />
-      <div className="splash-orbit splash-orbit-two" />
-      <section className="splash-content">
-        <div className="splash-logo-wrap">
-          <span className="splash-logo-glow" />
-          <img src="/icon-512-v3.png" width="164" height="164" alt="Logo PSYZON GO" className="splash-logo" />
-        </div>
-        <div className="splash-wordmark"><strong>PSYZON</strong><span>GO</span></div>
-        <p>Produção e financeiro em tempo real</p>
-        <div className="splash-loader" aria-hidden="true"><span /></div>
-        <small>Preparando sua operação</small>
-      </section>
-    </main>
-  );
-}
 
 function ConnectionErrorScreen({ message }: { message: string }) {
   return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados centralizados</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">CONFIGURAÇÃO DO FIRESTORE</span><h2>Não foi possível abrir os dados.</h2><p>{message}</p></div><button className="google-button" onClick={() => window.location.reload()}><RotateCcw size={17} /><b>Tentar novamente</b></button><div className="auth-security"><span><span /></span><div><b>Cloud Firestore</b><small>O login Google foi removido nesta etapa.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;

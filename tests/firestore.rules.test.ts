@@ -12,6 +12,7 @@ import {
   collection,
   collectionGroup,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -95,6 +96,9 @@ test("a task can be completed and reopened by its owner with valid timestamps", 
   await assertFails(updateDoc(task, { completed: true }));
   await assertSucceeds(updateDoc(task, { completed: true, completedAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(task, { title: "Separar estampas" }));
+  await assertSucceeds(updateDoc(task, { customerId: "cliente-a" }));
+  await assertFails(updateDoc(task, { customerId: 123 }));
+  await assertSucceeds(updateDoc(task, { customerId: deleteField() }));
   await assertFails(updateDoc(task, { title: "" }));
   await assertFails(updateDoc(task, { createdAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(task, { completed: false, completedAt: null }));

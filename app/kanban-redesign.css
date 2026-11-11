@@ -28,6 +28,13 @@
   .kanban-card-actions { position: absolute; top: 5px; right: 6px; display: flex; align-items: center; gap: 2px; }
   .kanban-card-actions button { width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 4px; margin: 0; display: grid; place-items: center; border: 0; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; }
   .kanban-card-actions .production-open-list { color: var(--blue); }
+  .kanban-card-actions .kanban-alert-button[data-pending="true"] { color: var(--yellow); background: var(--yellow-soft); }
+  .kanban-card-copy b { padding-right: 84px; }
+  .order-alert-panel { padding: 16px 24px; overflow-wrap: anywhere; }
+  .order-alert-panel > ul { padding: 0; margin: 12px 0 0; list-style: none; }
+  .order-alert-panel li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .order-alert-panel li small { display: block; margin-top: 4px; color: var(--muted); }
+  .order-alert-panel li button { flex-shrink: 0; }
   .kanban-drag { display: grid; place-items: center; width: 18px; height: 20px; color: var(--faint); cursor: grab; touch-action: none; position: absolute; right: 0; top: 28px; }
   .kanban-order-dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; padding: 24px; }
   .kanban-order-dialog-photo { min-width: 0; }
@@ -50,7 +57,8 @@
     .kanban-tools label { flex: 1; justify-content: space-between; }
     .kanban-tools .primary { width: 100%; }
     .kanban-card-actions button { min-width: 36px; min-height: 40px; }
-    .kanban-card-copy b { padding-right: 68px; }
+    .kanban-card-copy b { padding-right: 102px; }
+    .order-alert-panel { padding: 16px; }
     .kanban-drag { top: 40px; }
     .kanban-order-dialog-body { display: block; padding: 16px; }
     .kanban-order-dialog-photo { margin-bottom: 20px; }

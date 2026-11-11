@@ -197,7 +197,8 @@ service cloud.firestore {
 
     function validTask(data) {
       let fields = ["title", "completed", "createdAt", "completedAt"];
-      return data.keys().hasOnly(fields) && data.keys().hasAll(fields)
+      return data.keys().hasOnly(fields.concat(["customerId"])) && data.keys().hasAll(fields)
+        && optionalText(data, "customerId", 600)
         && text(data.title, 1, 200) && data.completed is bool && data.createdAt is timestamp
         && (data.completed ? data.completedAt is timestamp : data.completedAt == null);
     }

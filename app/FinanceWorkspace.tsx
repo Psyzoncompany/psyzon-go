@@ -27,6 +27,7 @@ type Props = {
   onUndoPayment: (bill: Bill) => Promise<void>;
   onDeleteBill: (bill: Bill, confirmed?: boolean) => Promise<void>;
   onReceive: (customer: CustomerBalance) => Promise<void>;
+  onRefund: (customer: CustomerBalance) => Promise<void>;
 };
 
 export function expenseDate(item: Expense) {
@@ -36,7 +37,7 @@ export function expenseDate(item: Expense) {
   return date && Number.isFinite(date.getTime()) ? localDateValue(date) : "";
 }
 
-export default function FinanceWorkspace({ today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive }: Props) {
+export default function FinanceWorkspace({ today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
   const [selectedMonth, setMonth] = useState<string | null>(null);
   const month = selectedMonth ?? currentMonth;
   const [editor, setEditor] = useState<{ bill: Bill | null } | null>(null);
@@ -71,8 +72,9 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
   const expenseTotal = expenses.reduce((sum, item) => sum + item.amount, 0);
   const expenseItems: FinanceListItem[] = expenses.map(item => ({ id: item.id, title: item.description, detail: `${financeDate(expenseDate(item))} · ${item.category || "Outros"}`, amount: displayMoney(item.amount), status: { tone: "paid", label: "Pago" }, open: () => openDetails("expense", item.id) }));
   const selectedBill = selected?.kind === "bill" ? allBills.find(bill => bill.id === selected.id) : undefined;
-  const selectedCustomer = selected?.kind === "customer" ? debtors.find(customer => customer.id === selected.id) : undefined;
+  const selectedCustomer = selected?.kind === "customer" ? customers.find(customer => customer.id === selected.id && !customer.archived) : undefined;
   const selectedExpense = selected?.kind === "expense" ? expenses.find(item => item.id === selected.id) : undefined;
+  const credits = customers.filter(customer => !customer.archived && (customer.credit ?? 0) > 0);
   const selectedTitle = selectedBill?.description ?? selectedCustomer?.name ?? selectedExpense?.description;
   const openCount = `${payable.length} ${payable.length === 1 ? "conta em aberto" : "contas em aberto"}`;
   const paidSum = settledBills.reduce((sum, bill) => sum + bill.amount, 0);
@@ -84,6 +86,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
         <FinanceListCard title="Contas a pagar" subtitle={openCount} total={<CountUp value={toPay} format={displayTotal} />} totalLabel="Total em aberto" icon={<ReceiptText size={23}/>} items={toBillItems(payable)} empty="Nenhuma conta a pagar. Tudo em dia."/>
         <FinanceListCard title="A receber" subtitle={`${debtors.length + receivable.length} ${debtors.length + receivable.length === 1 ? "saldo pendente" : "saldos pendentes"}`} total={<CountUp value={pending} format={displayTotal} />} totalLabel="Total a receber" icon={<ArrowDownLeft size={23}/>} items={[...customerItems, ...toBillItems(receivable)]} empty="Nenhum valor a receber."><div className="finance-next-month"><span>A pagar em {nextPayables.label}</span><b>{displayTotal(nextPayables.total)}</b></div></FinanceListCard>
       </div>
+      {credits.length > 0 && <FinanceListCard title="Créditos de clientes" subtitle={`${credits.length} cliente(s)`} total={displayTotal(credits.reduce((sum,customer)=>sum+(customer.credit??0),0))} totalLabel="Crédito disponível" icon={<ArrowDownLeft size={23}/>} items={credits.map(customer=>({id:customer.id,title:customer.name,detail:"Crédito disponível para compensar ou devolver",amount:displayMoney(customer.credit??0),status:{tone:"open",label:"Crédito"},open:()=>openDetails("customer",customer.id)}))} empty="" />}
       <section className="finance-paid-section"><button type="button" className="finance-paid-toggle" aria-expanded={showSettled} onClick={() => setShowSettled(value => !value)}><CheckCheck size={18}/><span>Contas quitadas <small>{settledBills.length}</small></span><b>{showSettled ? "Ocultar" : "Ver contas"}</b></button>{showSettled && <FinanceListCard title="Contas quitadas" subtitle="Concluídas neste período / quitadas" total={<CountUp value={paidSum} format={displayMoney} />} totalLabel="Total quitado" icon={<CheckCheck size={23}/>} items={toBillItems(settledBills)} empty="Nenhuma conta quitada neste período."/>}</section>
       <FinanceListCard title="Despesas mensais" subtitle={new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(new Date(`${month}-01T12:00:00`))} total={<CountUp value={expenseTotal} format={displayMoney} />} totalLabel="Total pago" icon={<WalletCards size={23}/>} items={expenseItems} empty="Nenhuma despesa registrada neste mês."><div className="finance-month-controls"><label>Mês das despesas<input type="month" value={month} required aria-label="Mês das despesas" onChange={event => event.target.value && setMonth(event.target.value)}/></label><span>Contas mensais cadastradas <b>{displayMoney(bills.filter(bill => bill.direction !== "receivable" && bill.billingType === "fixed").reduce((sum,bill)=>sum+bill.amount,0))}</b></span></div></FinanceListCard>
     {selectedTitle && <FinanceDetailSheet title={selectedTitle} busy={busy} close={() => { if (!busy) setSelected(null); }}>
@@ -95,7 +98,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
           <button type="button" className="finance-sheet-secondary" disabled={busy} onClick={() => editBill(selectedBill)}><Pencil size={18}/> Editar conta</button><button type="button" className="finance-sheet-danger" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={18}/> Excluir conta</button>
         </div>}
       </>}
-      {selectedCustomer && <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.pending)}</div><p className="finance-sheet-description">Saldo pendente de {selectedCustomer.orderCount} pedido(s).</p><dl className="finance-sheet-data"><div><dt>Total comprado</dt><dd>{displayMoney(selectedCustomer.total)}</dd></div>{selectedCustomer.phone && <div><dt>Telefone</dt><dd>{selectedCustomer.phone}</dd></div>}</dl><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onReceive(selectedCustomer); setSelected(null); })}><Check size={18}/>Registrar recebimento</button></>}
+      {selectedCustomer && (selectedCustomer.credit ? <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.credit)}</div><p className="finance-sheet-description">Crédito disponível para compras futuras ou devolução.</p><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onRefund(selectedCustomer); setSelected(null); })}>Registrar devolução</button></> : <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.pending)}</div><p className="finance-sheet-description">Saldo pendente de {selectedCustomer.orderCount} pedido(s).</p><dl className="finance-sheet-data"><div><dt>Total comprado</dt><dd>{displayMoney(selectedCustomer.total)}</dd></div>{selectedCustomer.phone && <div><dt>Telefone</dt><dd>{selectedCustomer.phone}</dd></div>}</dl><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onReceive(selectedCustomer); setSelected(null); })}><Check size={18}/>Registrar recebimento</button></>)}
       {selectedExpense && <><div className="finance-sheet-amount">{displayMoney(selectedExpense.amount)}</div><StatusIndicator status={{ tone: "paid", label: "Pago" }}/><dl className="finance-sheet-data"><div><dt>Data</dt><dd>{financeDate(expenseDate(selectedExpense))}</dd></div><div><dt>Categoria</dt><dd>{selectedExpense.category || "Outros"}</dd></div></dl></>}
       {error && <p className="finance-sheet-error" role="alert">{error}</p>}
     </FinanceDetailSheet>}

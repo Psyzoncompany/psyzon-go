@@ -60,3 +60,8 @@ export function dueTone(dateString: string, status: OrderStatus, today?: Date) {
   if (label.startsWith("Atrasado")) return "danger";
   return label === "Entrega hoje" || label === "Entrega amanhã" ? "warning" : "normal";
 }
+
+export function urgentOrder(order: Pick<Order,"dueDate"|"status">, today: string) {
+  const days=(Date.parse(order.dueDate)-Date.parse(today))/86400000;
+  return order.status!=="Entregue" && days<=2;
+}

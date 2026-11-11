@@ -6,6 +6,7 @@ export type MaterialOrder = {
   client: string;
   materials: NoteMaterial[];
   purchasedIds?: string[];
+  extraFabricKg?: number;
 };
 
 export type MaterialLine = {

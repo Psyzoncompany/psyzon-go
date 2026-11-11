@@ -53,7 +53,7 @@ service cloud.firestore {
         && (!("unitPrice" in data) || money(data.unitPrice, true))
         && (!("pricingMode" in data) || (("unitPrice" in data) && data.pricingMode in ["quantity","manual"]))
         && (!("childQuantity" in data) || (data.childQuantity is int && data.childQuantity >= 0 && data.childQuantity <= data.quantity))
-        && money(data.paid, true) && data.paid <= data.total
+        && money(data.paid, true) && (data.paid <= data.total || (resource != null && data.paid <= resource.data.paid))
         && calendarDate(data.dueDate)
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
         && (!("dtfStatus" in data) || data.dtfStatus in ["none", "pending", "requested"])
@@ -109,7 +109,7 @@ service cloud.firestore {
         && data.account in ["business", "personal"]
         && optionalText(data, "category", 100)
         && (!("transactionDate" in data) || calendarDate(data.transactionDate))
-        && (!("source" in data) || data.source in ["bill", "ai_adjustment", "mercado_pago", "pluggy", "customer_receipt", "order_payment"])
+        && (!("source" in data) || data.source in ["bill", "ai_adjustment", "mercado_pago", "pluggy", "customer_receipt", "order_payment", "customer_refund"])
         && optionalText(data, "billId", 160)
         && optionalText(data, "orderId", 160)
         && optionalText(data, "customerId", 600)

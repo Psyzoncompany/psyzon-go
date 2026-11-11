@@ -11,16 +11,18 @@ import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
-import { orderAlerts } from "./order-alerts";
+import { forecastMaterial } from "./material-forecast";
+import { urgentOrder } from "./order-model";
+import { orderAlerts, type OrderAlert } from "./order-alerts";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
-import { synchronizedOrderPhotos } from "./order-photo-sync";
+import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { indexDtfCustomerLinks } from "./dtf-links";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
-import { dtfAlertDays, dueLabel, dueTone, nextOrderStatus, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
-import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { dtfAlertDays, dueLabel, dueTone, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
+import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, customerRefund, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
@@ -79,7 +81,7 @@ import {
   Home,
   LogOut,
   Moon,
-  MoreHorizontal,
+
   NotebookPen,
   PanelLeftClose,
   PanelLeftOpen,
@@ -110,7 +112,7 @@ type Transaction = {
   account: "business" | "personal";
   category?: string;
   transactionDate?: string;
-  source?: "bill" | "ai_adjustment" | "mercado_pago" | "pluggy" | "customer_receipt" | "order_payment";
+  source?: "bill" | "ai_adjustment" | "mercado_pago" | "pluggy" | "customer_receipt" | "customer_refund" | "order_payment";
   provider?: "mercado_pago" | "pluggy";
   providerTransactionId?: string;
   externalReference?: string;
@@ -739,7 +741,7 @@ export default function HomePage() {
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
-  const alerts = useMemo(() => view === "producao" ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
+  const alerts = useMemo(() => (view === "producao" || view === "inicio") ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
   const allPayables = [...bills, ...stockPayables, ...sewingPayables];
@@ -1134,7 +1136,8 @@ export default function HomePage() {
       const snapshot = await transaction.get(noteRef);
       if (!snapshot.exists()) throw new Error("Esta anotação foi removida.");
       const note = snapshot.data() as BusinessNote;
-      const materials = note.materials ?? [];
+      const sourceOrder = orders.find(order => order.id === notePhotoOrderId(readDocument(note.content), orders, customers));
+      const materials = (note.materials ?? []).map(material => mode === "complete" && materialIds.includes(material.id) && !note.purchasedMaterialIds?.includes(material.id) ? forecastMaterial(material, sourceOrder?.quantity) : material);
       const previous = new Set(note.purchasedMaterialIds);
       const selected = new Set(materialIds);
       const targets = materials.filter(material => selected.has(material.id) && previous.has(material.id) === (mode !== "complete"));
@@ -1149,7 +1152,7 @@ export default function HomePage() {
           if (entry) transaction.set(ref, entry);
         }
       }
-      if (mode !== "date") transaction.update(noteRef, { purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
+      if (mode !== "date") transaction.update(noteRef, { ...(mode === "complete" ? { materials } : {}), purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
     });
   };
 
@@ -1200,7 +1203,7 @@ export default function HomePage() {
         updatedOrder.childQuantity || 0,
       );
     }
-    if (updatedOrder.paid < 0 || updatedOrder.paid > updatedOrder.total)
+    if (updatedOrder.paid < 0 || (updatedOrder.paid > updatedOrder.total && updatedOrder.paid > editingOrder.paid))
       throw new Error("O recebido excede o total do pedido.");
     const db = getFirestore(getApps()[0]);
     const customerKey =
@@ -1279,7 +1282,7 @@ export default function HomePage() {
                 item.source &&
                 item.source !== "order_payment",
             )
-            .reduce((sum, item) => sum + item.amount, 0),
+            .reduce((sum, item) => sum + item.amount, 0) - linkedPayments.filter(item => item.source === "customer_refund").reduce((sum,item)=>sum+item.amount,0),
         );
         const amount = roundMoney(updatedOrder.paid - recorded);
         if (amount < 0)
@@ -1397,17 +1400,9 @@ export default function HomePage() {
     showToast("Cliente excluído");
   };
 
-  const receiveCustomer = async (customer: CustomerBalance) => {
-    if (
-      !window.confirm(
-        "Confirmar o recebimento de " +
-          displayMoney(customer.pending) +
-          " de " +
-          customer.name +
-          "?",
-      )
-    )
-      return;
+  const receiveCustomer = async (customer: CustomerBalance, refund = false) => {
+    const amount = refund ? customer.credit ?? 0 : customer.pending;
+    if (amount <= 0 || !window.confirm(refund ? "Registrar devolução de " + displayMoney(amount) + " para " + customer.name + "?" : "Confirmar o recebimento de " + displayMoney(amount) + " de " + customer.name + "?")) return;
     if (firebaseState !== "live")
       throw new Error("Firestore ainda não está conectado");
     const related = orders.filter(
@@ -1451,6 +1446,18 @@ export default function HomePage() {
       const current = customerSnapshot.exists()
         ? ({ ...customerSnapshot.data(), id: customerSnapshot.id } as Customer)
         : customer;
+      if (refund) {
+        const credit = customerBalances([current], currentOrders)[0]?.credit ?? 0;
+        if (current.archived || credit !== amount) throw new Error("O crédito mudou. Confira o saldo atualizado.");
+        for (const update of customerRefund(credit, currentOrders)) {
+          transaction.update(userDocument(uid,"orders",update.id), {paid:update.paid});
+          transaction.set(doc(userCollection(uid,"transactions")), {
+            description:"Devolução · "+current.name, amount:update.amount, type:"expense", account:"business",
+            category:"Devoluções", source:"customer_refund", orderId:update.id, customerId:current.id, transactionDate:localDateValue(), createdAt:serverTimestamp(),
+          });
+        }
+        return;
+      }
       const receipt = customerReceipt(current, currentOrders);
       if (roundMoney(receipt.amount) !== roundMoney(customer.pending))
         throw new Error(
@@ -1493,7 +1500,7 @@ export default function HomePage() {
         { merge: true },
       );
     });
-    showToast("Recebimento e pedidos atualizados");
+    showToast(refund ? "Devolução registrada" : "Recebimento e pedidos atualizados");
   };
 
   const saveBill = async (bill: Bill | null, input: BillInput) => {
@@ -1642,8 +1649,8 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {nextPayables && <Dashboard alerts={alerts} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
@@ -1651,7 +1658,7 @@ export default function HomePage() {
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
-          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} />}
+          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1709,7 +1716,8 @@ function localDateValue(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-function Dashboard({ sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+function Dashboard({ alerts, today, sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+  const priorityOrders = [...orders].sort((a: Order,b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,3);
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -1727,8 +1735,20 @@ function Dashboard({ sewingTotal, userName, orders, pending, payable, nextPayabl
     <div className="dashboard-grid">
       <div className="main-column">
         {overdue.length > 0 && <section className="attention-card"><div className="section-title"><div><span className="alert-dot" /><h2>Precisa da sua atenção</h2></div><span>{overdue.length + debtorsCount} pendências</span></div>{overdue.slice(0, 1).map((order: Order) => <button key={order.id} onClick={() => setView("producao")}><span className="attention-icon"><Clock3 size={18} /></span><span><b>Pedido de {order.customer} está atrasado</b><small>{order.customer} · {order.product}</small></span><strong>{dueLabel(order.dueDate, order.status)}</strong><ChevronRight size={17} /></button>)}</section>}
-        <section className="panel"><div className="section-title"><div><h2>Hoje</h2><span className="count">{Math.min(3, orders.length)}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div><div className="today-list">{orders.slice(0, 3).map((order: Order, index: number) => <div className="today-row" key={order.id}><button className="check-button" disabled={order.status === "Pronto"} onClick={() => { const next = nextOrderStatus(order.status); if (next && next !== "Entregue") updateStatus(order, next); }} aria-label="Concluir etapa"><span /></button><div><span className="task-type">PEDIDO</span><b>{index === 0 ? "Finalizar e embalar" : index === 1 ? "Conferir impressão" : "Separar materiais"}</b><small>{order.customer} · {order.quantity} un.</small></div><span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}</span><button className="row-menu"><MoreHorizontal size={18} /></button></div>)}</div></section>
-        <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{orders.slice(0, 4).map((order: Order) => <div className="delivery-row" key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><ProgressBar value={statusProgress[order.status]} label={`Produção de ${order.customer}`} /><small>{order.status} · <CountUp value={statusProgress[order.status]} />%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></div><ChevronRight size={17} /></div>)}</div></section>
+        <section className="panel">
+          <div className="section-title"><div><h2>Hoje</h2><span className="count">{priorityOrders.length}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div>
+          <div className="today-list">{priorityOrders.map((order: Order) => {
+            const items = (alerts as Map<string, OrderAlert[]>).get(order.id) ?? [];
+            const urgent = urgentOrder(order,today);
+            return <div className="today-row" data-urgent={urgent} key={order.id}>
+              <div><b>{order.customer}</b><small>{order.product} · {order.quantity} un.</small>
+                {items.length ? <div className="today-alerts">{items.map(item => <button key={item.view} type="button" title={item.detail} onClick={() => setView(item.view,item.id)}>{item.title}</button>)}</div> : <small>Sem pendências</small>}
+              </div>
+              <span className={`due ${urgent ? "danger" : dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
+            </div>;
+          })}{!priorityOrders.length && <p className="finance-empty">Nenhum pedido em andamento.</p>}</div>
+        </section>
+        <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{[...orders].sort((a: Order,b: Order)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")).slice(0, 4).map((order: Order) => <div className="delivery-row" data-urgent={urgentOrder(order,today)} key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><ProgressBar value={statusProgress[order.status]} label={`Produção de ${order.customer}`} /><small>{order.status} · <CountUp value={statusProgress[order.status]} />%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></div><ChevronRight size={17} /></div>)}</div></section>
       </div>
       <aside className="side-column">
         <section className="panel quick-panel"><div className="section-title"><h2>Ações rápidas</h2></div><button onClick={() => setModal("pedido")}><Boxes size={18} /><span><b>Novo pedido</b><small>Produção e prazo</small></span><Plus size={17} /></button><button onClick={() => setModal("cliente")}><UsersRound size={18} /><span><b>Novo cliente</b><small>Cadastro essencial</small></span><Plus size={17} /></button><button onClick={() => setView("financeiro")}><WalletCards size={18} /><span><b>Contas a pagar e receber</b><small>Despesas mensais</small></span><ChevronRight size={17} /></button></section>

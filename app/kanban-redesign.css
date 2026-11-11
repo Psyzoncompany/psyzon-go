@@ -28,6 +28,11 @@
   .kanban-card-actions { position: absolute; top: 5px; right: 6px; display: flex; align-items: center; gap: 2px; }
   .kanban-card-actions button { width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 4px; margin: 0; display: grid; place-items: center; border: 0; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; }
   .kanban-card-actions .production-open-list { color: var(--blue); }
+  :root[data-ui-theme] .app-shell .kanban-order-card[data-urgent="true"] { border-color: color-mix(in srgb,var(--red) 38%,var(--border)); box-shadow: inset 3px 0 var(--red); }
+  .kanban-order-card[data-urgent="true"] .kanban-card-open { background: color-mix(in srgb,var(--red) 5%,var(--card)); }
+  :is(.today-row,.delivery-row)[data-urgent="true"] { background: color-mix(in srgb,var(--red) 6%,var(--card)); box-shadow: inset 3px 0 var(--red); }
+  .today-row .today-alerts { display: flex; flex-wrap: wrap; gap: 4px 9px; margin-top: 5px; }
+  .today-alerts button { color: var(--yellow); background: var(--yellow-soft); border: 0; border-radius: 6px; padding: 4px 6px; font: inherit; cursor: pointer; }
   .kanban-card-actions .kanban-alert-button[data-pending="true"] { color: var(--yellow); background: var(--yellow-soft); }
   .kanban-card-copy b { padding-right: 84px; }
   .order-alert-panel { padding: 16px 24px; overflow-wrap: anywhere; }

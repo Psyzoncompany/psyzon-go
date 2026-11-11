@@ -9,7 +9,7 @@ export type Customer = {
 };
 
 export type CustomerOrder = { id?: string; customer: string; phone?: string; total: number; paid: number };
-export type CustomerBalance = Customer & { total: number; pending: number; orderCount: number };
+export type CustomerBalance = Customer & { total: number; pending: number; orderCount: number; credit?: number };
 export type Bill = {
   id: string;
   description: string;
@@ -29,6 +29,7 @@ export type Bill = {
 
 export function customerBalances(customers: Customer[], orders: CustomerOrder[]): CustomerBalance[] {
   const map = new Map<string, CustomerBalance>();
+  const excess = new Map<string,number>();
   customers.forEach((customer) => {
     const key = customerNameKey(customer.name);
     const previous = map.get(key);
@@ -38,11 +39,15 @@ export function customerBalances(customers: Customer[], orders: CustomerOrder[])
     const key = customerNameKey(order.customer);
     const customer = map.get(key) ?? { id: `legacy-${encodeURIComponent(key)}`, name: order.customer, phone: order.phone ?? "", total: 0, pending: 0, orderCount: 0 };
     customer.total += order.total;
-    customer.pending += Math.max(0, order.total - order.paid);
+    customer.pending += order.total - order.paid;
+    excess.set(key,(excess.get(key)??0)+Math.max(0,order.paid-order.total));
     customer.orderCount += 1;
     map.set(key, customer);
   });
-  return [...map.values()].map((customer) => ({ ...customer, total: Math.max(0, Math.round(customer.total * 100) / 100), pending: Math.max(0, Math.round(customer.pending * 100) / 100) }));
+  return [...map.values()].map((customer) => {
+    const credit = Math.min(roundMoney(excess.get(customerNameKey(customer.name))??0), Math.max(0, roundMoney(-customer.pending)));
+    return { ...customer, total: Math.max(0, roundMoney(customer.total)), pending: Math.max(0, roundMoney(customer.pending)), ...(credit ? { credit } : {}) };
+  });
 }
 
 export function customerNameKey(name: string) {
@@ -95,8 +100,22 @@ export function customerAdjustments(total: number, pending: number, orders: Cust
   if (![total, pending].every((value) => Number.isFinite(value) && value >= 0 && value <= 100000000) || pending > total) throw new Error("O saldo pendente deve estar entre zero e o total comprado.");
   return {
     totalAdjustment: Math.round((total - orders.reduce((sum, order) => sum + order.total, 0)) * 100) / 100,
-    pendingAdjustment: Math.round((pending - orders.reduce((sum, order) => sum + Math.max(0, order.total - order.paid), 0)) * 100) / 100,
+    pendingAdjustment: roundMoney(pending - orders.reduce((sum, order) => sum + order.total - order.paid, 0)),
   };
+}
+
+export function customerRefund(credit: number, orders: CustomerOrder[]) {
+  let remaining = roundMoney(credit);
+  const updates: { id: string; paid: number; amount: number }[] = [];
+  for (const order of orders) {
+    if (!order.id || remaining <= 0) continue;
+    const amount = roundMoney(Math.min(remaining, Math.max(0, order.paid - order.total)));
+    if (amount <= 0) continue;
+    remaining = roundMoney(remaining - amount);
+    updates.push({ id: order.id, paid: roundMoney(order.paid - amount), amount });
+  }
+  if (remaining > 0) throw new Error("O crédito disponível para devolução mudou.");
+  return updates;
 }
 
 export function localDateValue(date = new Date()) {

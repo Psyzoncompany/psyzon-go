@@ -7,6 +7,33 @@ import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtf
 import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
 import { synchronizedOrderPhotos, notePhotoOrderId } from "../app/order-photo-sync";
 import { synchronizedOrderQuantities } from "../app/order-quantity-sync";
+import { customerRefund } from "../app/finance-model";
+import { urgentOrder } from "../app/order-model";
+import { forecastMaterial, extraFabricKg } from "../app/material-forecast";
+import type { NoteMaterial } from "../app/notes-model";
+
+test("credit compensates new orders and refunds only unused funds", () => {
+  const customer={id:"c",name:"Ana",phone:""};
+  const reduced={id:"o",customer:"Ana",total:80,paid:100};
+  assert.equal(customerBalances([customer],[reduced])[0].credit,20);
+  const next={id:"n",customer:"Ana",total:10,paid:0};
+  assert.equal(customerBalances([customer],[reduced,next])[0].credit,10);
+  const refund=customerRefund(10,[reduced,next]);
+  assert.deepEqual(refund,[{id:"o",paid:90,amount:10}]);
+  assert.equal(customerBalances([customer],[{...reduced,paid:90},next])[0].credit,undefined);
+  assert.equal(customerReceipt(customer,[reduced,{...next,total:30}]).amount,10);
+});
+test("material forecast scales without changing its saved purchase quantities", () => {
+  const material={id:"m",fabricKg:2,fabricCost:80,ribanaKg:.1,ribanaCost:5,poloUnits:0,totalCost:85,orderQuantityBaseline:10} as NoteMaterial;
+  assert.equal(forecastMaterial(material,15).totalCost,127.5);
+  assert.equal(extraFabricKg(material,15),1);
+  assert.equal(material.fabricKg,2);
+});
+test("orders due in two days or overdue are urgent", () => {
+  assert.ok(urgentOrder({dueDate:"2026-11-13",status:"Produção"},"2026-11-11"));
+  assert.ok(!urgentOrder({dueDate:"2026-11-14",status:"Produção"},"2026-11-11"));
+  assert.ok(!urgentOrder({dueDate:"2026-11-11",status:"Entregue"},"2026-11-11"));
+});
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, historyTotals, legacyFabricPurchases, materialHistoryId, pendingFabric, type HistoryEntry } from "../app/history-model";
 

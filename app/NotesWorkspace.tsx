@@ -4,6 +4,7 @@ import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, C
 import { getApps } from "firebase/app";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
 import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
+import { extraFabricKg, forecastMaterial } from "./material-forecast";
 import { customerNameKey } from "./finance-model";
 import { useTypewriter } from "./Typewriter";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
@@ -141,8 +142,9 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
   const locked = draft?.document.status === "trash";
   const showChecklist = productionOnly || (editorMode ?? (draft?.document.productionChecklist ? "production" : "text")) === "production";
   useTypewriter(editorRef, draft && !productionOnly && !materialsOpen ? `${selectedId}/${mobileEditor}/${showChecklist}` : null);
-  const groups = supplierGroups(draft?.materials || []);
-  const total = (draft?.materials || []).reduce((sum, m) => sum + m.totalCost, 0);
+  const displayedMaterials = (draft?.materials ?? []).map(material => purchasedIds.has(material.id) ? material : forecastMaterial(material,linkedOrder?.quantity));
+  const groups = supplierGroups(displayedMaterials);
+  const total = displayedMaterials.reduce((sum, m) => sum + m.totalCost, 0);
 
   const stage = (id: string, value: NoteDraft) => {
     const serialized = serializeDraft(value);
@@ -206,7 +208,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     else { try { const records = JSON.parse(localStorage.getItem(recoveryKey(uid)) || "{}"); delete records[id]; localStorage.setItem(recoveryKey(uid), JSON.stringify(records)); } catch { setStorageError(true); } }
     setRecoveries(current => { const next = { ...current }; delete next[id]; return next; });
   };
-  const copySupplier = async (supplier: string) => { if (!draft) return; try { await navigator.clipboard.writeText(exportNote(draft, { supplier, prices: true })); notify(`Pedido de ${supplier} copiado.`); } catch { notify("Não foi possível copiar. Use Exportar para selecionar o texto."); } };
+  const copySupplier = async (supplier: string) => { if (!draft) return; try { await navigator.clipboard.writeText(exportNote({ ...draft, materials: displayedMaterials }, { supplier, prices: true })); notify(`Pedido de ${supplier} copiado.`); } catch { notify("Não foi possível copiar. Use Exportar para selecionar o texto."); } };
   const activeCount = allNotes.filter(n => n.draft.document.status === "active" && !isReady(n.draft.document)).length;
   const readyCount = allNotes.filter(n => n.draft.document.status === "active" && isReady(n.draft.document)).length;
 
@@ -250,10 +252,12 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     const purchases = new Map(notes.map(note => [note.id, note.purchasedMaterialIds]));
     const clientByOrder = new Map(orders.map(order => [order.id, order.customer]));
     const clientById = new Map(customers.map(customer => [customer.id, customer.name]));
-    const materialOrders = allNotes.filter(note => note.draft.materials.length && note.draft.document.status !== "trash").map(({ id, draft: note }) => ({
-      id, title: note.title || "Anotação sem título", materials: note.materials, purchasedIds: purchases.get(id),
+    const materialOrders = allNotes.filter(note => note.draft.materials.length && note.draft.document.status !== "trash").map(({ id, draft: note }) => {
+      const quantity = orders.find(order => order.id === notePhotoOrderId(note.document,orders,customers))?.quantity;
+      return { extraFabricKg: note.materials.filter(material=>purchases.get(id)?.includes(material.id)).reduce((sum,material)=>sum+extraFabricKg(material,quantity),0),
+      id, title: note.title || "Anotação sem título", materials: note.materials.map(material => purchases.get(id)?.includes(material.id) ? material : forecastMaterial(material, quantity)), purchasedIds: purchases.get(id),
       client: clientByOrder.get(note.document.orderId) || clientById.get(note.document.customerId) || "",
-    }));
+    }; });
     return <MaterialsWorkspace uid={uid} targets={allNotes.filter(note => note.draft.document.status !== "trash").map(({id,draft}) => ({ id,title:draft.title || "Sem título",orderId:draft.document.orderId,customerId:draft.document.customerId,materials:draft.materials }))} productionOrders={orders} customers={customers} saveMaterial={saveMaterial} orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
   }
 
@@ -293,7 +297,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     {calculator && <MaterialCalculator key={typeof calculator === "string" ? "new" : calculator.id} uid={uid} initialQuantity={linkedOrder?.quantity} material={typeof calculator === "string" ? undefined : calculator} close={() => setCalculator(null)} add={material => { if (purchasedIds.has(material.id)) { notify("Reabra a compra em Materiais antes de editar um item concluído."); return; } change(d => ({ ...d, materials: d.materials.some(m => m.id === material.id) ? d.materials.map(m => m.id === material.id ? material : m) : [...d.materials, material] })); setCalculator(null); notify("Material atualizado."); }} />}
     {notice && <div className="an-toast" role="status"><CheckCheck size={17} />{notice}<button onClick={() => setNotice("")} aria-label="Fechar aviso"><X size={15} /></button></div>}
     {modal === "new" && <NoteDialog title="Nova anotação" close={() => { if (!creating) setModal(null); }}><p className="an-dialog-description">Comece em branco ou escolha um modelo da confecção.</p><div className="an-templates">{templates.map((template, index) => <button key={template.title} disabled={creating} onClick={() => create(index)}><span><FileText size={21} /></span><div><b>{template.title}</b><small>{index ? template.category : "Texto livre, listas e ideias"}</small></div><Plus size={17} /></button>)}</div>{creating && <p className="an-dialog-description" role="status">Criando anotação…</p>}</NoteDialog>}
-    {modal === "export" && draft && <ExportDialog draft={draft} close={() => setModal(null)} notify={notify} />}
+    {modal === "export" && draft && <ExportDialog draft={{ ...draft, materials: displayedMaterials }} close={() => setModal(null)} notify={notify} />}
     {modal === "link" && draft && <NoteDialog title="Vincular à anotação" close={() => setModal(null)}><div className="an-link-form"><label>Pedido<select aria-label="Pedido" value={draft.document.orderId} onChange={e => change(d => ({ ...d, document: { ...d.document, orderId: e.target.value, customerId: customers.find(customer => customerNameKey(customer.name) === customerNameKey(orders.find(order => order.id === e.target.value)?.customer ?? ""))?.id ?? "" } }))}><option value="">Sem pedido vinculado</option>{orders.map(o => <option key={o.id} value={o.id}>{o.customer} · {o.product}</option>)}</select></label><label>Cliente<select aria-label="Cliente" value={draft.document.customerId} onChange={e => change(d => ({ ...d, document: { ...d.document, customerId: e.target.value, orderId: orders.find(order => order.id === d.document.orderId && customerNameKey(order.customer) === customerNameKey(customers.find(customer => customer.id === e.target.value)?.name ?? ""))?.id ?? "" } }))}><option value="">Sem cliente vinculado</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label><button className="an-primary" onClick={() => setModal(null)}>Concluir</button></div></NoteDialog>}
   </div>;
 }

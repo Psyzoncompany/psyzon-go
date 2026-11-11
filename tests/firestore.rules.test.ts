@@ -61,6 +61,17 @@ test("orders accept unit pricing and reject invalid child counts", async () => {
  await assertFails(updateDoc(reference,{childQuantity:1.5}));
 });
 
+test("a reduced paid order keeps previous receipts and allows a refund", async () => {
+  const db=environment.authenticatedContext("refund-user").firestore();
+  const ref=doc(db,"users/refund-user/orders/a");
+  await assertFails(setDoc(ref,{...validOrder(),total:100,paid:250}));
+  await assertSucceeds(setDoc(ref,validOrder()));
+  await assertSucceeds(updateDoc(ref,{total:100}));
+  await assertFails(updateDoc(ref,{paid:251}));
+  await assertSucceeds(updateDoc(ref,{paid:100}));
+  await assertSucceeds(setDoc(doc(db,"users/refund-user/transactions/refund"),{description:"Devolução",amount:150,type:"expense",account:"business",category:"Devoluções",source:"customer_refund",orderId:"a",transactionDate:"2026-11-11",createdAt:serverTimestamp()}));
+});
+
 test("unauthenticated users cannot read or write", async () => {
   const db = environment.unauthenticatedContext().firestore();
   await assertFails(getDoc(doc(db, "users/user-a/orders/order-1")));

@@ -9,6 +9,7 @@ export type NoteMaterial = {
   ribanaPricePerKg: number; poloUnits: number; poloPricePerUnit?: number;
   poloCost?: number; totalCost: number; supplier: string;
   fabricPricePerKg?: number; yieldPerKg?: number; ribanaPercent?: number;
+  orderQuantityBaseline?: number;
 };
 export type BusinessNote = { id: string; title: string; content: string; category: NoteCategory; pinned: boolean; materials?: NoteMaterial[]; purchasedMaterialIds?: string[]; productionPhotoData?: string; createdAt?: unknown; updatedAt?: unknown };
 export type TextBlock = { id: string; type: "paragraph" | "heading" | "bullet" | "check"; text: string; bold?: boolean; done?: boolean };

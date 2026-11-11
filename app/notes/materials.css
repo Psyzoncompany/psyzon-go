@@ -73,3 +73,4 @@
   .materials-report .materials-table tr { break-inside: avoid; }
   .materials-report footer { display: flex; justify-content: space-between; margin-top: 4mm; padding: 3mm 0; border-top: 1px solid #b3bdcc; font-size: 10pt; break-inside: avoid; }
 }
+.materials-extra-forecast { color: var(--yellow); padding-inline: 16px; font-weight: 600; }

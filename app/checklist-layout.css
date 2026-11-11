@@ -1,5 +1,11 @@
 /* Production editing uses the workspace width; paper reports keep their own layout. */
 @media screen {
+  .an-document-header { display: contents; }
+  .an-production-mode .an-document-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 20px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .an-production-mode .an-document-header .an-title { flex: 1 1 180px; width: auto; min-width: 0; }
+  .an-production-mode .an-document-header .an-properties { margin: 0; gap: 8px; }
+  .an-production-mode .an-document-header .an-editor-modes { margin: 0; flex-wrap: wrap; }
+  .production-checklist-window .apple-notes .an-document-header { display: none; }
   .app-shell .apple-notes.an-production-mode .an-document {
     width: 100%; max-width: none; padding: 20px clamp(16px, 2vw, 32px) 28px;
   }
@@ -8,7 +14,7 @@
   .an-production-mode .an-properties { margin-block: 12px 16px; }
   .an-production-mode .an-editor-modes { margin-bottom: 12px; }
   .production-checklist { container-type: inline-size; min-width: 0; }
-  .apple-notes .production-checklist .checklist-toolbar { gap: 12px; padding-block: 12px 16px; margin-bottom: 16px; }
+  .apple-notes .production-checklist .checklist-toolbar { gap: 12px; padding-block: 8px 10px; margin-bottom: 12px; }
   .checklist-setup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 20px; }
   .checklist-setup > * { min-width: 0; }
   .checklist-setup .checklist-product-photo, .checklist-order-details {

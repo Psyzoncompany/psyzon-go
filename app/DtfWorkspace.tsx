@@ -84,7 +84,7 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
 
   return <section className="dtf-workspace">
     <header className="dtf-header">
-      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1><p>Acompanhe quantidades, prazos e a separação das impressões.</p></div></div>
+      <div className="dtf-title"><span className="dtf-title-icon"><Printer size={23} /></span><div><h1>Pedidos DTF</h1></div></div>
       <button className="primary" disabled={!live} onClick={() => setEditor("new")}><Plus size={17} /> Novo pedido DTF</button>
     </header>
     {customerId && <div className="dtf-customer-scope"><Link2 size={16} /> <strong>{customer?.name || "Cliente vinculado"}</strong><button type="button" onClick={clearCustomer}>Ver todos os pedidos <X size={14} /></button></div>}
@@ -200,11 +200,11 @@ function DtfEditor({ order, customers, links, customer, displayMoney, onSave, on
     <header><div><span className="eyebrow">IMPRESSÃO DTF</span><h2 id="dtf-editor-title">{order ? "Editar pedido DTF" : "Novo pedido DTF"}</h2></div><button type="button" onClick={close} disabled={blocked} aria-label="Fechar"><X size={19} /></button></header>
     <form className="dtf-editor" onSubmit={submit}>
       <fieldset disabled={busy}>
-        <p className="form-help">Preencha só o que tiver agora.</p>
+
         <DtfPhotoField photos={photos} setPhotos={setPhotos} onBusyChange={setPhotoBusy} />
         <label>Nome do pedido<input name="title" maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
         <div className="dtf-client-field"><label>Cliente vinculado<select value={selectedId} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><DtfNamesLink noteId={clientLink?.noteId} /></div>
-        {clientLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(clientLink.deadline)} · 7 dias antes da entrega.</p>}
+        {clientLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(clientLink.deadline)}</p>}
         <label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" readOnly={clientLink?.checklistQuantity !== undefined} title={clientLink?.checklistQuantity !== undefined ? "Quantidade definida pelo checklist de produção" : undefined} value={clientLink?.checklistQuantity ?? quantity} onChange={event => setQuantity(event.target.value)} /></label>
         <label>Observações<textarea name="notes" rows={3} maxLength={4000} placeholder="Detalhes para preparar e conferir a impressão" defaultValue={order?.notes} /></label>
       </fieldset>

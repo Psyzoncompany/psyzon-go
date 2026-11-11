@@ -63,7 +63,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
   return <section className="materials-workspace">
     <button type="button" className="materials-back" onClick={back}><ArrowLeft size={16} /> Bloco de notas</button>
     <header className="materials-heading">
-      <div><h1>Materiais</h1><p>Planeje compras e vincule materiais aos pedidos e clientes.</p></div>
+      <div><h1>Materiais</h1></div>
       <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
     </header>
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">

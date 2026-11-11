@@ -18,7 +18,7 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
   const glass = appearance.theme === "liquid-glass-card";
   const premium = appearance.theme === "ios-premium";
   return <section className="appearance-settings panel" aria-labelledby="appearance-title">
-    <header><span className="appearance-symbol"><Palette size={21} /></span><div><h2 id="appearance-title">Estilo da interface</h2><p>A mesma organização em todos os modelos. Escolha as cores e o acabamento que preferir.</p></div></header>
+    <header><span className="appearance-symbol"><Palette size={21} /></span><div><h2 id="appearance-title">Estilo da interface</h2></div></header>
     <fieldset className="appearance-options"><legend className="sr-only">Escolher interface</legend>
       {[{ theme: "original", name: "Original", detail: "Azul, superfícies sólidas e acabamento simples.", icon: Layers }, { theme: "liquid-glass-card", name: "Liquid Glass Card", detail: "Transparência, luz e superfícies de vidro.", icon: Sparkles }, { theme: "ios-premium", name: "iOS Premium", detail: "Roxo, superfícies claras e acabamento suave.", icon: WalletCards }].map(({ theme, name, detail, icon: Icon }) => <label className="appearance-option" data-selected={appearance.theme === theme} key={theme}>
         <input type="radio" name="interface-theme" value={theme} checked={appearance.theme === theme} onChange={() => changeAppearance({ theme: theme as InterfaceAppearance["theme"] })} />
@@ -35,7 +35,7 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
       {glass && <fieldset className="appearance-palettes"><legend>Cor do ambiente</legend><div>{palettes.map(({ value, label, color }) => <label key={value} data-selected={appearance.palette === value}><input type="radio" name="glass-palette" checked={appearance.palette === value} onChange={() => changeAppearance({ palette: value })} /><span style={{ background: color }} aria-hidden="true" />{label}</label>)}</div></fieldset>}
       <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>
       <div className="appearance-motion"><div><label htmlFor="glass-motion">Animações suaves</label><small id="glass-motion-description">Transições curtas ao navegar e tocar nos controles.</small></div><input id="glass-motion" aria-describedby="glass-motion-description" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
-      <p className="appearance-help">As preferências de movimento e transparência do dispositivo também são respeitadas.</p>
+
     </div>}
     {storageError && <p className="form-error" role="status">A escolha foi aplicada. Este navegador está impedindo o salvamento da preferência.</p>}
     <p className="appearance-status" role="status"><Check size={14} /> {premium ? "iOS Premium" : glass ? "Liquid Glass Card" : "Original"} ativo</p>

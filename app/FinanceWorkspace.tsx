@@ -75,7 +75,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
   const openCount = `${payable.length} ${payable.length === 1 ? "conta em aberto" : "contas em aberto"}`;
   const paidSum = settledBills.reduce((sum, bill) => sum + bill.amount, 0);
   return <div className="finance-workspace finance-premium">
-    <div className="page-heading compact"><div><h1>Financeiro</h1><p>Despesas mensais e contas a pagar e receber.</p></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
+    <div className="page-heading compact"><div><h1>Financeiro</h1></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
       <div className="finance-premium-summary"><article><small>A pagar</small><strong>{displayTotal(toPay)}</strong><span>{openCount}</span></article><article><small>A receber</small><strong>{displayTotal(pending)}</strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong>{displayMoney(expenseTotal)}</strong><span>Despesas registradas</span></article></div>
       <div className="finance-premium-columns">

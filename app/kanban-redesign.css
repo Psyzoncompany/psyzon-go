@@ -36,10 +36,21 @@
   .kanban-card-actions .kanban-alert-button[data-pending="true"] { color: var(--yellow); background: var(--yellow-soft); }
   .kanban-card-copy b { padding-right: 84px; }
   .order-alert-panel { padding: 16px 24px; overflow-wrap: anywhere; }
-  .order-alert-panel > ul { padding: 0; margin: 12px 0 0; list-style: none; }
-  .order-alert-panel li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
-  .order-alert-panel li small { display: block; margin-top: 4px; color: var(--muted); }
-  .order-alert-panel li button { flex-shrink: 0; }
+  .order-alert-panel ul { padding: 0; margin: 12px 0 0; list-style: none; }
+  .order-alert-panel > ul > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .order-alert-panel > ul small { display: block; margin-top: 4px; color: var(--muted); }
+  .order-alert-panel > ul button { flex-shrink: 0; }
+  .order-task-checklist { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+  .order-task-checklist header, .order-task-checklist h3, .order-task-checklist label { display: flex; align-items: center; gap: 8px; }
+  .order-task-checklist header { justify-content: space-between; flex-wrap: wrap; }
+  .order-task-checklist h3 { margin: 0; font-size: 14px; }
+  .order-task-checklist h3 svg { flex-shrink: 0; color: var(--blue); }
+  .order-task-checklist p { margin: 6px 0; font-size: 12px; color: var(--muted); }
+  .order-task-checklist .form-error { color: var(--red); }
+  .order-task-checklist li + li { border-top: 1px solid var(--border); }
+  .order-task-checklist label { min-height: 44px; padding: 8px 0; cursor: pointer; }
+  .order-task-checklist input { flex: 0 0 auto; width: 18px; height: 18px; accent-color: var(--blue); }
+  .order-task-checklist input:checked + span { color: var(--muted); text-decoration: line-through; }
   .kanban-drag { display: grid; place-items: center; width: 18px; height: 20px; color: var(--faint); cursor: grab; touch-action: none; position: absolute; right: 0; top: 28px; }
   .kanban-order-dialog-body { min-height: 0; overflow: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; padding: 24px; }
   .kanban-order-dialog-photo { min-width: 0; }

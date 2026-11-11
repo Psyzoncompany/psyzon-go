@@ -26,7 +26,7 @@ import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlement
 import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
-import type { Task } from "./notes/task-model";
+import { indexOrderTasks, type Task } from "./notes/task-model";
 import FloatingTasks from "./notes/FloatingTasks";
 import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
@@ -753,6 +753,7 @@ export default function HomePage() {
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
   const alerts = useMemo(() => (view === "producao" || view === "inicio") ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
+  const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
   const allPayables = [...bills, ...stockPayables, ...sewingPayables];
@@ -1662,8 +1663,8 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard alerts={alerts} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
@@ -1739,7 +1740,7 @@ function StartupLoading({ firstName }: { firstName?: string }) {
   </main>;
 }
 
-function Dashboard({ alerts, today, sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
+function Dashboard({ alerts, orderTasks, today, sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
   const priorityOrders = orders.filter((order: Order) => order.status !== "Orçamento").sort((a: Order,b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,3);
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
@@ -1762,10 +1763,11 @@ function Dashboard({ alerts, today, sewingTotal, userName, orders, pending, paya
           <div className="section-title"><div><h2>Hoje</h2><span className="count">{priorityOrders.length}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div>
           <div className="today-list">{priorityOrders.map((order: Order) => {
             const items = (alerts as Map<string, OrderAlert[]>).get(order.id) ?? [];
+            const pendingTasks = (orderTasks as ReadonlyMap<string, Task[]>).get(order.id)?.filter(task => !task.completed).length ?? 0;
             const urgent = urgentOrder(order,today);
             return <div className="today-row" data-urgent={urgent} key={order.id}>
               <div><b>{order.customer}</b><small>{order.product} · {order.quantity} un.</small>
-                {items.length ? <div className="today-alerts">{items.map(item => <button key={item.view} type="button" title={item.detail} onClick={() => setView(item.view,item.id)}>{item.title}</button>)}</div> : <small>Sem pendências</small>}
+                {items.length || pendingTasks ? <div className="today-alerts">{items.map(item => <button key={item.view} type="button" title={item.detail} onClick={() => setView(item.view,item.id)}>{item.title}</button>)}{pendingTasks > 0 && <button type="button" onClick={() => setView("afazeres")}>{pendingTasks} {pendingTasks === 1 ? "afazer pendente" : "afazeres pendentes"}</button>}</div> : <small>Sem pendências</small>}
               </div>
               <span className={`due ${urgent ? "danger" : dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
             </div>;

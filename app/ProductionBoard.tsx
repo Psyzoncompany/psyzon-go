@@ -1,6 +1,7 @@
 "use client";
 import NoteDialog from "./notes/NoteDialog";
 import type { OrderAlert } from "./order-alerts";
+import type { Task } from "./notes/task-model";
 import { TypedHeading } from "./Typewriter";
 import { poloExtra } from "./order-pricing";
 import { CountUp } from "./MotionValue";
@@ -20,6 +21,10 @@ type Props = {
   today: string;
   alerts: Map<string, OrderAlert[]>;
   openAlert: (alert: OrderAlert) => void;
+  orderTasks: ReadonlyMap<string, Task[]>;
+  taskConnection: "connecting" | "live" | "error";
+  toggleTask: (id: string, completed: boolean) => Promise<void>;
+  openTasks: () => void;
   displayMoney: (value: number) => string;
   updateStatus: (order: Order, status: OrderStatus) => Promise<void>;
   onCreate: () => void;
@@ -28,11 +33,12 @@ type Props = {
   openChecklist: (order: Order) => void;
 };
 
-export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, today }: Props) {
+export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [alertId, setAlertId] = useState("");
   const alertOrder = orders.find(order => order.id === alertId);
   const currentAlerts = alerts.get(alertId) ?? [];
+  const currentTasks = orderTasks.get(alertId) ?? [];
   const [selectedId, setSelectedId] = useState("");
   const [sort, setSort] = useState("deadline");
   const [filter, setFilter] = useState("all");
@@ -97,7 +103,7 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         const items = grouped.get(stage) ?? [];
         return <section className="production-lane" data-stage={index} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
           <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count"><CountUp value={items.length} /></span></header>
-          {items.length ? items.map(order => <OrderCard key={order.id} order={order} urgent={urgentOrder(order,today)} alertCount={alerts.get(order.id)?.length ?? 0} openAlerts={() => setAlertId(order.id)} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
+          {items.length ? items.map(order => <OrderCard key={order.id} order={order} urgent={urgentOrder(order,today)} alertCount={(alerts.get(order.id)?.length ?? 0) + (orderTasks.get(order.id)?.filter(task => !task.completed).length ?? 0)} openAlerts={() => setAlertId(order.id)} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
         </section>;
       })}
     </div>
@@ -113,9 +119,70 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
-    {alertOrder && <NoteDialog title="Pendências do pedido" close={() => setAlertId("")}><div className="order-alert-panel"><b>{alertOrder.customer} · {alertOrder.product}</b>{currentAlerts.length ? <ul>{currentAlerts.map(alert => <li key={alert.view}><div><strong>{alert.title}</strong><small>{alert.detail}</small></div><button type="button" className="secondary" onClick={() => { setAlertId(""); openAlert(alert); }}>{alert.view === "materiais" ? "Materiais" : alert.view === "costureiras" ? "Costureiras" : "Abrir DTF"}</button></li>)}</ul> : <p>Nenhuma pendência para este pedido.</p>}</div></NoteDialog>}
+    {alertOrder && <NoteDialog title="Pendências do pedido" close={() => setAlertId("")}>
+      <div className="order-alert-panel">
+        <b>{alertOrder.customer} · {alertOrder.product}</b>
+        {currentAlerts.length > 0 && <ul>{currentAlerts.map(alert => <li key={alert.view}>
+          <div><strong>{alert.title}</strong><small>{alert.detail}</small></div>
+          <button type="button" className="secondary" onClick={() => { setAlertId(""); openAlert(alert); }}>
+            {alert.view === "materiais" ? "Materiais" : alert.view === "costureiras" ? "Costureiras" : "Abrir DTF"}
+          </button>
+        </li>)}</ul>}
+        {currentAlerts.length === 0 && !currentTasks.some(task => !task.completed) && <p>Nenhuma pendência para este pedido.</p>}
+        {alertOrder.status !== "Orçamento" && alertOrder.status !== "Entregue" && <OrderTaskChecklist
+          key={alertOrder.id}
+          tasks={currentTasks}
+          connection={taskConnection}
+          toggleTask={toggleTask}
+          openTasks={() => { setAlertId(""); openTasks(); }}
+        />}
+      </div>
+    </NoteDialog>}
     {selected && createPortal(<OrderDetails {...actionsFor(selected)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
     {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
+  </section>;
+}
+
+function OrderTaskChecklist({ tasks, connection, toggleTask, openTasks }: {
+  tasks: Task[];
+  connection: Props["taskConnection"];
+  toggleTask: Props["toggleTask"];
+  openTasks: Props["openTasks"];
+}) {
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+  const completed = tasks.filter(task => task.completed).length;
+
+  async function changeTask(task: Task, checked: boolean) {
+    setError("");
+    setSaving(task.id);
+    try {
+      await toggleTask(task.id, checked);
+    } catch {
+      setError("Não foi possível atualizar o afazer. Tente novamente.");
+    } finally {
+      setSaving("");
+    }
+  }
+
+  return <section className="order-task-checklist" aria-label="Checklist de afazeres">
+    <header>
+      <h3><ClipboardList size={17} aria-hidden="true" /> Checklist de afazeres</h3>
+      <button type="button" className="secondary" onClick={openTasks}>Abrir Afazeres</button>
+    </header>
+    {connection !== "live" && <p role="status">{connection === "error" ? "Não foi possível sincronizar os afazeres." : "Sincronizando afazeres…"}</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
+    {tasks.length > 0 ? <>
+      <p aria-live="polite">{completed} de {tasks.length} concluídos</p>
+      <ul>{tasks.map(task => <li key={task.id}>
+        <label>
+          <input type="checkbox" checked={task.completed} aria-disabled={connection !== "live" || !!saving} onChange={event => {
+            if (connection === "live" && !saving) void changeTask(task, event.target.checked);
+          }} />
+          <span>{task.title}</span>
+        </label>
+      </li>)}</ul>
+    </> : connection === "live" && <p>Nenhum afazer vinculado.</p>}
   </section>;
 }
 

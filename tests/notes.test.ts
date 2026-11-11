@@ -6,6 +6,25 @@ import { block, calculateMaterial, exportNote, newDraft, readDocument, recalcula
 import { NoteSaveQueue } from "../app/notes-save-queue";
 import { parseProductionOrder, sampleProductionOrder } from "../app/production-checklist";
 import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
+import { indexOrderTasks } from "../app/notes/task-model";
+
+test("order task checklists resolve customer links and only unambiguous legacy titles", () => {
+  const order = { id: "jer", customer: "JERFESSON", status: "Produção" as const };
+  const customers = [{ id: "j", name: "Jerfésson" }, { id: "b", name: "Bia" }];
+  const linked = { id: "linked", title: "Conferir estampa", customerId: "j", completed: true };
+  const legacy = { id: "legacy", title: "Cortar camisas (Jerfésson)", completed: false };
+  const tasks = [linked, legacy,
+    { id: "other", title: "Estampa Jerfesson", customerId: "b", completed: false },
+    { id: "multiple", title: "Separar Jerfesson e Bia", completed: false },
+    { id: "partial", title: "Jerfessoniano", completed: false },
+  ];
+  const quote = { ...order, id: "quote", status: "Orçamento" as const };
+  const delivered = { ...order, id: "delivered", status: "Entregue" as const };
+  assert.deepEqual(indexOrderTasks([order, quote, delivered], customers, tasks), new Map([[order.id, [linked, legacy]]]));
+  const second = { ...order, id: "second" };
+  assert.deepEqual(indexOrderTasks([order, second], customers, tasks), new Map([[order.id, [linked]], [second.id, [linked]]]));
+  assert.equal(indexOrderTasks([order], [...customers, { id: "duplicate", name: "Jerfesson" }], tasks).size, 0);
+});
 
 test("material links derive the order customer and reject missing or conflicting identities", () => {
   const orders = [{id:"one",customer:"ANA",product:"Camisas"}];

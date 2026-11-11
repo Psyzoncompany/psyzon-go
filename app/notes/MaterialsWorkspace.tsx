@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "../MotionValue";
 
 import { ArrowLeft, ArrowUpRight, Clipboard, Download, Layers, PackageCheck, Printer, Search } from "lucide-react";
 import { useState } from "react";
@@ -67,9 +68,9 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
       <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
     </header>
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">
-      <article><small>Pedidos na lista</small><strong>{filtered.length}</strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
-      <article><small>Quantidade total</small><strong>{decimal(totals.kg)} kg</strong><span>{totals.sets} conjuntos de gola e punho</span></article>
-      <article><small>Valor estimado</small><strong>{currency(totals.cost)}</strong><span>Materiais dos pedidos exibidos</span></article>
+      <article><small>Pedidos na lista</small><strong><CountUp value={filtered.length} /></strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
+      <article><small>Quantidade total</small><strong><CountUp value={totals.kg} format={decimal} /> kg</strong><span>{totals.sets} conjuntos de gola e punho</span></article>
+      <article><small>Valor estimado</small><strong><CountUp value={totals.cost} format={currency} /></strong><span>Materiais dos pedidos exibidos</span></article>
     </div>
     <div className="materials-toolbar">
       <div className="materials-tabs" aria-label="Situação da compra">

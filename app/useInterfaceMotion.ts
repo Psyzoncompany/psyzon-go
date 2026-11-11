@@ -93,7 +93,9 @@ export default function useInterfaceMotion(view: string, ready: boolean, motion:
 
     resume();
     // Opacity alone preserves fixed windows and sticky controls inside every workspace.
-    if (!stopped) animate(root, [{ opacity: .6 }, { opacity: 1 }]);
+    if (!stopped && !document.documentElement.dataset.pageTransition) {
+      animate(root, [{ opacity: .08 }, { opacity: 1 }]);
+    }
     preference.addEventListener("change", resume);
     printing.addEventListener("change", resume);
     window.addEventListener("beforeprint", stop);

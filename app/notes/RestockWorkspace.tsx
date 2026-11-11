@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "../MotionValue";
 
 import { ArrowUpRight, Check, PackagePlus, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -31,7 +32,7 @@ export default function RestockWorkspace({ items, connection, today, displayMone
   }
   return <section className="tasks-workspace restock-workspace">
     <header className="tasks-heading"><div><span className="eyebrow">BLOCO DE NOTAS</span><h1>Reposição de estoque</h1><p>Organize as próximas compras com valor e data.</p></div><div className="restock-heading-actions"><button type="button" className="secondary" disabled={!shown.length} onClick={()=>setPrintOpen(true)}><Printer size={17}/> PDF / Imprimir</button><button type="button" className="primary" disabled={disabled} onClick={()=>{setError("");setEditor("new");}}><Plus size={17}/> Novo item</button></div></header>
-    <div className="restock-summary"><article className="panel"><small>Total a repor</small><strong>{displayMoney(total)}</strong><span>{pending.length} {pending.length === 1 ? "item pendente" : "itens pendentes"}</span></article><article className="panel"><small>Compras para hoje / atrasadas</small><strong>{pending.filter(item=>item.purchaseDate && item.purchaseDate<=today).length}</strong><button type="button" onClick={openFinance}>Vinculado ao A pagar <ArrowUpRight size={14}/></button></article></div>
+    <div className="restock-summary"><article className="panel"><small>Total a repor</small><strong><CountUp value={total} format={displayMoney} /></strong><span>{pending.length} {pending.length === 1 ? "item pendente" : "itens pendentes"}</span></article><article className="panel"><small>Compras para hoje / atrasadas</small><strong><CountUp value={pending.filter(item=>item.purchaseDate && item.purchaseDate<=today).length} /></strong><button type="button" onClick={openFinance}>Vinculado ao A pagar <ArrowUpRight size={14}/></button></article></div>
     {connection !== "live" && <p className="tasks-feedback" role="status">{connection === "error" ? "Não foi possível sincronizar. Recarregue a página para tentar novamente." : "Sincronizando estoque…"}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="restock-filters" aria-label="Filtrar reposição"><button type="button" aria-pressed={!showDone} onClick={()=>setShowDone(false)}>A repor <span>{pending.length}</span></button><button type="button" aria-pressed={showDone} onClick={()=>setShowDone(true)}>Repostos <span>{done.length}</span></button></div>

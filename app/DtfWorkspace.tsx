@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
 import { ArrowRight, CalendarDays, Clipboard, FileImage, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
@@ -91,10 +92,10 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
     {!live && <p className="dtf-connection" role={connection === "error" ? "alert" : "status"}>{connection === "error" ? "Não foi possível sincronizar os pedidos DTF. Atualize a página para tentar novamente." : "Carregando os pedidos DTF…"}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <div className="dtf-metrics">
-      <article><Clipboard size={17} /><div><span>Em andamento</span><strong>{active.length}</strong><small>{scoped.length - active.length} entregues</small></div></article>
-      <article><Ruler size={17} /><div><span>Metragem na fila</span><strong>{meterLabel(queued)}</strong><small>Aguardando arte ou em impressão</small></div></article>
-      <article data-alert={late > 0}><CalendarDays size={17} /><div><span>Pedidos atrasados</span><strong>{late}</strong><small>Prazo vencido, sem entrega</small></div></article>
-      <article><WalletCards size={17} /><div><span>A receber no DTF</span><strong>{displayTotal(pending)}</strong><small>Pedidos confirmados</small></div></article>
+      <article><Clipboard size={17} /><div><span>Em andamento</span><strong><CountUp value={active.length} /></strong><small>{scoped.length - active.length} entregues</small></div></article>
+      <article><Ruler size={17} /><div><span>Metragem na fila</span><strong><CountUp value={queued} format={meterLabel} /></strong><small>Aguardando arte ou em impressão</small></div></article>
+      <article data-alert={late > 0}><CalendarDays size={17} /><div><span>Pedidos atrasados</span><strong><CountUp value={late} /></strong><small>Prazo vencido, sem entrega</small></div></article>
+      <article><WalletCards size={17} /><div><span>A receber no DTF</span><strong><CountUp value={pending} format={displayTotal} /></strong><small>Pedidos confirmados</small></div></article>
     </div>
     <section className="dtf-pipeline" aria-label="Acompanhamento dos pedidos DTF">
       <div className="dtf-tools">

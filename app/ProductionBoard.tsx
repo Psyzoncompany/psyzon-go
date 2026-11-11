@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
 import { ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, CalendarDays, Shirt, MoreHorizontal, PackageOpen, Layers, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
@@ -84,13 +85,13 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
       {productionStages.map((stage, index) => {
         const items = grouped.get(stage) ?? [];
         return <section className="production-lane" data-stage={index} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
-          <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count">{items.length}</span></header>
+          <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count"><CountUp value={items.length} /></span></header>
           {items.length ? items.map(order => <OrderCard key={order.id} order={order} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
         </section>;
       })}
     </div>
     <details className="production-delivered">
-      <summary data-production-drop="Entregue" data-drop-active={drag.dragged?.stage === "Entregue"}><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count">{delivered.length}</span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
+      <summary data-production-drop="Entregue" data-drop-active={drag.dragged?.stage === "Entregue"}><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count"><CountUp value={delivered.length} /></span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
       {delivered.length ? <ul>{delivered.map(order => {
         const actions = actionsFor(order);
         return <li key={order.id} className="production-delivered-row">

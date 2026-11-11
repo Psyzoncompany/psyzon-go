@@ -1,4 +1,5 @@
 "use client";
+import { CountUp, ProgressBar } from "../MotionValue";
 
 import { ArrowLeft, Check, CircleCheck, ListChecks, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
@@ -97,8 +98,8 @@ export default function TasksWorkspace({ tasks, connection, today, back, onSave,
     <section className="tasks-board panel" aria-label="Lista de afazeres">
       <div className="tasks-progress">
         <span className="tasks-progress-icon"><ListChecks size={21} /></span>
-        <div><strong>{completed.length} de {tasks.length} {tasks.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</strong><progress value={percent} max={100} aria-label="Progresso dos afazeres" /></div>
-        <b>{percent}%</b>
+        <div><strong>{completed.length} de {tasks.length} {tasks.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</strong><ProgressBar value={percent} label="Progresso dos afazeres" /></div>
+        <b><CountUp value={percent} />%</b>
       </div>
       <form className="tasks-add" onSubmit={add}>
         <input ref={input} value={title} onChange={event => setTitle(event.target.value)} maxLength={200} required aria-label="Nova tarefa" placeholder="O que você precisa fazer?" />

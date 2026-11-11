@@ -1,4 +1,5 @@
 "use client";
+import { CountUp } from "./MotionValue";
 
 import { ArrowUpRight, Boxes, CalendarDays, Check, History, Layers, Pencil, Plus, Trash2, WalletCards, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -84,10 +85,10 @@ export default function HistoryWorkspace({ today, connection, rows, pendingKg, u
 
     {!ready && <p className="history-notice" role="status">{connection === "error" ? "Falha ao sincronizar os registros do histórico. Confira a conexão e recarregue a página." : "Sincronizando os registros do histórico…"}</p>}
     <section className="history-metrics" aria-label={`Resumo de ${period}`}>
-      <article className="panel"><span className="history-icon"><Boxes size={18} /></span><div><h2>Pedidos cadastrados</h2><strong>{number.format(totals.orders)}</strong><small>Por data de cadastro</small></div></article>
-      <article className="panel"><span className="history-icon history-icon-payable"><WalletCards size={18} /></span><div><h2>A pagar</h2><strong>{displayTotal(totals.payable)}</strong><small>{totals.payableCount === 1 ? "1 conta pendente" : `${totals.payableCount} contas pendentes`}</small></div></article>
-      <article className="panel"><span className="history-icon history-icon-paid"><Check size={18} /></span><div><h2>Contas pagas</h2><strong>{displayMoney(totals.paid)}</strong><small>Por data de pagamento</small></div></article>
-      <article className="panel"><span className="history-icon"><Layers size={18} /></span><div><h2>Malha comprada</h2><strong>{weight(totals.fabric)}</strong><small>{displayMoney(totals.fabricAmount)} em compras</small></div></article>
+      <article className="panel"><span className="history-icon"><Boxes size={18} /></span><div><h2>Pedidos cadastrados</h2><strong><CountUp value={totals.orders} format={number.format} /></strong><small>Por data de cadastro</small></div></article>
+      <article className="panel"><span className="history-icon history-icon-payable"><WalletCards size={18} /></span><div><h2>A pagar</h2><strong><CountUp value={totals.payable} format={displayTotal} /></strong><small>{totals.payableCount === 1 ? "1 conta pendente" : `${totals.payableCount} contas pendentes`}</small></div></article>
+      <article className="panel"><span className="history-icon history-icon-paid"><Check size={18} /></span><div><h2>Contas pagas</h2><strong><CountUp value={totals.paid} format={displayMoney} /></strong><small>Por data de pagamento</small></div></article>
+      <article className="panel"><span className="history-icon"><Layers size={18} /></span><div><h2>Malha comprada</h2><strong><CountUp value={totals.fabric} format={weight} /></strong><small>{displayMoney(totals.fabricAmount)} em compras</small></div></article>
     </section>
 
     {!month && <section className="history-panel panel">

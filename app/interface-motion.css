@@ -1,6 +1,6 @@
 /* A shared motion language for every Psyzon visual theme. */
 @media screen {
-  :root { --motion-fast: 160ms; --motion-standard: 240ms; --motion-enter: 360ms; --motion-ease: cubic-bezier(.22,1,.36,1); }
+  :root { --motion-fast: 160ms; --motion-standard: 240ms; --motion-enter: 440ms; --motion-ease: cubic-bezier(.22,1,.36,1); }
 
   :root[data-ui-theme] :is(.sidebar,.main) { transition-timing-function: var(--motion-ease); transition-duration: 280ms; }
 
@@ -29,7 +29,11 @@
   :root[data-ui-theme] .mobile-menu-dialog[open] { animation: psy-fade-in var(--motion-standard) ease-out; }
 
   @keyframes psy-fade-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes psy-window-in { from { opacity: 0; translate: 0 18px; scale: .985; } to { opacity: 1; translate: 0 0; scale: 1; } }
+  @keyframes psy-window-in {
+    from { opacity: 0; translate: 0 38px; scale: .94; }
+    72% { opacity: 1; translate: 0 -2px; scale: 1.002; }
+    to { opacity: 1; translate: 0 0; scale: 1; }
+  }
   @keyframes psy-popover-in { from { opacity: 0; translate: 0 -5px; scale: .985; } to { opacity: 1; translate: 0 0; scale: 1; } }
   @keyframes psy-nav-select { 0% { scale: .88; } 65% { scale: 1.08; } 100% { scale: 1; } }
 }
@@ -49,6 +53,38 @@
 @media screen and (max-width:760px) {
   /* Full-screen mobile windows stay attached to the viewport throughout the animation. */
   :root[data-ui-theme] :is(.modal,.an-dialog,.production-checklist-window,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { animation: psy-fade-in 220ms ease-out; translate: none; scale: none; }
+  :root[data-ui-theme] :is(.modal > form,.an-dialog > :nth-child(2),.production-checklist-window > :nth-child(2),.finance-detail-sheet[open] > section,.mobile-menu-dialog[open] > section) {
+    animation: psy-mobile-sheet-in 440ms var(--motion-ease);
+  }
+  @keyframes psy-mobile-sheet-in { from { opacity: .12; translate: 0 38px; } to { opacity: 1; translate: none; } }
+  .app-shell .delivery-row { display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; gap: 6px 10px; }
+  .app-shell .delivery-row .progress-cell { display: block; grid-row: 2; grid-column: 2 / -1; min-width: 0; }
+  .app-shell .delivery-row > svg { grid-column: 4; grid-row: 1; }
+}
+
+:root[data-ui-theme] .app-shell :is(.motion-number,.motion-number > span) {
+  display: inline-block; margin: 0; color: inherit; font: inherit; font-variant-numeric: tabular-nums;
+}
+.motion-number { position: relative; }
+.motion-number > i { display: none; }
+.motion-track { display: block; height: 5px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.motion-track > i { display: block; height: 100%; width: 100%; border-radius: inherit; transform-origin: left center; transform: scaleX(var(--target-fill)); background: var(--fill-color,var(--blue)); }
+@media screen and (prefers-reduced-motion:no-preference) {
+  :root[data-glass-motion="full"] .motion-number[data-tweening] > span { opacity: 0; }
+  :root[data-glass-motion="full"] .motion-number[data-tweening] > i {
+    display: block; position: absolute; inset: 0; font: inherit; color: inherit; white-space: nowrap; pointer-events: none;
+  }
+  .motion-number > i::before { content: attr(data-frame); }
+  :root[data-glass-motion="full"] .motion-track[data-tweening] > i { transform: scaleX(var(--frame-fill,var(--target-fill))); }
+  :root[data-page-transition] { view-transition-name: none; --page-enter-x: 36px; --page-leave-x: -22px; }
+  :root[data-page-transition="back"] { --page-enter-x: -36px; --page-leave-x: 22px; }
+  :root[data-page-transition] .main > .content { view-transition-name: psy-page; }
+  ::view-transition { pointer-events: none; }
+  ::view-transition-group(psy-page) { animation-duration: 360ms; }
+  ::view-transition-old(psy-page) { animation: psy-page-out 220ms ease-in both; }
+  ::view-transition-new(psy-page) { animation: psy-page-in 360ms var(--motion-ease) both; }
+  @keyframes psy-page-in { from { opacity: 0; transform: translateX(var(--page-enter-x)); } to { opacity: 1; transform: none; } }
+  @keyframes psy-page-out { to { opacity: 0; transform: translateX(var(--page-leave-x)); } }
 }
 
 :root[data-glass-motion="reduced"] *,

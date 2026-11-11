@@ -8,7 +8,7 @@ export function StatusIndicator({ status }: { status: FinanceStatus }) {
   const Icon = status.tone === "paid" ? Check : status.tone === "late" ? CircleAlert : status.tone === "soon" ? Clock3 : Circle;
   return <span className="finance-status" data-tone={status.tone}><Icon size={12} aria-hidden="true"/>{status.label}</span>;
 }
-export default function FinanceListCard({ title, subtitle, total, totalLabel, icon, items, empty, children }: { title: string; subtitle: string; total: string; totalLabel: string; icon: ReactNode; items: FinanceListItem[]; empty: string; children?: ReactNode }) {
+export default function FinanceListCard({ title, subtitle, total, totalLabel, icon, items, empty, children }: { title: string; subtitle: string; total: ReactNode; totalLabel: string; icon: ReactNode; items: FinanceListItem[]; empty: string; children?: ReactNode }) {
   return <section className="finance-list-card" aria-label={title}>
     <header className="finance-card-header"><span className="finance-card-icon" aria-hidden="true">{icon}</span><div className="finance-card-title"><h2>{title}</h2><p>{subtitle}</p></div><div className="finance-card-total"><small>{totalLabel}</small><strong>{total}</strong></div></header>
     {children}

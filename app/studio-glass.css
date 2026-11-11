@@ -106,7 +106,10 @@
     box-shadow: 0 4px 18px #f4933e32, inset 0 1px #fff4;
   }
   :root[data-ui-theme="studio-glass"] .primary kbd { color: inherit; border-color: #2a170d38; }
-  :root[data-ui-theme="studio-glass"] .app-shell .brand-mark { box-shadow: 0 4px 16px #0005; }
+  :root[data-ui-theme="studio-glass"] .app-shell .brand-mark {
+    filter: hue-rotate(176deg) saturate(.56);
+    box-shadow: 0 4px 16px #0005;
+  }
   :root[data-ui-theme="studio-glass"] .app-shell :is(.metric-card > strong, .finance-premium-summary strong) { font-variant-numeric: tabular-nums; }
 }
 

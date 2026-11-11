@@ -5,7 +5,7 @@ import { ChevronDown, FilePlus2, FolderOpen, Search, SlidersHorizontal, X } from
 import { categories } from "../notes-model";
 import "./mobile-note-controls.css";
 
-type Section = "all" | "pinned" | "archive" | "trash";
+type Section = "all" | "pinned" | "ready" | "archive" | "trash";
 type Props = {
   section: Section;
   counts: Record<Section, number>;
@@ -56,7 +56,7 @@ export default function MobileNotesControls({ section, counts, search, category,
     <h1 className="sr-only">Anotações</h1>
     <div className="an-mobile-note-bar">
       {searchOpen ? <label className="an-mobile-note-search"><Search size={17} aria-hidden="true" /><input ref={input} type="search" aria-label="Buscar anotações" placeholder="Buscar nas notas" value={search} onChange={event => onSearch(event.target.value)} /></label> : <label className="an-mobile-note-section"><FolderOpen size={18} aria-hidden="true" /><select aria-label="Visualizar anotações" value={section} onChange={event => onSection(event.target.value as Section)}>
-        <option value="all">Todas ({counts.all})</option><option value="pinned">Fixadas ({counts.pinned})</option><option value="archive">Arquivo ({counts.archive})</option><option value="trash">Lixeira ({counts.trash})</option>
+        <option value="all">Todas ({counts.all})</option><option value="pinned">Fixadas ({counts.pinned})</option><option value="ready">Prontos ({counts.ready})</option><option value="archive">Arquivo ({counts.archive})</option><option value="trash">Lixeira ({counts.trash})</option>
       </select><ChevronDown size={14} aria-hidden="true" /></label>}
       {searchOpen ? <button type="button" aria-label="Fechar busca" onClick={closeSearch}><X size={18} /></button> : <button ref={searchButton} type="button" aria-label="Buscar anotações" onClick={() => { setFiltersOpen(false); setSearchOpen(true); }}><Search size={19} /></button>}
       <button ref={filterButton} type="button" aria-label="Filtrar e ordenar anotações" aria-expanded={filtersOpen} aria-controls={popupId} data-active={category !== "Todas" || sort !== "recent"} onClick={() => setFiltersOpen(value => !value)}><SlidersHorizontal size={19} /></button>

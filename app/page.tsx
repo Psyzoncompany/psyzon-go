@@ -28,6 +28,7 @@ import NotesNavigation, { noteViews } from "./NotesNavigation";
 import AppearanceSettings from "./AppearanceSettings";
 import useInterfaceAppearance from "./useInterfaceAppearance";
 import useInterfaceMotion from "./useInterfaceMotion";
+import { TypedHeading } from "./Typewriter";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
@@ -1205,7 +1206,7 @@ function Dashboard({ userName, orders, pending, payable, nextPayables, debtorsCo
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
-      <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><h1>Bom dia, {userName}.</h1><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
+      <div><span className="eyebrow">VISÃO DE HOJE</span><div className="greeting-row"><TypedHeading>{`Bom dia, ${userName}.`}</TypedHeading><button className="notes-entry-button" onClick={() => setView("notas")}><NotebookPen size={16} /> Bloco de notas</button></div><p>{date.charAt(0).toUpperCase() + date.slice(1)} · Tudo sob controle.</p></div>
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}

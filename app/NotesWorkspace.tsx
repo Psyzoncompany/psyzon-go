@@ -5,7 +5,8 @@ import { getApps } from "firebase/app";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
 import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
 import { customerNameKey } from "./finance-model";
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
+import { useTypewriter } from "./Typewriter";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import NoteDialog from "./notes/NoteDialog";
@@ -139,6 +140,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
   const purchasedIds = new Set(notes.find(note => note.id === selectedId)?.purchasedMaterialIds);
   const locked = draft?.document.status === "trash";
   const showChecklist = productionOnly || (editorMode ?? (draft?.document.productionChecklist ? "production" : "text")) === "production";
+  useTypewriter(editorRef, draft && !productionOnly && !materialsOpen ? `${selectedId}/${mobileEditor}/${showChecklist}` : null);
   const groups = supplierGroups(draft?.materials || []);
   const total = (draft?.materials || []).reduce((sum, m) => sum + m.totalCost, 0);
 
@@ -298,7 +300,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
 
 function EditableBlock({ value, id, readOnly, placeholder, onChange, onFocus, onEnter, onRemoveEmpty }: { value: string; id: string; readOnly?: boolean; placeholder: string; onChange: (value: string) => void; onFocus: () => void; onEnter: (before: string, after: string) => void; onRemoveEmpty: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (ref.current && ref.current.innerText !== value) ref.current.textContent = value; }, [value]);
+  useLayoutEffect(() => { if (ref.current && ref.current.innerText !== value) ref.current.textContent = value; }, [value]);
   const paste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault(); const text = e.clipboardData.getData("text/plain");
     const selection = window.getSelection();

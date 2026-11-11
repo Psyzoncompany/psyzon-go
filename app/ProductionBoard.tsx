@@ -1,4 +1,5 @@
 "use client";
+import { TypedHeading } from "./Typewriter";
 import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
@@ -67,7 +68,7 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
 
   return <section className="production-workspace" onPointerMove={drag.move} onPointerUp={drag.end} onPointerCancel={drag.end} onLostPointerCapture={drag.end}>
     <header className="production-heading">
-      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><h1>Produção</h1><p>{orders.length - deliveredCount} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
+      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><TypedHeading>Produção</TypedHeading><p>{orders.length - deliveredCount} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
       <div className="kanban-tools"><label>Organizar<select aria-label="Organizar pedidos" value={sort} onChange={event => setSort(event.target.value)}><option value="deadline">Prazo</option><option value="customer">Cliente</option></select></label><label>Filtros<select aria-label="Filtrar pedidos" value={filter} onChange={event => setFilter(event.target.value)}><option value="all">Todos</option><option value="late">Atrasados</option></select></label><button className="primary" onClick={onCreate}><Plus size={17} /> Novo pedido</button></div>
     </header>
     {error && <p className="form-error" role="alert">{error}</p>}

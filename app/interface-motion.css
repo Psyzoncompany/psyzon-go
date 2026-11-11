@@ -57,6 +57,7 @@
 }
 
 @media screen and (max-width:760px) {
+  :root[data-ui-theme] .mobile-nav > button > svg { animation: none; }
   /* Full-screen mobile windows stay attached to the viewport throughout the animation. */
   :root[data-ui-theme] :is(.modal,.an-dialog,.production-checklist-window,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { animation: psy-fade-in 220ms ease-out; translate: none; scale: none; }
   :root[data-ui-theme] :is(.modal > form,.an-dialog > :nth-child(2),.production-checklist-window > :nth-child(2),.finance-detail-sheet[open] > section,.mobile-menu-dialog[open] > section) {

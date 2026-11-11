@@ -40,7 +40,7 @@ export default function useViewHistory() {
       updateLocation(next);
       if (scroll) window.scrollTo({ top: 0 });
     };
-    if (previous === next.view || !document.startViewTransition ||
+    if (previous === next.view || !document.startViewTransition || matchMedia("(max-width: 760px)").matches ||
         !document.querySelector(".main > .content") || document.hidden ||
         root.dataset.glassMotion !== "full" || !matchMedia("screen and (prefers-reduced-motion: no-preference)").matches) {
       apply();

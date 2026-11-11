@@ -19,6 +19,7 @@ export type SewingLedger = {
   people: string[];
   assignments: Record<string, string>;
   rates: Record<string, number>;
+  excludedOrderIds?: string[];
   entries: SewingEntry[];
 };
 export function readSewing(
@@ -41,7 +42,7 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
     const total = rows.reduce(
       (sum, order) =>
         sum +
-        order.quantity *
+        (ledger.excludedOrderIds?.includes(order.id) ? 0 : order.quantity) *
           (ledger.rates[order.id] ??
             (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       0,
@@ -77,8 +78,9 @@ export function sewingOrderBalances(
     )
     .map((order) => ({
       order,
+      excluded: ledger.excludedOrderIds?.includes(order.id) ?? false,
       cost:
-        order.quantity *
+        (ledger.excludedOrderIds?.includes(order.id) ? 0 : order.quantity) *
         (ledger.rates[order.id] ??
           (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       paid: 0,

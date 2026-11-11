@@ -19,6 +19,7 @@ export type SewingChange =
   | { type: "assign"; orderId: string; person: string; rate: number }
   | { type: "entry"; entry: SewingEntry }
   | { type: "remove"; id: string }
+  | { type: "exclude-order"; orderId: string; excluded: boolean }
   | { type: "rename"; id: string; name: string }
   | {
       type: "pay-order";
@@ -54,7 +55,7 @@ export default function SewingWorkspace({
   const visible = orderRows.filter(
     (row) =>
       (filter === "all" ||
-        (filter === "paid" ? row.remaining === 0 : row.remaining > 0)) &&
+        (filter === "excluded" ? row.excluded : !row.excluded && (filter === "paid" ? row.remaining === 0 : row.remaining > 0))) &&
       (row.order.customer + " " + row.order.product)
         .toLocaleLowerCase("pt-BR")
         .includes(search.toLocaleLowerCase("pt-BR")),
@@ -341,13 +342,14 @@ export default function SewingWorkspace({
           >
             <option value="pending">Pendentes</option>
             <option value="paid">Quitados</option>
+            <option value="excluded">Sem cobrança</option>
             <option value="all">Todos</option>
           </select>
         </div>
         {!visible.length && (
           <p className="sewing-empty">Nenhum pedido nesta seleção.</p>
         )}
-        {visible.map(({ order, cost, paid, credit, remaining }) => (
+        {visible.map(({ order, cost, paid, credit, remaining, excluded }) => (
           <div key={order.id}>
             <div>
               <b>{order.customer}</b>
@@ -396,7 +398,7 @@ export default function SewingWorkspace({
             <div className="sewing-order-balance">
               <strong>{money(cost)}</strong>
               <small>
-                {remaining === 0
+                {excluded ? "Sem cobrança" : remaining === 0
                   ? credit === cost
                     ? "Compensado com estampagens"
                     : "Quitado"
@@ -408,6 +410,11 @@ export default function SewingWorkspace({
               {credit > 0 && <small>Descontado {money(credit)}</small>}
               {remaining > 0 && <b>Falta {money(remaining)}</b>}
             </div>
+            {(excluded || !ledger.entries.some(entry => entry.orderId === order.id && entry.kind === "payment")) &&
+              <button className="secondary" disabled={busy} onClick={() => {
+                if (!excluded && !confirm("Remover a cobrança de costura deste pedido?")) return;
+                void run({ type: "exclude-order", orderId: order.id, excluded: !excluded });
+              }}>{excluded ? "Restaurar cobrança" : "Remover cobrança"}</button>}
             {remaining > 0 && (
               <button
                 className="primary"

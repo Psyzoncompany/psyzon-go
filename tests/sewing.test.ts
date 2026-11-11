@@ -8,6 +8,15 @@ import {
   type SewingLedger,
 } from "../app/sewing-model";
 import type { Order } from "../app/order-model";
+
+test("excluded orders remain visible but do not contribute to sewing charges", () => {
+  const ledger = {...readSewing([]), excludedOrderIds:["a"]};
+  const rows = sewingOrderBalances(orders, ledger, "Zefa");
+  assert.equal(rows.find(row => row.order.id === "a")?.excluded, true);
+  assert.equal(rows.find(row => row.order.id === "a")?.remaining, 0);
+  assert.equal(sewingBills(orders, ledger)[0].amount, 21);
+  assert.equal(sewingBills(orders, {...ledger,excludedOrderIds:[]})[0].amount, 85);
+});
 const orders: Order[] = [
   {
     id: "a",

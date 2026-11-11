@@ -663,6 +663,16 @@ export default function HomePage() {
         )
           throw new Error("Informe um nome novo válido.");
         ledger.people.push(operation.name);
+      } else if (operation.type === "exclude-order") {
+        const { orderId, excluded } = operation;
+        const order = await transaction.get(userDocument(uid, "orders", orderId));
+        if (!order.exists()) throw new Error("Pedido indisponível.");
+        if (excluded && ledger.entries.some(entry => entry.orderId === orderId && entry.kind === "payment"))
+          throw new Error("Desfaça o pagamento vinculado antes de excluir a cobrança.");
+        const ids = new Set(ledger.excludedOrderIds);
+        if (excluded) ids.add(orderId);
+        else ids.delete(orderId);
+        ledger.excludedOrderIds = [...ids];
       } else if (operation.type === "assign") {
         if (
           !ledger.people.includes(operation.person) ||

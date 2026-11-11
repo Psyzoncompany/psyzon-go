@@ -30,7 +30,7 @@ import NotesNavigation, { noteViews } from "./NotesNavigation";
 import AppearanceSettings from "./AppearanceSettings";
 import useInterfaceAppearance from "./useInterfaceAppearance";
 import useInterfaceMotion from "./useInterfaceMotion";
-import { TypedHeading } from "./Typewriter";
+import { TypedHeading, SiteTypewriter } from "./Typewriter";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
@@ -1229,7 +1229,7 @@ export default function HomePage() {
       {view !== "notas" && view !== "historico" && view !== "afazeres" && view !== "reposicao" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
-      <MobileNavigation view={view} navigate={setView} />
+      <MobileNavigation view={view} navigate={setView} /><SiteTypewriter page={view} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
         {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}

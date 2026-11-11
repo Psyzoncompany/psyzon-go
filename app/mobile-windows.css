@@ -23,7 +23,7 @@
 }
 @media screen and (max-width:760px) {
   body:has(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { overflow: hidden; }
-  :root[data-ui-theme] :is(.modal,.an-dialog,.finance-detail-sheet,.mobile-menu-dialog,.production-checklist-window) { animation: none !important; transform: none !important; }
+  :root[data-ui-theme] :is(.modal,.an-dialog,.finance-detail-sheet,.mobile-menu-dialog,.production-checklist-window) { transform: none !important; }
   :root[data-ui-theme] :is(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay) { position: fixed; inset: 0; width: 100%; height: 100dvh; padding: 0; align-items: stretch; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal),
   :root[data-ui-theme] .an-modal-backdrop .an-dialog,

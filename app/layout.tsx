@@ -11,6 +11,7 @@ import "./ios-premium.css";
 import "./app-structure.css";
 import "./kanban-redesign.css";
 import "./mobile-windows.css";
+import "./interface-motion.css";
 import { appearanceBootstrap } from "./interface-appearance";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });

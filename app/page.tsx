@@ -26,6 +26,7 @@ import MobileNavigation from "./MobileNavigation";
 import NotesNavigation, { noteViews } from "./NotesNavigation";
 import AppearanceSettings from "./AppearanceSettings";
 import useInterfaceAppearance from "./useInterfaceAppearance";
+import useInterfaceMotion from "./useInterfaceMotion";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
 import {
@@ -268,6 +269,7 @@ export default function HomePage() {
   const floatingWindowRef = useRef<Window | null>(null);
   const floatingOpeningRef = useRef(false);
   const dailyRemindersSignature = useRef("");
+  const contentRef = useInterfaceMotion(view, introComplete && authReady && !!user && dataReady && interfaceAppearance.ready, interfaceAppearance.appearance.motion);
 
   useEffect(() => () => {
     floatingWindowRef.current?.close();
@@ -1114,7 +1116,7 @@ export default function HomePage() {
           </div>
         </header>
 
-        <section className={`content ${view === "notas" ? "notes-content" : ""}`}>
+        <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && <Dashboard userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}

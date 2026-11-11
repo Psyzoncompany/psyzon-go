@@ -1,0 +1,59 @@
+/* A shared motion language for every Psyzon visual theme. */
+@media screen {
+  :root { --motion-fast: 160ms; --motion-standard: 240ms; --motion-enter: 360ms; --motion-ease: cubic-bezier(.22,1,.36,1); }
+
+  :root[data-ui-theme] :is(.sidebar,.main) { transition-timing-function: var(--motion-ease); transition-duration: 280ms; }
+
+  :root[data-ui-theme] :is(.app-shell,.an-modal-backdrop,.finance-detail-sheet) :is(button,a,summary,.appearance-option) {
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--motion-fast) ease, border-color var(--motion-fast) ease, color var(--motion-fast) ease, box-shadow var(--motion-standard) ease, scale var(--motion-fast) var(--motion-ease);
+  }
+  :root[data-ui-theme] :is(.sidebar nav button,.mobile-nav > button,.notes-page-nav button) { transition-duration: 200ms; }
+  :root[data-ui-theme] .app-shell .finance-row { transition: transform 200ms var(--motion-ease), background-color var(--motion-fast) ease, scale var(--motion-fast) var(--motion-ease); }
+  :root[data-ui-theme] :is(.sidebar nav button.active,.mobile-nav > button.active) > svg { animation: psy-nav-select 300ms var(--motion-ease); }
+
+  :root[data-ui-theme] .app-shell :is(.kanban-order-card,.dtf-order,.customer-card,button.metric-card,.appearance-option) {
+    transition: translate var(--motion-standard) var(--motion-ease), box-shadow var(--motion-standard) ease, border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+  }
+  :root[data-ui-theme] :is(.app-shell,.an-modal-backdrop) :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select) { transition: border-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease, background-color var(--motion-fast) ease; }
+  :root[data-ui-theme] :is(.app-shell,.an-modal-backdrop) :is(input:not([type="checkbox"]):not([type="radio"]),textarea,select):focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb,var(--blue) 12%,transparent); }
+  :root[data-ui-theme] .progress-cell > div > span { transition: width 400ms var(--motion-ease); }
+  :root[data-ui-theme] .production-delivered-chevron { transition: rotate var(--motion-standard) var(--motion-ease); }
+  :root[data-ui-theme] .production-delivered[open] .production-delivered-chevron { transform: none; rotate: 180deg; }
+  :root[data-ui-theme] :is(.production-delivered[open] > ul,.dtf-existing-prints[open] > div) { animation: psy-fade-in var(--motion-standard) ease-out; }
+
+  :root[data-ui-theme] :is(.modal-backdrop,.an-modal-backdrop,.production-checklist-overlay) { animation: psy-fade-in 200ms ease-out; }
+  :root[data-ui-theme] :is(.modal,.an-dialog,.production-checklist-window,.finance-detail-sheet[open]) { animation: psy-window-in var(--motion-enter) var(--motion-ease); }
+  :root[data-ui-theme] :is(.notification-panel,.search-results,.an-menu) { animation: psy-popover-in 220ms var(--motion-ease); transform-origin: top right; }
+  :root[data-ui-theme] :is(.finance-detail-sheet,.mobile-menu-dialog)::backdrop { animation: psy-fade-in 200ms ease-out; }
+  :root[data-ui-theme] .mobile-menu-dialog[open] { animation: psy-fade-in var(--motion-standard) ease-out; }
+
+  @keyframes psy-fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes psy-window-in { from { opacity: 0; translate: 0 18px; scale: .985; } to { opacity: 1; translate: 0 0; scale: 1; } }
+  @keyframes psy-popover-in { from { opacity: 0; translate: 0 -5px; scale: .985; } to { opacity: 1; translate: 0 0; scale: 1; } }
+  @keyframes psy-nav-select { 0% { scale: .88; } 65% { scale: 1.08; } 100% { scale: 1; } }
+}
+
+@media screen and (prefers-reduced-motion:no-preference) {
+  :root[data-glass-motion="full"] :is(.app-shell,.an-modal-backdrop,.finance-detail-sheet) :is(button,a,summary):not(:disabled):active { scale: .975; }
+  :root[data-glass-motion="full"] :is(.kanban-card-open,.finance-row):active { scale: .992; }
+}
+@media screen and (hover:hover) and (pointer:fine) and (prefers-reduced-motion:no-preference) {
+  :root[data-glass-motion="full"] :is(.kanban-order-card:not([data-moving="true"]),.dtf-order,.customer-card,button.metric-card,.appearance-option):hover {
+    translate: 0 -2px;
+    box-shadow: 0 8px 24px color-mix(in srgb,var(--text) 8%,transparent);
+  }
+  :root[data-glass-motion="full"] :is(.primary,.an-primary,.floating-new):not(:disabled):hover { scale: 1.015; }
+}
+
+@media screen and (max-width:760px) {
+  /* Full-screen mobile windows stay attached to the viewport throughout the animation. */
+  :root[data-ui-theme] :is(.modal,.an-dialog,.production-checklist-window,.finance-detail-sheet[open],.mobile-menu-dialog[open]) { animation: psy-fade-in 220ms ease-out; translate: none; scale: none; }
+}
+
+:root[data-glass-motion="reduced"] *,
+:root[data-glass-motion="reduced"] *::before,
+:root[data-glass-motion="reduced"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion:reduce), print {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

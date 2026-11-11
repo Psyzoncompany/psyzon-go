@@ -31,12 +31,12 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
         <small>{detail}</small>
       </label>)}
     </fieldset>
-    {(glass || premium) && <div className="appearance-customize">
+    <div className="appearance-customize">
       {glass && <fieldset className="appearance-palettes"><legend>Cor do ambiente</legend><div>{palettes.map(({ value, label, color }) => <label key={value} data-selected={appearance.palette === value}><input type="radio" name="glass-palette" checked={appearance.palette === value} onChange={() => changeAppearance({ palette: value })} /><span style={{ background: color }} aria-hidden="true" />{label}</label>)}</div></fieldset>}
-      <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>
-      <div className="appearance-motion"><div><label htmlFor="glass-motion">Animações suaves</label><small id="glass-motion-description">Transições curtas ao navegar e tocar nos controles.</small></div><input id="glass-motion" aria-describedby="glass-motion-description" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
+      {(glass || premium) && <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>}
+      <div className="appearance-motion"><label htmlFor="glass-motion">Animações suaves</label><input id="glass-motion" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
 
-    </div>}
+    </div>
     {storageError && <p className="form-error" role="status">A escolha foi aplicada. Este navegador está impedindo o salvamento da preferência.</p>}
     <p className="appearance-status" role="status"><Check size={14} /> {premium ? "iOS Premium" : glass ? "Liquid Glass Card" : "Original"} ativo</p>
   </section>;

@@ -80,9 +80,6 @@
     font-size: 18px;
   }
 }
-.sewing-metrics .sewing-home-card small {
-  color: var(--muted);
-}
 @media (min-width: 1101px) {
   :root[data-ui-theme]
     .app-shell[data-layout="premium"]

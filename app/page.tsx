@@ -91,6 +91,7 @@ import {
   RotateCcw,
   Search,
   Settings,
+  Spool,
   Sun,
   UsersRound,
   WalletCards,
@@ -1661,7 +1662,7 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard alerts={alerts} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => setNotificationsOpen(true)} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {nextPayables && <Dashboard alerts={alerts} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
           {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
@@ -1747,11 +1748,11 @@ function Dashboard({ alerts, today, sewingTotal, userName, orders, pending, paya
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}
-    <div className="metric-grid sewing-metrics"><button className="metric-card sewing-home-card" onClick={() => setView("costureiras")}><div className="metric-top">Costureiras · A pagar</div><strong><CountUp value={sewingTotal} format={displayTotal}/></strong><small>Abrir saldo e descontos</small></button>
+    <div className="metric-grid sewing-metrics">
       <Metric icon={WalletCards} label="A pagar" value={<CountUp value={payable} format={displayTotal} />} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
       <Metric icon={CircleDollarSign} label="A receber" value={<CountUp value={pending} format={displayTotal} />} detail={<span className="metric-detail-stack"><span>{debtorsCount} clientes pendentes</span><span className="next-payables"><span>A pagar em {nextPayables.label}</span><b><CountUp value={nextPayables.total} format={displayTotal} /></b></span></span>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={<><CountUp value={orders.length} /> pedidos</>} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
-
+      <Metric icon={Spool} label="Costureiras · A pagar" value={<CountUp value={sewingTotal} format={displayTotal} />} detail={<span>Saldo e descontos</span>} onClick={() => setView("costureiras")} />
     </div>
 
     <div className="dashboard-grid">

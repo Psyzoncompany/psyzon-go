@@ -8,7 +8,7 @@ import { materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOr
 import { notePhotoOrderId } from "../../order-photo-sync";
 import { orderStatuses, normalizeOrderStatus } from "../../order-model";
 import { restockTasks, restockBills, restockPrefix } from "../../notes/restock-model";
-import { confirmedEntries, readSewing, sewingBalances, sewingBills, sewingNoteId, sewingOrderBalances } from "../../sewing-model";
+import { readSewing, sewingBalances, sewingBills, sewingEntriesForPeriod, sewingEntryTotals, sewingNoteId, sewingOrderBalances } from "../../sewing-model";
 import { millis, readDocument, toDraft, type NoteMaterial } from "../../notes-model";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
@@ -229,27 +229,41 @@ const getOpenFinance: ToolDefinition = {
 };
 
 const getSewingSummary: ToolDefinition = {
-  declaration: { type: "function", name: "get_sewing_summary", description: "Consulta o módulo Costureiras: serviços de costura, abatimentos de estampagem, pagamentos, saldo e pedidos por costureira. Opcionalmente filtre pelo nome da costureira.", parameters: queryParameters },
+  declaration: { type: "function", name: "get_sewing_summary", description: "Consulta Costureiras: pagamentos, crédito de estampagens separado da dívida, saldo a pagar e pedidos. Para saber quanto foi pago em um período, informe o ano ou o mês.", parameters: { type: "object", properties: { ...queryParameters.properties, period: { type: "string", description: "Ano AAAA ou mês AAAA-MM. Omitir para todos os lançamentos." } } } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
     const data = await getProductionData(identity);
     const orders = data.orders as unknown as Order[];
     const ledger = readSewing(data.notes as unknown as BusinessNote[]);
-    const entries = confirmedEntries(orders, ledger);
+    const period = text(args.period);
+    if (period && !/^\d{4}(?:-(?:0[1-9]|1[0-2]))?$/.test(period)) throw new Error("Informe o período no formato AAAA ou AAAA-MM.");
+    const people = sewingBalances(orders, ledger).filter(row => matchesQuery(row.person, text(args.query)));
+    const names = new Set(people.map(row => row.person));
+    const periodTotals = sewingEntryTotals(sewingEntriesForPeriod(ledger.entries.filter(entry => names.has(entry.person)), undefined, period));
     return {
-      people: sewingBalances(orders, ledger).filter(row => matchesQuery(row.person, text(args.query))).map(row => ({
-        person: row.person,
-        costFormatted: formatMoney(row.total),
-        printsDiscountFormatted: formatMoney(row.prints),
-        paidFormatted: formatMoney(row.paid),
-        balanceFormatted: formatMoney(row.balance),
-        orders: sewingOrderBalances(orders, ledger, row.person).slice(0, 15).map(item => ({
-          customer: item.order.customer, product: item.order.product, pieces: item.order.quantity,
-          costFormatted: formatMoney(item.cost), pendingFormatted: formatMoney(item.remaining),
-        })),
-        recentEntries: entries.filter(item => item.person === row.person).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
-          .map(item => ({ kind: item.kind, reference: item.name || null, date: item.date, amountFormatted: formatMoney(item.amount) })),
-      })),
+      period: period || null,
+      totalPaidInPeriodFormatted: formatMoney(periodTotals.paid),
+      totalPrintCreditInPeriodFormatted: formatMoney(periodTotals.printCredit),
+      people: people.map(row => {
+        const entries = sewingEntriesForPeriod(ledger.entries, row.person, period);
+        const totals = sewingEntryTotals(entries);
+        return {
+          person: row.person,
+          costFormatted: formatMoney(row.total),
+          printCreditFormatted: formatMoney(row.printCredit),
+          paidFormatted: formatMoney(row.paid),
+          payableFormatted: formatMoney(Math.max(0, row.balance)),
+          overpaymentFormatted: formatMoney(Math.max(0, -row.balance)),
+          paidInPeriodFormatted: formatMoney(totals.paid),
+          printCreditInPeriodFormatted: formatMoney(totals.printCredit),
+          orders: sewingOrderBalances(orders, ledger, row.person).slice(0, 15).map(item => ({
+            customer: item.order.customer, product: item.order.product, pieces: item.order.quantity,
+            costFormatted: formatMoney(item.cost), pendingFormatted: formatMoney(item.remaining),
+          })),
+          recentEntries: entries.slice(0, 8)
+            .map(item => ({ kind: item.kind, reference: item.name || null, date: item.date, amountFormatted: formatMoney(item.amount) })),
+        };
+      }),
     };
   },
 };

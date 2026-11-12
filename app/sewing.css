@@ -95,8 +95,67 @@
   flex: 1;
   min-width: 100px;
 }
-.sewing-order-balance {
-  gap: 4px;
+.sewing-linked-orders,
+.sewing-history {
+  container-type: inline-size;
+}
+.sewing-orders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.sewing-orders-header h2 { margin: 0; }
+.sewing-orders-header .sewing-filters { display: flex; align-items: center; gap: 8px; }
+.sewing-history .sewing-filters { flex-wrap: wrap; }
+.sewing-linked-orders .sewing-filters { flex: 1 1 290px; min-width: 0; max-width: 500px; }
+.sewing-linked-orders .sewing-filters input { min-width: 0; }
+.sewing-linked-orders > .sewing-linked-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, auto) minmax(200px, auto);
+  gap: 8px 16px;
+}
+.sewing-linked-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.sewing-linked-name { min-width: 0; overflow-wrap: anywhere; }
+.sewing-linked-value { text-align: right; font-variant-numeric: tabular-nums; }
+.sewing-orders > .sewing-linked-row > .sewing-linked-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.sewing-linked-actions button, .sewing-linked-details button { min-height: 38px; padding-inline: 10px; }
+.sewing-more-actions { min-width: 40px; justify-content: center; }
+.sewing-delete-link { color: var(--red); }
+.sewing-orders > .sewing-linked-row > .sewing-linked-details {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  background: var(--card-subtle);
+  border-radius: 12px;
+  padding: 10px;
+}
+.sewing-linked-details label { display: grid; gap: 4px; font-size: 12px; }
+.sewing-linked-breakdown { display: grid; gap: 4px; margin-inline-end: auto; }
+.sewing-period-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 108px), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--card-subtle);
+}
+.sewing-period-totals dt { color: var(--muted); font-size: 12px; }
+.sewing-period-totals dd { margin: 3px 0 0; font-weight: 750; font-variant-numeric: tabular-nums; }
+@container (max-width: 560px) {
+  .sewing-linked-orders > .sewing-linked-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .sewing-orders > .sewing-linked-row > .sewing-linked-actions { grid-column: 1 / -1; flex-wrap: wrap; }
+  .sewing-linked-actions button, .sewing-linked-details button { min-height: 42px; }
+  .sewing-linked-details label { flex: 1 1 110px; min-width: 0; }
 }
 .sewing-empty {
   color: var(--muted);

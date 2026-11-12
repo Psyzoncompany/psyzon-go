@@ -5,6 +5,8 @@ import {
   sewingBalances,
   sewingOrderBalances,
   sewingBills,
+  sewingEntriesForPeriod,
+  sewingEntryTotals,
   type SewingLedger,
 } from "../app/sewing-model";
 import type { Order } from "../app/order-model";
@@ -50,7 +52,7 @@ const orders: Order[] = [
     dueDate: "2026-11-20",
   },
 ];
-test("legacy payments and print credits settle only their actual amounts", () => {
+test("only payments settle sewing orders and print credits are shown separately", () => {
   const ledger: SewingLedger = {
     people: ["Zefa"],
     assignments: {},
@@ -77,7 +79,7 @@ test("legacy payments and print credits settle only their actual amounts", () =>
   };
   assert.deepEqual(
     sewingOrderBalances(orders, ledger, "Zefa").map((row) => row.remaining),
-    [46, 21],
+    [54, 21],
   );
   ledger.entries.push({
     id: "paid",
@@ -90,10 +92,11 @@ test("legacy payments and print credits settle only their actual amounts", () =>
   });
   assert.deepEqual(
     sewingOrderBalances(orders, ledger, "Zefa").map((row) => row.remaining),
-    [46, 0],
+    [54, 0],
   );
-  assert.equal(sewingBills(orders, ledger)[0].amount, 46);
+  assert.equal(sewingBills(orders, ledger)[0].amount, 54);
   assert.equal(sewingBalances(orders, ledger)[0].paid, 31);
+  assert.equal(sewingBalances(orders, ledger)[0].printCredit, 8);
 });
 test("increasing a paid order quantity reopens just its difference", () => {
   const ledger: SewingLedger = {
@@ -122,7 +125,7 @@ test("increasing a paid order quantity reopens just its difference", () => {
     4,
   );
 });
-test("surplus printing remains a credit without becoming a cash payment", () => {
+test("printing greater than the amount due leaves all sewing charges pending", () => {
   const ledger: SewingLedger = {
     people: ["Zefa"],
     assignments: {},
@@ -138,14 +141,36 @@ test("surplus printing remains a credit without becoming a cash payment", () => 
       },
     ],
   };
-  assert.equal(sewingBalances(orders, ledger)[0].balance, -15);
+  assert.equal(sewingBalances(orders, ledger)[0].balance, 85);
+  assert.equal(sewingBalances(orders, ledger)[0].printCredit, 100);
   assert.equal(sewingBalances(orders, ledger)[0].paid, 0);
-  assert.ok(
-    sewingOrderBalances(orders, ledger, "Zefa").every(
-      (row) => row.remaining === 0,
-    ),
-  );
-  assert.deepEqual(sewingBills(orders, ledger), []);
+  assert.deepEqual(sewingOrderBalances(orders, ledger, "Zefa").map(row => row.remaining), [64, 21]);
+  assert.equal(sewingBills(orders, ledger)[0].amount, 85);
+  assert.equal(orderAlerts(orders, [], [], [], ledger, String).get("a")?.find(alert => alert.view === "costureiras")?.detail, "Zefa · 64 pendentes");
+});
+
+test("orders removed from the sewing list stay out of sewing bills and production alerts after reload", () => {
+  const ledger = readSewing([{ id: "psyzon-sewing-ledger", content: JSON.stringify({ ...readSewing([]), hiddenOrderIds: ["a"] }) }]);
+  assert.deepEqual(sewingOrderBalances(orders, ledger, "Zefa").map(row => row.order.id), ["b"]);
+  assert.equal(sewingBills(orders, ledger)[0].amount, 21);
+  assert.ok(!orderAlerts(orders, [], [], [], ledger, String).get("a")?.some(alert => alert.view === "costureiras"));
+  assert.equal(orders[0].customer, "Ana");
+});
+
+test("historical totals filter by person, year and month and keep printing separate", () => {
+  const base = { id: "entry", person: "Zefa", kind: "payment", quantity: 0, amount: 10, date: "2025-12-31" } as const;
+  const entries: SewingLedger["entries"] = [
+    base,
+    { ...base, id: "feb", amount: 30, date: "2026-02-01" },
+    { ...base, id: "nov", amount: 45, date: "2026-11-11" },
+    { ...base, id: "print", kind: "print", amount: 8, date: "2026-11-11" },
+    { ...base, id: "other", person: "Maria", amount: 100, date: "2026-11-11" },
+  ];
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa")), { paid: 85, printCredit: 8 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026")), { paid: 75, printCredit: 8 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-11")), { paid: 45, printCredit: 8 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-12")), { paid: 0, printCredit: 0 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, undefined, "2026")), { paid: 175, printCredit: 8 });
 });
 test("renaming the default seamstress survives reload and applies to new orders", () => {
   const ledger = readSewing([

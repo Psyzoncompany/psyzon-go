@@ -62,7 +62,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
 const quickPrompts = [
   { icon: Landmark, label: "A pagar e a receber", prompt: openFinanceQuestion },
-  { icon: Scissors, label: "Quanto devo às costureiras?", prompt: "Consulte os saldos das costureiras e detalhe os serviços, estampagens descontadas e pagamentos." },
+  { icon: Scissors, label: "Quanto devo às costureiras?", prompt: "Mostre quanto devo a cada costureira, quanto paguei e o crédito de estampagens separado." },
   { icon: Package, label: "O que falta comprar?", prompt: "Consulte materiais e reposição. Liste o que está pendente de compra e a malha adicional necessária por pedido." },
   { icon: Clock3, label: "Pedidos atrasados", prompt: "Quais pedidos estão atrasados e qual deve ser minha prioridade?" },
   { icon: FileText, label: "Notas e checklists", prompt: "Consulte minhas notas recentes e mostre os checklists que têm itens pendentes." },

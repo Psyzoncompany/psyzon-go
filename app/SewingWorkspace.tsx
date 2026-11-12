@@ -1,11 +1,12 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
-import { Printer } from "lucide-react";
+import { Ellipsis, Printer, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import type { Order } from "./order-model";
 import {
-  confirmedEntries,
   sewingBalances,
+  sewingEntriesForPeriod,
+  sewingEntryTotals,
   sewingOrderBalances,
   sewingPerson,
   type SewingLedger,
@@ -17,6 +18,11 @@ import "./sewing.css";
 import NoteDialog from "./notes/NoteDialog";
 import PdfDownloadButton from "./PdfDownloadButton";
 import type { PdfReport } from "./pdf-report";
+
+const months = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1).padStart(2, "0"),
+  label: new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2020, index, 1))),
+}));
 export type SewingChange =
   | { type: "person"; name: string }
   | { type: "person-rename"; from: string; name: string }
@@ -25,6 +31,7 @@ export type SewingChange =
   | { type: "entry"; entry: SewingEntry }
   | { type: "remove"; id: string }
   | { type: "exclude-order"; orderId: string; excluded: boolean }
+  | { type: "hide-order"; orderId: string }
   | { type: "rename"; id: string; name: string }
   | {
       type: "pay-order";
@@ -53,6 +60,9 @@ export default function SewingWorkspace({
   const [kind, setKind] = useState<"print" | "print-front" | "payment">("print");
   const [filter, setFilter] = useState("pending");
   const [search, setSearch] = useState("");
+  const [expandedOrderId, setExpandedOrderId] = useState("");
+  const [year, setYear] = useState("");
+  const [month, setMonth] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
   const working = useRef(false);
   const balances = sewingBalances(orders, ledger),
@@ -71,13 +81,16 @@ export default function SewingWorkspace({
   }).format(new Date());
   const summary = [
     ["Costura", current.total],
-    ["Estampagens descontadas", current.prints],
+    ["Crédito de estampagens", current.printCredit],
     ["Pago", current.paid],
-    [current.balance < 0 ? "Crédito disponível" : "A pagar", Math.abs(current.balance)],
+    [current.balance < 0 ? "Pagamento a maior" : "A pagar", Math.abs(current.balance)],
   ] as const;
-  const reportEntries = reportOpen ? confirmedEntries(orders, ledger)
-    .filter(entry => entry.person === current.person)
-    .sort((a, b) => b.date.localeCompare(a.date)) : [];
+  const years = [...new Set([today.slice(0, 4), ...ledger.entries.map(entry => entry.date.slice(0, 4)).filter(value => /^\d{4}$/.test(value))])].sort().reverse();
+  const period = year && month ? `${year}-${month}` : year;
+  const periodLabel = month && year ? `${months.find(item => item.value === month)?.label} de ${year}` : year || "Todos os períodos";
+  const periodEntries = sewingEntriesForPeriod(ledger.entries, current.person, period);
+  const periodTotals = sewingEntryTotals(periodEntries);
+  const allPaidInPeriod = ledger.people.length > 1 ? sewingEntryTotals(sewingEntriesForPeriod(ledger.entries, undefined, period)).paid : null;
   async function run(change: SewingChange) {
     if (working.current) return false;
     working.current = true;
@@ -171,9 +184,6 @@ export default function SewingWorkspace({
         ))}
       </nav>
       <div className="sewing-person-actions">
-        <button type="button" className="secondary" onClick={() => setReportOpen(true)}>
-          <Printer size={16} /> PDF de costura
-        </button>
         <button
           className="secondary"
           disabled={busy}
@@ -337,163 +347,95 @@ export default function SewingWorkspace({
           Registrar
         </button>
       </form>
-      <section className="panel sewing-orders">
-        <h2>Pedidos vinculados</h2>
-        <div className="sewing-filters">
-          <input
-            aria-label="Buscar pedidos de costura"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar cliente ou produto"
-          />
-          <select
-            aria-label="Situação da costura"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="pending">Pendentes</option>
-            <option value="paid">Quitados</option>
-            <option value="excluded">Sem cobrança</option>
-            <option value="all">Todos</option>
-          </select>
-        </div>
-        {!visible.length && (
-          <p className="sewing-empty">Nenhum pedido nesta seleção.</p>
-        )}
-        {visible.map(({ order, cost, paid, credit, remaining, excluded }) => (
-          <div key={order.id}>
-            <div>
-              <b>{order.customer}</b>
-              <small>
-                {order.product} · {order.quantity} camisas
-              </small>
-            </div>
-            <select
-              aria-label={"Costureira de " + order.customer}
-              disabled={busy}
-              value={sewingPerson(ledger, order.id)}
-              onChange={(e) =>
-                void run({
-                  type: "assign",
-                  orderId: order.id,
-                  person: e.target.value,
-                  rate:
-                    ledger.rates[order.id] ??
-                    (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4),
-                })
-              }
-            >
-              {ledger.people.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
+      <section className="panel sewing-orders sewing-linked-orders">
+        <header className="sewing-orders-header">
+          <h2>Pedidos vinculados</h2>
+          <div className="sewing-filters">
+            <input aria-label="Buscar pedidos de costura" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar cliente ou produto" />
+            <select aria-label="Situação da costura" value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="pending">Pendentes</option>
+              <option value="paid">Quitados</option>
+              <option value="excluded">Sem cobrança</option>
+              <option value="all">Todos</option>
             </select>
-            <select
-              aria-label={"Tipo de costura de " + order.customer}
-              disabled={busy}
-              value={
-                ledger.rates[order.id] ??
-                (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)
-              }
-              onChange={(e) =>
-                void run({
-                  type: "assign",
-                  orderId: order.id,
-                  person: sewingPerson(ledger, order.id),
-                  rate: Number(e.target.value),
-                })
-              }
-            >
-              <option value={4}>Camisa · R$ 4</option>
-              <option value={7}>Polo · R$ 7</option>
-            </select>
-            <div className="sewing-order-balance">
-              <strong>{money(cost)}</strong>
-              <small>
-                {excluded ? "Sem cobrança" : remaining === 0
-                  ? credit === cost
-                    ? "Compensado com estampagens"
-                    : "Quitado"
-                  : paid + credit > 0
-                    ? "Parcial"
-                    : "Pendente"}
-              </small>
-              {paid > 0 && <small>Pago {money(paid)}</small>}
-              {credit > 0 && <small>Descontado {money(credit)}</small>}
-              {remaining > 0 && <b>Falta {money(remaining)}</b>}
-            </div>
-            {(excluded || !ledger.entries.some(entry => entry.orderId === order.id && entry.kind === "payment")) &&
-              <button className="secondary" disabled={busy} onClick={() => {
-                if (!excluded && !confirm("Remover a cobrança de costura deste pedido?")) return;
-                void run({ type: "exclude-order", orderId: order.id, excluded: !excluded });
-              }}>{excluded ? "Restaurar cobrança" : "Remover cobrança"}</button>}
-            {remaining > 0 && (
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={() => {
-                  if (
-                    confirm(
-                      "Registrar pagamento de " +
-                        money(remaining) +
-                        " da costura de " +
-                        order.customer +
-                        "?",
-                    )
-                  )
-                    void run({
-                      type: "pay-order",
-                      id: crypto.randomUUID(),
-                      orderId: order.id,
-                      expected: remaining,
-                      date: today,
-                    });
-                }}
-              >
-                Marcar como pago
-              </button>
-            )}
-            {ledger.entries.some(
-              (entry) =>
-                entry.kind === "payment" &&
-                entry.orderId === order.id &&
-                entry.person === current.person,
-            ) && (
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() => {
-                  const entry = ledger.entries
-                    .filter(
-                      (entry) =>
-                        entry.kind === "payment" &&
-                        entry.orderId === order.id &&
-                        entry.person === current.person,
-                    )
-                    .at(-1);
-                  if (
-                    entry &&
-                    confirm("Desfazer o último pagamento deste pedido?")
-                  )
-                    void run({ type: "remove", id: entry.id });
-                }}
-              >
-                Desfazer pagamento
-              </button>
-            )}
           </div>
-        ))}
+        </header>
+        {!visible.length && <p className="sewing-empty">Nenhum pedido nesta seleção.</p>}
+        {visible.map(({ order, cost, paid, remaining, excluded }) => {
+          const expanded = expandedOrderId === order.id;
+          const rate = ledger.rates[order.id] ?? (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4);
+          const linkedPayments = ledger.entries.filter(entry => entry.orderId === order.id && entry.kind === "payment");
+          const lastPayment = linkedPayments.findLast(entry => entry.person === current.person);
+          const status = remaining === 0 ? "Quitado" : paid > 0 ? "Pagamento parcial" : "Pendente";
+          return (
+            <div key={order.id} className="sewing-linked-row">
+              <div className="sewing-linked-name">
+                <b>{order.customer}</b>
+                <small>{order.product} · {order.quantity} {order.quantity === 1 ? "camisa" : "camisas"}</small>
+              </div>
+              <div className="sewing-linked-value">
+                {excluded ? <small>Sem cobrança</small> : <>
+                  <strong>{money(remaining || cost)}</strong>
+                  <small>{remaining > 0 ? `A pagar · ${status}` : status}</small>
+                </>}
+              </div>
+              <div className="sewing-linked-actions">
+                {excluded ? <>
+                  <button type="button" className="secondary" disabled={busy} onClick={() => void run({ type: "exclude-order", orderId: order.id, excluded: false })}>Restaurar cobrança</button>
+                  <button type="button" className="secondary sewing-delete-link" disabled={busy || linkedPayments.length > 0} onClick={() => {
+                    if (confirm(`Remover o pedido de ${order.customer} da lista de costura? O pedido continua na Produção.`))
+                      void run({ type: "hide-order", orderId: order.id });
+                  }}><Trash2 size={15} /> Remover da lista</button>
+                </> : <>
+                  {remaining > 0 && <button type="button" className="primary" disabled={busy} onClick={() => {
+                    if (confirm(`Registrar pagamento de ${money(remaining)} da costura de ${order.customer}?`))
+                      void run({ type: "pay-order", id: crypto.randomUUID(), orderId: order.id, expected: remaining, date: today });
+                  }}>Marcar como pago</button>}
+                  <button type="button" className="secondary sewing-more-actions" aria-expanded={expanded} aria-label={`Ações de costura de ${order.customer}`} onClick={() => setExpandedOrderId(expanded ? "" : order.id)}><Ellipsis size={18} /></button>
+                </>}
+              </div>
+              {!excluded && expanded && <div className="sewing-linked-details">
+                <label>Costureira<select aria-label={`Costureira de ${order.customer}`} disabled={busy} value={current.person} onChange={event =>
+                  void run({ type: "assign", orderId: order.id, person: event.target.value, rate })
+                }>{ledger.people.map(name => <option key={name}>{name}</option>)}</select></label>
+                <label>Tarifa<select aria-label={`Tipo de costura de ${order.customer}`} disabled={busy} value={rate} onChange={event =>
+                  void run({ type: "assign", orderId: order.id, person: current.person, rate: Number(event.target.value) })
+                }><option value={4}>Camisa · R$ 4</option><option value={7}>Polo · R$ 7</option></select></label>
+                <span className="sewing-linked-breakdown"><small>Costura {money(cost)}</small><small>Pago {money(paid)}</small></span>
+                {linkedPayments.length === 0 && <button type="button" className="secondary" disabled={busy} onClick={() => {
+                  if (confirm("Remover a cobrança de costura deste pedido?"))
+                    void run({ type: "exclude-order", orderId: order.id, excluded: true });
+                }}>Remover cobrança</button>}
+                {lastPayment && <button type="button" className="secondary" disabled={busy} onClick={() => {
+                  if (confirm("Desfazer o último pagamento deste pedido?")) void run({ type: "remove", id: lastPayment.id });
+                }}>Desfazer pagamento</button>}
+              </div>}
+            </div>
+          );
+        })}
       </section>
-      <section className="panel sewing-orders">
-        <h2>Lançamentos de {current.person}</h2>
-        {ledger.entries
-          .filter((entry) => entry.person === current.person)
-          .slice()
-          .sort(
-            (a, b) =>
-              b.date.localeCompare(a.date) ||
-              ledger.entries.indexOf(b) - ledger.entries.indexOf(a),
-          )
-          .map((entry) => (
+      <section className="panel sewing-orders sewing-history">
+        <header className="sewing-orders-header">
+          <h2>Lançamentos de {current.person}</h2>
+          <div className="sewing-filters">
+            <select aria-label="Ano dos lançamentos" value={year} onChange={event => { setYear(event.target.value); setMonth(""); }}>
+              <option value="">Todos os anos</option>
+              {years.map(item => <option key={item}>{item}</option>)}
+            </select>
+            {year && <select aria-label="Mês dos lançamentos" value={month} onChange={event => setMonth(event.target.value)}>
+              <option value="">Todos os meses</option>
+              {months.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>}
+            <button type="button" className="secondary" onClick={() => setReportOpen(true)}><Printer size={16} /> PDF de costura</button>
+          </div>
+        </header>
+        <dl className="sewing-period-totals">
+          <div><dt>Pago no período</dt><dd>{money(periodTotals.paid)}</dd></div>
+          <div><dt>Crédito de estampagens no período</dt><dd>{money(periodTotals.printCredit)}</dd></div>
+          {allPaidInPeriod !== null && <div><dt>Pago a todas no período</dt><dd>{money(allPaidInPeriod)}</dd></div>}
+        </dl>
+        {!periodEntries.length && <p className="sewing-empty">Nenhum lançamento no período.</p>}
+        {periodEntries.map((entry) => (
             <div key={entry.id}>
               <div>
                 <b>
@@ -560,24 +502,28 @@ export default function SewingWorkspace({
       </section>
       {reportOpen && <SewingReport close={() => setReportOpen(false)} report={{
         title: "Extrato de costura",
-        filename: `costura-${current.person}-${today}`,
-        subtitle: `${current.person} · ${today.split("-").reverse().join("/")}`,
-        text: summary.map(([label, amount]) => `${label}: ${money(amount)}`).join("\n"),
+        filename: `costura-${current.person}-${period || today}`,
+        subtitle: `${current.person} · ${periodLabel}`,
+        text: [
+          `Pago no período: ${money(periodTotals.paid)}`,
+          `Crédito de estampagens no período: ${money(periodTotals.printCredit)}`,
+          `A pagar atualmente: ${money(Math.max(0, current.balance))}`,
+        ].join("\n"),
         sections: [
           {
-            title: "Pedidos vinculados",
-            columns: ["Pedido", "Peças", "Costura", "Pago", "Desconto", "Pendente", "Situação"],
-            rows: orderRows.map(({ order, cost, paid, credit, remaining, excluded }) => [
-              `${order.customer}\n${order.product}`, order.quantity, money(cost), money(paid), money(credit), money(remaining),
-              excluded ? "Sem cobrança" : remaining === 0 ? "Quitado" : paid + credit > 0 ? "Parcial" : "Pendente",
+            title: "Pedidos vinculados · situação atual",
+            columns: ["Pedido", "Peças", "Costura", "Pago", "Pendente", "Situação"],
+            rows: orderRows.map(({ order, cost, paid, remaining, excluded }) => [
+              `${order.customer}\n${order.product}`, order.quantity, money(cost), money(paid), money(remaining),
+              excluded ? "Sem cobrança" : remaining === 0 ? "Quitado" : paid > 0 ? "Parcial" : "Pendente",
             ]),
           },
           {
-            title: "Lançamentos",
+            title: "Lançamentos do período",
             columns: ["Data", "Tipo", "Referência", "Valor"],
-            rows: reportEntries.map(entry => [
+            rows: periodEntries.map(entry => [
               entry.date.split("-").reverse().join("/"),
-              entry.kind === "print" ? "Estampagem" : "Pagamento",
+              entry.kind === "print" ? "Crédito de estampagem" : "Pagamento",
               [entry.name, entry.kind === "print" ? `${entry.quantity} estampagens` : "", orders.find(order => order.id === entry.orderId)?.customer].filter(Boolean).join(" · ") || "—",
               money(entry.amount),
             ]),

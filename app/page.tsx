@@ -684,8 +684,15 @@ export default function HomePage() {
         )
           throw new Error("Informe um nome novo válido.");
         ledger.people.push(operation.name);
+      } else if (operation.type === "hide-order") {
+        const { orderId } = operation;
+        if (ledger.hiddenOrderIds?.includes(orderId)) return;
+        if (!ledger.excludedOrderIds?.includes(orderId) || ledger.entries.some(entry => entry.orderId === orderId && entry.kind === "payment"))
+          throw new Error("Só é possível remover da lista pedidos sem cobrança e sem pagamento vinculado.");
+        ledger.hiddenOrderIds = [...(ledger.hiddenOrderIds ?? []), orderId];
       } else if (operation.type === "exclude-order") {
         const { orderId, excluded } = operation;
+        if (ledger.hiddenOrderIds?.includes(orderId)) throw new Error("Este pedido foi removido da lista de costura.");
         const order = await transaction.get(userDocument(uid, "orders", orderId));
         if (!order.exists()) throw new Error("Pedido indisponível.");
         if (excluded && ledger.entries.some(entry => entry.orderId === orderId && entry.kind === "payment"))
@@ -695,6 +702,7 @@ export default function HomePage() {
         else ids.delete(orderId);
         ledger.excludedOrderIds = [...ids];
       } else if (operation.type === "assign") {
+        if (ledger.hiddenOrderIds?.includes(operation.orderId)) throw new Error("Este pedido foi removido da lista de costura.");
         if (
           !ledger.people.includes(operation.person) ||
           ![4, 7].includes(operation.rate)

@@ -20,6 +20,7 @@ export type SewingLedger = {
   assignments: Record<string, string>;
   rates: Record<string, number>;
   excludedOrderIds?: string[];
+  hiddenOrderIds?: string[];
   entries: SewingEntry[];
 };
 export function readSewing(
@@ -38,11 +39,28 @@ export function confirmedEntries(orders: Order[], ledger: SewingLedger) {
   const quotes = new Set(orders.filter(order => order.status === "Orçamento").map(order => order.id));
   return ledger.entries.filter(entry => !entry.orderId || !quotes.has(entry.orderId));
 }
+
+export function sewingEntriesForPeriod(entries: SewingEntry[], person?: string, period = "") {
+  return entries.filter(entry => (!person || entry.person === person) && (!period || entry.date.startsWith(period + "-")))
+    .reverse()
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function sewingEntryTotals(entries: SewingEntry[]) {
+  let paid = 0;
+  let printCredit = 0;
+  for (const entry of entries) {
+    if (entry.kind === "payment") paid += entry.amount;
+    else printCredit += entry.amount;
+  }
+  return { paid: Math.round(paid * 100) / 100, printCredit: Math.round(printCredit * 100) / 100 };
+}
 export function sewingBalances(orders: Order[], ledger: SewingLedger) {
   const confirmed = confirmedEntries(orders, ledger);
+  const hidden = new Set(ledger.hiddenOrderIds);
   return ledger.people.map((person) => {
     const rows = orders.filter(
-      (order) => order.status !== "Orçamento" && sewingPerson(ledger, order.id) === person,
+      (order) => order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person,
     );
     const total = rows.reduce(
       (sum, order) =>
@@ -53,19 +71,14 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
       0,
     );
     const entries = confirmed.filter((entry) => entry.person === person);
-    const prints = entries
-      .filter((entry) => entry.kind === "print")
-      .reduce((sum, entry) => sum + entry.amount, 0);
-    const paid = entries
-      .filter((entry) => entry.kind === "payment")
-      .reduce((sum, entry) => sum + entry.amount, 0);
+    const { paid, printCredit } = sewingEntryTotals(entries);
     return {
       person,
       rows,
       total,
-      prints,
+      printCredit,
       paid,
-      balance: Math.round((total - prints - paid) * 100) / 100,
+      balance: Math.round((total - paid) * 100) / 100,
     };
   });
 }
@@ -75,8 +88,9 @@ export function sewingOrderBalances(
   ledger: SewingLedger,
   person: string,
 ) {
+  const hidden = new Set(ledger.hiddenOrderIds);
   const rows = orders
-    .filter((order) => order.status !== "Orçamento" && sewingPerson(ledger, order.id) === person)
+    .filter((order) => order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person)
     .sort(
       (a, b) =>
         millis(a.createdAt) - millis(b.createdAt) || a.id.localeCompare(b.id),
@@ -89,39 +103,27 @@ export function sewingOrderBalances(
         (ledger.rates[order.id] ??
           (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
       paid: 0,
-      credit: 0,
     }));
-  const funds = { payment: 0, print: 0 };
-  const apply = (
-    row: (typeof rows)[number],
-    kind: "payment" | "print",
-    amount: number,
-  ) => {
-    const used = Math.min(
-      Math.max(0, row.cost - row.paid - row.credit),
-      amount,
-    );
-    if (kind === "payment") row.paid += used;
-    else row.credit += used;
+  let unallocated = 0;
+  const apply = (row: (typeof rows)[number], amount: number) => {
+    const used = Math.min(Math.max(0, row.cost - row.paid), amount);
+    row.paid += used;
     return amount - used;
   };
   for (const entry of confirmedEntries(orders, ledger).filter(
-    (entry) => entry.person === person,
+    (entry) => entry.person === person && entry.kind === "payment",
   )) {
     const target = entry.orderId
       ? rows.find((row) => row.order.id === entry.orderId)
       : undefined;
-    funds[entry.kind] += target
-      ? apply(target, entry.kind, entry.amount)
-      : entry.amount;
+    unallocated += target ? apply(target, entry.amount) : entry.amount;
   }
   for (const row of rows) {
-    funds.print = apply(row, "print", funds.print);
-    funds.payment = apply(row, "payment", funds.payment);
+    unallocated = apply(row, unallocated);
   }
   return rows.map((row) => ({
     ...row,
-    remaining: Math.round((row.cost - row.paid - row.credit) * 100) / 100,
+    remaining: Math.round((row.cost - row.paid) * 100) / 100,
   }));
 }
 export function sewingBills(orders: Order[], ledger: SewingLedger): Bill[] {

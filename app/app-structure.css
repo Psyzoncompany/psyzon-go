@@ -6,6 +6,8 @@
   :root { --structure-radius: 12px; --structure-dialog-radius: 20px; --structure-nav-radius: 16px; }
   :root[data-ui-theme="liquid-glass-card"] { --structure-radius: 18px; --structure-dialog-radius: 26px; --structure-nav-radius: 26px; }
   :root[data-ui-theme="ios-premium"] { --structure-radius: 24px; --structure-dialog-radius: 28px; --structure-nav-radius: 24px; }
+  :root[data-ui-theme="original"] { --brand-mark-filter: hue-rotate(8deg) saturate(.95); }
+  :root[data-ui-theme] .app-shell .brand-mark { filter: var(--brand-mark-filter, none); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .main { margin-left: 236px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"].sidebar-collapsed .main { margin-left: 74px; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .sidebar { inset: 0 auto 0 0; width: 236px; padding: 22px 16px 16px; }

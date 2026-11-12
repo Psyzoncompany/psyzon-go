@@ -1,5 +1,6 @@
 /* The iOS Premium model is opt-in. Paper reports keep their own styles. */
 @media screen {
+  :root[data-ui-theme="ios-premium"] { --brand-mark-filter: hue-rotate(42deg) saturate(.7); }
   :root[data-ui-theme="ios-premium"] { --bg:#f5f5f7;--card:#fff;--card-subtle:#faf9fc;--text:#1c1c20;--muted:#73717d;--faint:#85828d;--border:#eeedf2;--blue:#7144c6;--blue-soft:#f1ebfc;--green:#197653;--green-soft:#eaf6ef;--red:#bd3545;--red-soft:#fbeced;--yellow:#af5b0b;--yellow-soft:#fff1df;--shadow:0 2px 5px #24203603,0 10px 28px #24203606;--finance-lilac:#f5f0ff; }
   :root[data-ui-theme="ios-premium"][data-theme="dark"] { --bg:#141417;--card:#202026;--card-subtle:#27272e;--text:#f6f5f8;--muted:#b1adb9;--faint:#96919e;--border:#33313c;--blue:#b99af6;--blue-soft:#35294a;--green:#73cba4;--green-soft:#203a30;--red:#ff929d;--red-soft:#43282e;--yellow:#f1b36b;--yellow-soft:#403221;--finance-lilac:#30263f;--shadow:0 6px 24px #0002; }
   :root[data-ui-theme="ios-premium"] body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif; }

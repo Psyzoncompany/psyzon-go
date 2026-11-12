@@ -1,6 +1,7 @@
 /* This skin is opt-in and screen-only. Reports use their own paper materials. */
 @media screen {
   :root[data-ui-theme="liquid-glass-card"] {
+    --brand-mark-filter: hue-rotate(-12deg) saturate(.88);
     --bg: #eaf0f6;
     --card: #ffffffd9;
     --card-subtle: #f4f7fbbf;
@@ -29,6 +30,7 @@
   }
 
   :root[data-ui-theme="liquid-glass-card"][data-glass-palette="amethyst"] {
+    --brand-mark-filter: hue-rotate(49deg) saturate(.66);
     --blue: #7144c6;
     --blue-soft: #eee6fc;
     --glass-ambient-a: #d8c4ed;
@@ -37,6 +39,7 @@
   }
 
   :root[data-ui-theme="liquid-glass-card"][data-glass-palette="graphite"] {
+    --brand-mark-filter: hue-rotate(-13deg) saturate(.23);
     --blue: #435767;
     --blue-soft: #e2e9ef;
     --glass-ambient-a: #c1cdd9;

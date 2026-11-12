@@ -22,6 +22,8 @@ export type Order = {
   quantity: number;
   unitPrice?: number;
   childUnitPrice?: number | null;
+  dtfCost?: number | null;
+  otherCost?: number | null;
   pricingMode?: "quantity" | "manual";
   shirtType?: "standard" | "polo";
   childQuantity?: number;

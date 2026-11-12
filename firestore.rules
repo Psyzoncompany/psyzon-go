@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "deliveredAt", "childQuantity", "pricingMode", "shirtType"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "childQuantity", "pricingMode", "shirtType"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
@@ -51,6 +51,8 @@ service cloud.firestore {
         && (!("shirtType" in data) || data.shirtType in ["standard","polo"])
         && money(data.total, true)
         && (!("deliveredAt" in data) || data.deliveredAt == null || calendarDate(data.deliveredAt))
+        && (!("dtfCost" in data) || data.dtfCost == null || money(data.dtfCost, true))
+        && (!("otherCost" in data) || data.otherCost == null || money(data.otherCost, true))
         && (!("childUnitPrice" in data) || data.childUnitPrice == null || money(data.childUnitPrice, true))
         && (!("unitPrice" in data) || money(data.unitPrice, true))
         && (!("pricingMode" in data) || (("unitPrice" in data) && data.pricingMode in ["quantity","manual"]))

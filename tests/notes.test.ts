@@ -195,3 +195,17 @@ test("stock values feed payables once, follow edits and completion, and dates tr
   assert.throws(() => newRestockNote({ text: "Item", amount: 1, purchaseDate: "2026-02-31" }));
   assert.throws(() => newRestockNote({ text: "Item", amount: 1, purchaseDate: "2026-99-99" }));
 });
+
+test("shopping list groups pending fabric from confirmed orders and includes additional fabric", async () => {
+  const { fabricShoppingList } = await import("../app/notes/materials-model");
+  const fabric = { id: "m", supplier: "Fornecedor", fabricType: "PV", color: "Azul", fabricKg: 2 } as const;
+  const order = { id: "a", customer: "Ana", product: "Camisetas", status: "Produção" };
+  const notes = [
+    { id: "n", productionOrderId: "a", title: "Ana", client: "Ana", materials: [fabric as NoteMaterial], additionalFabric: [{ supplier: "fornecedor", fabric: "PV", color: "AZUL", kg: 1 }] },
+    { id: "q", productionOrderId: "b", title: "Orçamento", client: "Bia", materials: [fabric as NoteMaterial] },
+  ];
+  const [group, ...rest] = fabricShoppingList(notes, [order, { ...order, id: "b", status: "Orçamento" }]);
+  assert.deepEqual(rest, []);
+  assert.equal(group.kg, 3);
+  assert.equal(group.orders.get("a")?.kg, 3);
+});

@@ -345,3 +345,19 @@ test("next action reuses production blockers and linked tasks before collecting 
   assert.deepEqual(nextOrderAction(order, [], [{ ...task, completed: true }]), { title: "Cobrar saldo", view: "financeiro", pending: 35 });
   assert.equal(nextOrderAction({ ...order, status: "Entregue", receivable: 0 }, [], []), undefined);
 });
+
+test("order result separates purchased and planned material, receipts and refunds", async () => {
+  const { indexOrderCosts, orderResult } = await import("../app/order-result");
+  const note = { id: "n", productionOrderId: "a", title: "Pedido", client: "Ana", purchasedIds: ["bought"], materials: [{ id: "bought", totalCost: 100 }, { id: "pending", totalCost: 20 }] } as Parameters<typeof indexOrderCosts>[0][number];
+  const costs = indexOrderCosts([note], [
+    { orderId: "a", type: "expense", amount: 15 },
+    { orderId: "a", type: "expense", amount: 50, source: "customer_refund" },
+  ]);
+  const order = { id: "a", total: 500, paid: 200, dtfCost: 30, otherCost: 5 } as Order;
+  const result = orderResult(order, costs.get("a"), 40);
+  assert.equal(result.plannedMaterial, 20);
+  assert.equal(result.total, 190);
+  assert.equal(result.result, 310);
+  assert.equal(result.receivedAfterCosts, 10);
+  assert.equal(result.margin, 62);
+});

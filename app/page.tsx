@@ -15,6 +15,9 @@ import { forecastMaterial } from "./material-forecast";
 import { urgentOrder } from "./order-model";
 import { orderAlerts, type OrderAlert } from "./order-alerts";
 import { indexOrderPayments, nextOrderAction } from "./order-follow-up";
+import { indexOrderCosts } from "./order-result";
+import { materialOrdersFromNotes } from "./notes/materials-model";
+import { toDraft } from "./notes-model";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
@@ -781,6 +784,13 @@ export default function HomePage() {
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
+  const orderCosts = useMemo(() => {
+    if (view !== "producao") return new Map();
+    const materialNotes = notes.filter(note => note.materials?.length && note.id !== sewingNoteId && !note.id.startsWith(restockPrefix));
+    const materials = materialOrdersFromNotes(materialNotes.map(note => ({ id: note.id, draft: toDraft(note), purchasedIds: note.purchasedMaterialIds })), orders, customers.filter(customer => !customer.archived));
+    return indexOrderCosts(materials, transactions);
+  }, [view, notes, orders, customers, transactions]);
+  const sewingCosts = useMemo(() => view === "producao" ? new Map(sewingLedger.people.flatMap(person => sewingOrderBalances(orders, sewingLedger, person).filter(row => !row.excluded).map(row => [row.order.id, row.cost] as const))) : new Map<string, number>(), [view, orders, sewingLedger]);
   const alerts = useMemo(() => (["producao", "inicio"].includes(view)) ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
   const orderPayments = useMemo(() => indexOrderPayments(transactions), [transactions]);
   const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
@@ -1207,7 +1217,16 @@ export default function HomePage() {
     if (!editingOrder || firebaseState !== "live")
       return showToast("Firestore ainda não está conectado");
     const form = new FormData(event.currentTarget);
+    const readCost = (key: string) => {
+      const raw = String(form.get(key) ?? "").trim();
+      if (!raw) return null;
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 0 || value > 100000000) throw new Error("Confira os custos do pedido.");
+      return roundMoney(value);
+    };
     const updatedOrder = {
+      dtfCost: readCost("dtfCost"),
+      otherCost: readCost("otherCost"),
       shirtType:
         form.get("shirtType") === "polo"
           ? ("polo" as const)
@@ -1288,6 +1307,8 @@ export default function HomePage() {
       ).find((order) => order.id === latestRaw.id)!;
       if (
         current.data().paid !== editingOrder.paid ||
+        (effective.dtfCost ?? null) !== (editingOrder.dtfCost ?? null) ||
+        (effective.otherCost ?? null) !== (editingOrder.otherCost ?? null) ||
         (effective.childUnitPrice ?? null) !== (editingOrder.childUnitPrice ?? null) ||
         (partialPayment > 0 && effective.status === "Orçamento") ||
         effective.total !== editingOrder.total ||
@@ -1712,7 +1733,7 @@ export default function HomePage() {
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />}
-          {view === "producao" && <ProductionBoard orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {view === "producao" && <ProductionBoard orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
@@ -1866,5 +1887,5 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

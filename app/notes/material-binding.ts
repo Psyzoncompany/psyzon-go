@@ -1,7 +1,7 @@
 import { customerNameKey } from "../finance-model";
 import type { NoteMaterial } from "../notes-model";
 export type MaterialTarget = { id: string; title: string; orderId: string; customerId: string; materials: NoteMaterial[] };
-export type MaterialProductionOrder = { id: string; customer: string; product: string; quantity?: number };
+export type MaterialProductionOrder = { id: string; customer: string; product: string; quantity?: number; status?: string };
 export type MaterialCustomer = { id: string; name: string };
 export type MaterialSaveInput = { noteId: string; title: string; orderId: string; customerId: string; material?: NoteMaterial };
 

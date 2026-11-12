@@ -11,7 +11,7 @@ import { Plus, Link2 } from "lucide-react";
 import { customerNameKey } from "../finance-model";
 import NoteDialog from "./NoteDialog";
 import PdfDownloadButton from "../PdfDownloadButton";
-import { groupMaterialLines, materialLines, materialQuantity, materialsCsv, materialsText, materialTotals, splitMaterialOrders, type MaterialLine, type MaterialOrder } from "./materials-model";
+import { fabricShoppingList, groupMaterialLines, materialLines, materialQuantity, materialsCsv, materialsText, materialTotals, splitMaterialOrders, type MaterialLine, type MaterialOrder } from "./materials-model";
 import "./materials.css";
 
 type Props = {
@@ -32,6 +32,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
   const [query, setQuery] = useState("");
   const [supplier, setSupplier] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
+  const [shoppingOpen, setShoppingOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const pending = splitMaterialOrders(orders, false);
@@ -43,6 +44,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
   const filtered = current.filter(order => (!selectedSupplier || order.materials.some(item => item.supplier === selectedSupplier)) && (!search || customerNameKey([order.title, order.client, ...order.materials.flatMap(item => [item.supplier, item.fabricType, item.color, item.collarColor ?? ""])].join(" ")).includes(search))).map(order => ({ ...order, materials: selectedSupplier ? order.materials.filter(material => material.supplier === selectedSupplier) : order.materials }));
   const allLines = filtered.flatMap(materialLines);
   const totals = materialTotals(filtered.flatMap(materialLines));
+  const shopping = shoppingOpen ? fabricShoppingList(orders, productionOrders) : [];
 
   function show(next: boolean) {
     setCompleted(next);
@@ -66,7 +68,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
     <button type="button" className="materials-back" onClick={back}><ArrowLeft size={16} /> Bloco de notas</button>
     <header className="materials-heading">
       <div><h1>Materiais</h1></div>
-      <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
+      <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" onClick={() => setShoppingOpen(true)}><Clipboard size={17} /> Compras por fornecedor</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
     </header>
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">
       <article><small>Pedidos na lista</small><strong><CountUp value={filtered.length} /></strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
@@ -96,6 +98,20 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
     </div>
     {entry && <MaterialEntryDialog uid={uid} targets={targets} orders={productionOrders} customers={customers} initialId={entry.id} material={entry.material} bindingOnly={entry.bindingOnly} save={saveMaterial} close={() => setEntry(null)} />}
     {exportOpen && <MaterialsExport lines={allLines} title={completed ? "Materiais concluídos" : "Materiais pendentes"} close={() => setExportOpen(false)} />}
+    {shoppingOpen && <NoteDialog title="Compras por fornecedor" close={() => setShoppingOpen(false)} wide>
+      <div className="materials-shopping">
+        {shopping.length ? <>
+          <p><strong>{decimal(shopping.reduce((sum, group) => sum + group.kg, 0))} kg</strong> de malha pendente</p>
+          {shopping.map(group => <article className="materials-order" key={JSON.stringify([group.supplier, group.fabric, group.color])}>
+            <header><div><h2>{group.supplier}</h2><p>{group.fabric} · {group.color}</p></div><strong>{decimal(group.kg)} kg</strong></header>
+            <ul>{[...group.orders].map(([id, order]) => <li key={id}>
+              <button type="button" className="materials-note-link" onClick={() => { setShoppingOpen(false); openNote(order.noteId); }}>{order.label}</button>
+              <span>{decimal(order.kg)} kg</span>
+            </li>)}</ul>
+          </article>)}
+        </> : <p>Nenhuma compra de malha pendente para pedidos confirmados em andamento.</p>}
+      </div>
+    </NoteDialog>}
   </section>;
 }
 

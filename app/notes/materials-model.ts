@@ -1,14 +1,17 @@
 import { currency, decimal, type NoteDraft, type NoteMaterial } from "../notes-model";
 import { extraFabricKg, forecastMaterial } from "../material-forecast";
 import { notePhotoOrderId } from "../order-photo-sync";
+import { customerNameKey } from "../finance-model";
 
 export type MaterialOrder = {
   id: string;
+  productionOrderId?: string;
   title: string;
   client: string;
   materials: NoteMaterial[];
   purchasedIds?: string[];
   extraFabricKg?: number;
+  additionalFabric?: Array<{ supplier: string; fabric: string; color: string; kg: number }>;
 };
 
 export type MaterialLine = {
@@ -38,13 +41,44 @@ export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrd
     const purchased = new Set(purchasedIds);
     return {
       id,
+      productionOrderId: linkedId,
       title: title || "Anotação sem título",
       client: ordersById.get(document.orderId)?.customer || customersById.get(document.customerId) || "",
       materials: materials.map(material => purchased.has(material.id) ? material : forecastMaterial(material, quantity)),
       purchasedIds,
       extraFabricKg: materials.filter(material => purchased.has(material.id)).reduce((sum, material) => sum + extraFabricKg(material, quantity), 0),
+      additionalFabric: materials.filter(material => purchased.has(material.id)).flatMap(material => {
+        const kg = extraFabricKg(material, quantity);
+        return kg >= .005 ? [{ supplier: material.supplier || "Costa Rica", fabric: material.fabricType, color: material.color, kg }] : [];
+      }),
     };
   });
+}
+
+export function fabricShoppingList(orders: MaterialOrder[], productionOrders: Array<{ id: string; customer: string; product: string; status?: string }>) {
+  const active = new Map(productionOrders.filter(order => order.status && !["Orçamento", "Pronto", "Entregue"].includes(order.status)).map(order => [order.id, order]));
+  const groups = new Map<string, { supplier: string; fabric: string; color: string; kg: number; orders: Map<string, { noteId: string; label: string; kg: number }> }>();
+  for (const note of orders) {
+    const order = active.get(note.productionOrderId ?? "");
+    if (!order) continue;
+    const purchased = new Set(note.purchasedIds);
+    const needs = [
+      ...note.materials.filter(material => !purchased.has(material.id)).map(material => ({
+        supplier: material.supplier || "Costa Rica", fabric: material.fabricType, color: material.color, kg: material.fabricKg,
+      })),
+      ...(note.additionalFabric ?? []),
+    ];
+    for (const { supplier, fabric, color, kg } of needs) {
+      if (!(kg > 0)) continue;
+      const key = JSON.stringify([supplier, fabric, color].map(customerNameKey));
+      const group = groups.get(key) ?? { supplier, fabric, color, kg: 0, orders: new Map() };
+      group.kg += kg;
+      const previous = group.orders.get(order.id);
+      group.orders.set(order.id, { noteId: previous?.noteId ?? note.id, label: `${order.customer} · ${order.product}`, kg: (previous?.kg ?? 0) + kg });
+      groups.set(key, group);
+    }
+  }
+  return [...groups.values()].sort((a, b) => a.supplier.localeCompare(b.supplier, "pt-BR") || a.fabric.localeCompare(b.fabric, "pt-BR") || a.color.localeCompare(b.color, "pt-BR"));
 }
 
 export function splitMaterialOrders(orders: MaterialOrder[], completed: boolean) {

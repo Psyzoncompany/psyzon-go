@@ -74,3 +74,9 @@
   .materials-report footer { display: flex; justify-content: space-between; margin-top: 4mm; padding: 3mm 0; border-top: 1px solid #b3bdcc; font-size: 10pt; break-inside: avoid; }
 }
 .materials-extra-forecast { color: var(--yellow); padding-inline: 16px; font-weight: 600; }
+.materials-shopping { display: grid; gap: 12px; padding: 16px; }
+.materials-shopping > p, .materials-shopping ul { margin: 0; }
+.materials-shopping ul { list-style: none; padding: 0 14px 8px; }
+.materials-shopping li { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 6px 0; }
+.materials-shopping li button { width: auto; height: auto; min-height: 40px; text-align: left; justify-content: flex-start; overflow-wrap: anywhere; }
+.materials-shopping li > span { white-space: nowrap; font-variant-numeric: tabular-nums; }

@@ -81,3 +81,11 @@
   .production-delivered-row { grid-template-columns: 36px minmax(0, 1fr) auto; }
   .production-delivered-actions { grid-column: 2 / -1; }
 }
+.order-payment-history { min-width: 0; margin-block: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card-subtle); }
+.order-payment-history h4 { margin: 0 0 8px; font-size: 14px; }
+.order-payment-history ul { max-height: 220px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.order-payment-history li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.order-payment-history li > span { display: grid; gap: 3px; }
+.order-payment-history time, .order-payment-history small, .order-payment-history p { color: var(--muted); font-size: 12px; }
+.order-payment-history p { margin: 6px 0 0; }
+.order-payment-history li > strong { white-space: nowrap; font-variant-numeric: tabular-nums; }

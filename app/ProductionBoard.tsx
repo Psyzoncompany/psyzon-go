@@ -1,5 +1,7 @@
 "use client";
 import NoteDialog from "./notes/NoteDialog";
+import type { OrderPayment } from "./order-follow-up";
+import { roundMoney } from "./finance-model";
 import type { OrderAlert } from "./order-alerts";
 import type { Task } from "./notes/task-model";
 import { TypedHeading } from "./Typewriter";
@@ -18,6 +20,7 @@ import "./notes/notes.css";
 
 type Props = {
   orders: Order[];
+  orderPayments: ReadonlyMap<string, OrderPayment[]>;
   today: string;
   alerts: Map<string, OrderAlert[]>;
   openAlert: (alert: OrderAlert) => void;
@@ -33,7 +36,7 @@ type Props = {
   openChecklist: (order: Order) => void;
 };
 
-export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
+export default function ProductionBoard({ orders, orderPayments, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [alertId, setAlertId] = useState("");
   const alertOrder = orders.find(order => order.id === alertId);
@@ -138,7 +141,7 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         />}
       </div>
     </NoteDialog>}
-    {selected && createPortal(<OrderDetails {...actionsFor(selected)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
+    {selected && createPortal(<OrderDetails {...actionsFor(selected)} payments={orderPayments.get(selected.id) ?? []} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
     {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
   </section>;
 }
@@ -212,7 +215,25 @@ function OrderCard({ order, busy, open, openChecklist, dragging, startDrag, aler
   </article>;
 }
 
-function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error }: OrderActionsProps & { move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string }) {
+function OrderPaymentHistory({ order, payments, displayMoney }: { order: Order; payments: OrderPayment[]; displayMoney: Props["displayMoney"] }) {
+  const recorded = payments.reduce((sum, entry) => sum + (entry.refund ? -entry.amount : entry.amount), 0);
+  const difference = roundMoney(order.paid - recorded);
+  return <section className="order-payment-history" aria-label="Histórico de pagamentos">
+    <h4>Histórico de pagamentos</h4>
+    {payments.length > 0 ? <ul>
+      {payments.map(entry => <li key={entry.id}>
+        <span><b>{entry.refund ? "Devolução" : "Pagamento"}</b>
+          {entry.date ? <time dateTime={entry.date}>{entry.date.split("-").reverse().join("/")}</time> : <small>Sem data registrada</small>}
+        </span>
+        <strong>{displayMoney(entry.refund ? -entry.amount : entry.amount)}</strong>
+      </li>)}
+    </ul> : <p>Nenhum lançamento vinculado.</p>}
+    {difference > 0 && <p>Valor recebido sem parcela vinculada <strong>{displayMoney(difference)}</strong></p>}
+    {difference < 0 && <p>Os lançamentos vinculados excedem o valor recebido do pedido em <strong>{displayMoney(-difference)}</strong>.</p>}
+  </section>;
+}
+
+function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error, payments }: OrderActionsProps & { move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string; payments: OrderPayment[] }) {
   const [copyStatus, setCopyStatus] = useState("");
   const next = nextOrderStatus(order.status);
   async function copyQuote() {
@@ -227,6 +248,7 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
       <div className="kanban-order-dialog-photo"><OrderPhoto order={order} />{!order.photoData && <button className="secondary" onClick={edit}><Camera size={16} /> Adicionar foto</button>}</div>
       <section className="kanban-order-dialog-info">{error && <p className="form-error" role="alert">{error}</p>}<h3>{order.product}</h3><span className={`due ${dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
         <dl><div><dt>Quantidade</dt><dd>{order.quantity} un.</dd></div>{order.unitPrice!==undefined&&<><div><dt>Camisa adulta</dt><dd>{displayMoney(order.unitPrice+poloExtra(order.shirtType,order.product))}</dd></div><div><dt>Infantil</dt><dd>{order.childQuantity||0} un. · {displayMoney(order.childUnitPrice ?? Math.max(0,order.unitPrice+poloExtra(order.shirtType,order.product)-5))} cada</dd></div></>}<div><dt>Entrega</dt><dd>{order.dueDate ? new Intl.DateTimeFormat("pt-BR").format(new Date(`${order.dueDate}T12:00:00`)) : "Sem prazo"}</dd></div><div><dt>Total</dt><dd>{displayMoney(order.total)}</dd></div><div><dt>Recebido</dt><dd>{displayMoney(order.paid)}</dd></div><div><dt>Pendente</dt><dd>{displayMoney(order.receivable ?? Math.max(0,order.total-order.paid))}</dd></div>{order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}{order.dtfStatus && <div><dt>DTF</dt><dd>{orderDtfStatus[order.dtfStatus]}</dd></div>}</dl>
+        {order.status !== "Orçamento" && <OrderPaymentHistory order={order} payments={payments} displayMoney={displayMoney} />}
         {order.notes && <p className="kanban-order-notes">{order.notes}</p>}
         <div className="kanban-order-dialog-actions"><button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button><button className="secondary" disabled={busy} onClick={edit}><Pencil size={16} /> Editar pedido</button>{next && <button className="primary" disabled={busy} onClick={() => move(next)}>{next === "Entregue" ? "Marcar como entregue" : order.status === "Orçamento" ? "Confirmar pedido" : "Avançar etapa"}<ArrowRight size={16} /></button>}<button className="secondary" disabled={busy} onClick={remove}><Trash2 size={16} /> Excluir pedido</button>{order.status === "Orçamento" && <button className="secondary" onClick={() => void copyQuote()}>Copiar orçamento</button>}</div>{copyStatus && <p role="status">{copyStatus}</p>}
         {order.status === "Pronto" && /^\d{8,15}$/.test(phone) && <a className="production-note-link" href={`https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar cliente</a>}

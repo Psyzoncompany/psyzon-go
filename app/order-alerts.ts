@@ -56,6 +56,9 @@ export function orderAlerts(orders: Order[], notes: BusinessNote[], customers: C
       add(order.id, { title: "Pedir estampa DTF", detail: "O pedido está marcado como Precisa pedir DTF.", view: "dtf", id: destination?.id });
     } else if (order.dtfStatus !== "none" && linked.some(({ dtf }) => !["Pronto", "Entregue"].includes(dtf.stage))) {
       add(order.id, { title: "Acompanhar estampa DTF", detail: "Há DTF vinculado aguardando conclusão.", view: "dtf", id: client?.id });
+    } else if (client && order.dtfStatus !== "none" && linked.some(({ dtf, items }) => dtf.stage === "Pronto" &&
+      items.some(item => dtfForCustomer(item, client) && item.separated !== true))) {
+      add(order.id, { title: "Separar estampa DTF", detail: "Há estampas prontas ainda por separar.", view: "dtf", id: client.id });
     }
   }
   for (const person of sewing.people) {

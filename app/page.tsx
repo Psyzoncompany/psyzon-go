@@ -14,6 +14,7 @@ import ProductionBoard from "./ProductionBoard";
 import { forecastMaterial } from "./material-forecast";
 import { urgentOrder } from "./order-model";
 import { orderAlerts, type OrderAlert } from "./order-alerts";
+import { indexOrderPayments, nextOrderAction } from "./order-follow-up";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
@@ -781,6 +782,7 @@ export default function HomePage() {
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
   const alerts = useMemo(() => (["producao", "inicio"].includes(view)) ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
+  const orderPayments = useMemo(() => indexOrderPayments(transactions), [transactions]);
   const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
@@ -1708,8 +1710,8 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />}
+          {view === "producao" && <ProductionBoard orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
@@ -1789,8 +1791,12 @@ function StartupLoading({ firstName }: { firstName?: string }) {
   </main>;
 }
 
-function Dashboard({ alerts, orderTasks, today, sewingTotal, userName, orders, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView, updateStatus }: any) {
-  const priorityOrders = orders.filter((order: Order) => order.status !== "Orçamento").sort((a: Order,b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,3);
+function Dashboard({ alerts, orderTasks, today, sewingTotal, userName, orders, deliveredReceivables, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView }: any) {
+  const byDeadline = (a: Order, b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999");
+  const priorityOrders = [
+    ...orders.filter((order: Order) => order.status !== "Orçamento").sort(byDeadline),
+    ...[...deliveredReceivables].sort(byDeadline),
+  ].slice(0, 3);
   const date = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).format(new Date());
   return <>
     <div className="page-heading">
@@ -1812,15 +1818,15 @@ function Dashboard({ alerts, orderTasks, today, sewingTotal, userName, orders, p
           <div className="section-title"><div><h2>Hoje</h2><span className="count">{priorityOrders.length}</span></div><button onClick={() => setView("producao")}>Ver produção <ChevronRight size={16} /></button></div>
           <div className="today-list">{priorityOrders.map((order: Order) => {
             const items = (alerts as Map<string, OrderAlert[]>).get(order.id) ?? [];
-            const pendingTasks = (orderTasks as ReadonlyMap<string, Task[]>).get(order.id)?.filter(task => !task.completed).length ?? 0;
+            const action = nextOrderAction(order, items, (orderTasks as ReadonlyMap<string, Task[]>).get(order.id) ?? []);
             const urgent = urgentOrder(order,today);
             return <div className="today-row" data-urgent={urgent} key={order.id}>
               <div><b>{order.customer}</b><small>{order.product} · {order.quantity} un.</small>
-                {items.length || pendingTasks ? <div className="today-alerts">{items.map(item => <button key={item.view} type="button" title={item.detail} onClick={() => setView(item.view,item.id)}>{item.title}</button>)}{pendingTasks > 0 && <button type="button" onClick={() => setView("afazeres")}>{pendingTasks} {pendingTasks === 1 ? "afazer pendente" : "afazeres pendentes"}</button>}</div> : <small>Sem pendências</small>}
+                {action && <div className="today-alerts"><button type="button" title={"detail" in action ? action.detail : undefined} onClick={() => setView(action.view, "id" in action ? action.id : undefined)}>{action.title}{"pending" in action && " · " + displayTotal(action.pending)} <ChevronRight size={13} aria-hidden="true" /></button></div>}
               </div>
               <span className={`due ${urgent ? "danger" : dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
             </div>;
-          })}{!priorityOrders.length && <p className="finance-empty">Nenhum pedido em andamento.</p>}</div>
+          })}{!priorityOrders.length && <p className="finance-empty">Nenhuma próxima ação.</p>}</div>
         </section>
         <section className="panel"><div className="section-title"><div><h2>Próximas entregas</h2></div><button onClick={() => setView("producao")}>Ver todas <ChevronRight size={16} /></button></div><div className="delivery-list">{[...orders].sort((a: Order,b: Order)=>(a.dueDate||"9999").localeCompare(b.dueDate||"9999")).slice(0, 4).map((order: Order) => <div className="delivery-row" data-urgent={urgentOrder(order,today)} key={order.id}><div className="avatar">{order.customer.split(" ").map((part) => part[0]).slice(0, 2).join("")}</div><div className="delivery-customer"><b>{order.customer}</b><small>{order.quantity} {order.product.toLowerCase()}</small></div><div className="delivery-date"><small>PRAZO</small><b>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${order.dueDate}T00:00:00`))}</b></div><div className="progress-cell"><ProgressBar value={statusProgress[order.status]} label={`Produção de ${order.customer}`} /><small>{order.status} · <CountUp value={statusProgress[order.status]} />%</small></div><div className="pending-cell"><small>PENDENTE</small><b>{displayMoney(order.receivable ?? Math.max(0, order.total - order.paid))}</b></div><ChevronRight size={17} /></div>)}</div></section>
       </div>

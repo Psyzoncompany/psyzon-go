@@ -318,3 +318,30 @@ test("open quotes do not create receivables or receive customer payments until c
   assert.deepEqual(customerReceipt(customer, orders).payments, [{ orderId: "order", amount: 150, paid: 200 }]);
   assert.equal(customerBalances([customer], [{ ...quote, status: "Aguardando material" }, order])[0].pending, 950);
 });
+
+test("order payment history keeps partial payments, dates and refunds for each order", async () => {
+  const { indexOrderPayments } = await import("../app/order-follow-up");
+  const entries = indexOrderPayments([
+    { id: "first", orderId: "a", type: "income", amount: 100, transactionDate: "2026-11-03" },
+    { id: "second", orderId: "a", type: "income", amount: 50, transactionDate: "2026-11-11" },
+    { id: "refund", orderId: "a", type: "expense", source: "customer_refund", amount: 10, transactionDate: "2026-11-12" },
+    { id: "material", orderId: "a", type: "expense", amount: 30 },
+    { id: "unlinked", type: "income", amount: 90 },
+  ]);
+  assert.deepEqual(entries.get("a")?.map(({ id, date, refund }) => [id, date, refund]), [
+    ["refund", "2026-11-12", true], ["second", "2026-11-11", false], ["first", "2026-11-03", false],
+  ]);
+});
+
+test("next action reuses production blockers and linked tasks before collecting a ready order", async () => {
+  const { nextOrderAction } = await import("../app/order-follow-up");
+  const order: Order = { id: "a", customer: "Cliente", product: "Camiseta", quantity: 1, total: 55, paid: 20, dueDate: "2026-11-12", status: "Pronto" };
+  const dtf = { title: "Separar estampa DTF", view: "dtf", detail: "Pronta para separar" } as const;
+  const material = { title: "Pedir material", view: "materiais", detail: "Uma compra pendente" } as const;
+  const task = { id: "task", title: "Conferir embalagem", completed: false };
+  assert.equal(nextOrderAction(order, [dtf, material], [task]), material);
+  assert.equal(nextOrderAction(order, [dtf], [task]), dtf);
+  assert.equal(nextOrderAction(order, [], [task])?.title, task.title);
+  assert.deepEqual(nextOrderAction(order, [], [{ ...task, completed: true }]), { title: "Cobrar saldo", view: "financeiro", pending: 35 });
+  assert.equal(nextOrderAction({ ...order, status: "Entregue", receivable: 0 }, [], []), undefined);
+});

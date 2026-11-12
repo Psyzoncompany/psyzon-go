@@ -95,7 +95,7 @@ export async function getConversationMessages(identity: FirebaseIdentity, conver
 export async function saveMessage(identity: FirebaseIdentity, conversationId: string, role: "user" | "assistant", content: string, payload?: AIResponsePayload, toolNames: string[] = []) {
   const id = crypto.randomUUID();
   const now = Math.floor(Date.now() / 1000);
-  await setUserDocument(identity, "aiMessages", id, { conversationId, role, content, payload: payload ?? null, toolNames, createdAt: now });
+  await setUserDocument(identity, "aiMessages", id, { conversationId, role, content, payload: payload ? JSON.parse(JSON.stringify(payload)) : null, toolNames, createdAt: now });
   await patchUserDocument(identity, "aiConversations", conversationId, { updatedAt: now });
   return { id, role, content, payload, toolNames, createdAt: now } satisfies AIMessage;
 }

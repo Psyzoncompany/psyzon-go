@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent } from "react";
+import { useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Check, ClipboardList, Plus, Printer, Sparkles, X } from "lucide-react";
 import { getAuth } from "firebase/auth";
@@ -10,6 +10,7 @@ import "./checklist-entry.css";
 import "./checklist-layout.css";
 import ProductionSheets from "./ProductionSheets";
 import ChecklistPieces from "./ChecklistPieces";
+import PdfDownloadButton from "./PdfDownloadButton";
 import OrderPhotoField from "./OrderPhotoField";
 import { parseProductionOrder, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
 import { defaultProductionColor, productionColorFromNotes, productionColorFromProduct, productionColorInk, validProductionColor } from "./production-theme";
@@ -21,6 +22,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const printRoot = useRef<HTMLDivElement>(null);
   const rows = value ? sortProductionRows(value.rows) : [];
   const productPhoto = photoData ?? linkedPhotoData ?? "";
   const automatic = productionColorFromNotes(value?.notes ?? "") ?? productionColorFromNotes(source) ?? productionColorFromProduct(linkedProduct ?? "") ?? productionColorFromNotes(title);
@@ -29,7 +31,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
   const theme = { "--sheet-accent": color, "--sheet-on-accent": productionColorInk(color) } as CSSProperties;
   const print = async () => {
     try {
-      await Promise.all(Array.from(document.querySelectorAll<HTMLImageElement>(".production-print-root img")).map(image => image.decode()));
+      await Promise.all(Array.from(printRoot.current?.querySelectorAll("img") ?? [], image => image.decode()));
       window.print();
     } catch { setError("Não foi possível preparar a foto para impressão. Tente anexá-la novamente."); }
   };
@@ -56,11 +58,15 @@ export default function ProductionChecklist({ value, title, source, photoData, l
     finally { setBusy(false); }
   };
   return <section className="production-checklist">
-    <div className="checklist-toolbar"><div><ClipboardList size={18} /><b>Checklist de produção</b>{value && <span>{value.rows.length} peças · {value.rows.filter((row) => row.done).length} conferidas</span>}</div><div><button className="secondary" onClick={() => { setRaw(source); setError(""); setOpen(true); }}>{value ? "Colar outra lista" : "Colar pedido"}</button>{value && <button className="primary" disabled={photoBusy} onClick={() => void print()}><Printer size={16} /> PDF / Imprimir A4</button>}</div></div>
+    <div className="checklist-toolbar"><div><ClipboardList size={18} /><b>Checklist de produção</b>{value && <span>{value.rows.length} peças · {value.rows.filter((row) => row.done).length} conferidas</span>}</div><div><button className="secondary" onClick={() => { setRaw(source); setError(""); setOpen(true); }}>{value ? "Colar outra lista" : "Colar pedido"}</button>{value && <><PdfDownloadButton disabled={photoBusy} generate={async () => {
+      const root = printRoot.current;
+      if (!root) throw new Error("Checklist indisponível");
+      await (await import("./production-download")).downloadProduction(root, value.client || title);
+    }} /><button className="primary" disabled={photoBusy} onClick={() => void print()}><Printer size={16} /> Imprimir A4</button></>}</div></div>
     <div className="checklist-setup"><div className="checklist-product-photo"><OrderPhotoField label="Foto do produto no PDF" value={productPhoto} onPhotoChange={onPhotoChange} includeFormField={false} onBusyChange={setPhotoBusy} />{linkedPhotoData && linkedPhotoData !== productPhoto && <button className="secondary" disabled={photoBusy} onClick={() => onPhotoChange(linkedPhotoData)}>Usar foto do pedido vinculado</button>}</div>{value && <section className="checklist-order-details" aria-label="Dados para produção"><h3>Dados para produção</h3><div className="checklist-meta"><label>Cliente / pedido<input value={value.client} maxLength={120} onChange={(event) => onChange({ ...value, client: event.target.value })} /></label><label>Entrega<input type="date" value={value.deadline} onChange={(event) => onChange({ ...value, deadline: event.target.value })} /></label></div><div className="checklist-theme"><label>Cor da camisa no PDF<input type="color" value={color} onChange={event => onColorChange(event.target.value)} /></label><span>{customized ? "Cor personalizada" : automatic ? automatic.label : "Azul padrão"}</span>{customized && <button className="secondary" type="button" onClick={() => onColorChange("")}>Usar cor automática</button>}</div><label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={3} onChange={(event) => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label></section>}</div>
     {error && !open && <p className="form-error" role="alert">{error}</p>}
 
-    {value && <>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<ChecklistPieces rows={rows} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} /><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => setAdding(true)}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div>{typeof document !== "undefined" && createPortal(<div className="production-print-root" style={theme}><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}</>}
+    {value && <>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<ChecklistPieces rows={rows} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} /><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => setAdding(true)}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div>{typeof document !== "undefined" && createPortal(<div ref={printRoot} className="production-print-root" style={theme} aria-hidden="true"><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}</>}
     {adding && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel="Masculina" close={() => setAdding(false)} add={specification => {
       if (value.rows.length >= 500) return "O checklist já atingiu o limite de 500 peças.";
       onChange({ ...value, rows: sortProductionRows([...value.rows, { ...specification, id: makeId(), done: false }]) });

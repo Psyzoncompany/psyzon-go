@@ -34,7 +34,7 @@ export function readSewing(
 export function sewingPerson(ledger: SewingLedger, orderId: string) {
   return ledger.assignments[orderId] || ledger.defaultPerson || "Zefa";
 }
-function confirmedEntries(orders: Order[], ledger: SewingLedger) {
+export function confirmedEntries(orders: Order[], ledger: SewingLedger) {
   const quotes = new Set(orders.filter(order => order.status === "Orçamento").map(order => order.id));
   return ledger.entries.filter(entry => !entry.orderId || !quotes.has(entry.orderId));
 }

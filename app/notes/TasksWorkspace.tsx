@@ -6,6 +6,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { millis } from "../notes-model";
 import NoteDialog from "./NoteDialog";
+import PdfDownloadButton from "../PdfDownloadButton";
 import type { Customer } from "../finance-model";
 import type { Task } from "./task-model";
 import "./notes.css";
@@ -138,13 +139,16 @@ function TasksPrint({ pending, completed, today, close, customerNames }: { custo
   const [includeDone, setIncludeDone] = useState(!pending.length);
   const selected = includeDone ? [...pending, ...completed] : pending;
   const issued = today.split("-").reverse().join("/");
-  return <NoteDialog title="Imprimir afazeres" close={close}>
+  return <NoteDialog title="Exportar afazeres" close={close}>
     <div className="tasks-print-options">
-      <p>Checklist A4 com quadrados para marcar. Na janela de impressão, escolha uma impressora ou <strong>Salvar como PDF</strong>.</p>
       {!!completed.length && <label><input type="checkbox" checked={includeDone} onChange={event => setIncludeDone(event.target.checked)} /> Incluir tarefas concluídas</label>}
       <span>{selected.length} {selected.length === 1 ? "tarefa na folha" : "tarefas na lista"}</span>
     </div>
-    <footer className="an-export-actions"><button type="button" onClick={close}>Cancelar</button><button type="button" className="an-primary" disabled={!selected.length} onClick={() => window.print()}><Printer size={16} /> PDF / Imprimir</button></footer>
+    <footer className="an-export-actions"><button type="button" onClick={close}>Cancelar</button><PdfDownloadButton disabled={!selected.length} report={{
+      title: "Lista de afazeres", filename: "afazeres-psyzon", subtitle: `Checklist de acompanhamento · ${issued}`,
+      sections: [{ columns: ["Nº", "Feito", "Tarefa"], rows: selected.map((task, index) => [index + 1, task.completed, task.customerId ? `${task.title}\n${customerNames.get(task.customerId) ?? "Cliente indisponível"}` : task.title]) }],
+      footer: `Pendentes ${pending.length}${includeDone ? ` · Concluídas ${completed.length}` : ""}`,
+    }} /><button type="button" className="an-primary" disabled={!selected.length} onClick={() => window.print()}><Printer size={16} /> Imprimir</button></footer>
     {createPortal(<article className="tasks-print-root" aria-hidden="true">
       <header>
         <div><small>PSYZON GO · BLOCO DE NOTAS</small><h1>Lista de afazeres</h1><p>Checklist de acompanhamento · {issued}</p></div>

@@ -128,3 +128,31 @@
   background: var(--card);
   color: var(--text);
 }
+
+.sewing-report-preview { padding: 16px 20px; }
+.sewing-report-preview p { margin: 8px 0 0; white-space: pre-line; }
+.sewing-print-report { display: none; }
+
+@media print {
+  @page sewing-report { size: A4; margin: 13mm; }
+  html:has(.sewing-print-report), body:has(.sewing-print-report) { background: white; }
+  body:has(.sewing-print-report) { margin: 0; zoom: 1 !important; }
+  body:has(.sewing-print-report) > :not(.sewing-print-report) { display: none !important; }
+  .sewing-print-report {
+    display: block;
+    page: sewing-report;
+    color: #142951;
+    font: 10pt/1.4 Arial, sans-serif;
+    print-color-adjust: exact;
+    overflow-wrap: anywhere;
+  }
+  .sewing-print-report header { border-top: 2mm solid #142951; padding-top: 4mm; }
+  .sewing-print-report h1 { margin: 1mm 0; font-size: 21pt; font-weight: bold; }
+  .sewing-print-report p { margin: 1mm 0 4mm; white-space: pre-line; }
+  .sewing-print-report h2 { margin: 5mm 0 1.5mm; font-size: 13pt; font-weight: bold; break-after: avoid; }
+  .sewing-print-report table { width: 100%; border-collapse: collapse; }
+  .sewing-print-report th, .sewing-print-report td { padding: 2mm; text-align: left; border-bottom: .2mm solid #cbd7e8; white-space: pre-line; }
+  .sewing-print-report thead { color: white; background: #142951; }
+  .sewing-print-report tr { break-inside: avoid; }
+  .sewing-print-report tbody tr:nth-child(even) { background: #f3f7fb; }
+}

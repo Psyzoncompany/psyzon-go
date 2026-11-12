@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ArrowRight, CalendarDays, Clipboard, FileImage, Link2, Pencil, Plus, Printer, Ruler, Search, Trash2, WalletCards, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import Modal from "./Modal";
+import PdfDownloadButton from "./PdfDownloadButton";
 import DtfPrints from "./DtfPrints";
 import DtfPhotoField from "./DtfPhotoField";
 import DtfNamesLink from "./DtfNamesLink";
@@ -228,16 +229,15 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
   const link = dtfArtworkLink(order.artworkUrl);
   const prints = readDtfPrints(order.printsData);
   const photos = dtfPhotos(order);
-  const lines = [
+  const details = [
     `Pedido${order.title ? ` · ${order.title}` : ""}`, `Cliente: ${customerName}`, `Etapa: ${order.stage}`,
     ...(order.quantity ? [`Quantidade: ${order.quantity} un.`] : []),
     `${order.separated ? "☑" : "☐"} Impressão separada`,
     ...(order.dueDate ? [`Prazo DTF: ${dtfDate(order.dueDate)}`] : []),
     ...(order.lengthCm ? [`Impressão: ${meterLabel(order.lengthCm)} · ${widthLabel(order.widthCm)}`] : []),
     ...(order.phone ? [`Contato: ${order.phone}`] : []), ...(link ? [`Arte: ${link}`] : []), ...(order.notes ? [`\nObservações\n${order.notes}`] : []),
-    ...(prints.length ? ["\nEstampas do metro", ...prints.map(print => `${print.separated ? "☑" : "☐"} ${print.title} · ${print.customerName || "Sem cliente"} · ${print.quantity} un.`)] : []),
   ];
-  const ticketText = lines.join("\n");
+  const ticketText = [...details, ...(prints.length ? ["\nEstampas do metro", ...prints.map(print => `${print.separated ? "☑" : "☐"} ${print.title} · ${print.customerName || "Sem cliente"} · ${print.quantity} un.`)] : [])].join("\n");
 
   async function copy() {
     try { await navigator.clipboard.writeText(ticketText); setNotice("Ficha copiada."); }
@@ -266,7 +266,14 @@ function DtfTicket({ order, customerName, close }: { order: DtfOrder; customerNa
       {photos.length > 0 && <div className="dtf-ticket-photos">{photos.map((photo, index) => <Image key={index} unoptimized width={440} height={280} src={photo} alt={photos.length === 1 ? "Referência da impressão" : `Referência da impressão ${index + 1}`} />)}</div>}
       <pre>{ticketText}</pre>
       {link && <a className="secondary" href={link} target="_blank" rel="noopener noreferrer"><Link2 size={16} /> Abrir arquivo da arte</a>}
-      <div><button type="button" className="secondary" onClick={() => void copy()}><Clipboard size={16} /> Copiar ficha</button><button type="button" className="primary" onClick={print}><Printer size={16} /> Imprimir ficha</button></div>
+      <div><button type="button" className="secondary" onClick={() => void copy()}><Clipboard size={16} /> Copiar ficha</button><PdfDownloadButton report={{
+        title: "Ficha de impressão DTF", filename: `ficha-dtf-${order.title || customerName}`,
+        text: details.map(line => line.replace(/^☑ /, "[X] ").replace(/^☐ /, "[ ] ")).join("\n"), photos,
+        sections: prints.length ? [{
+          title: "Estampas do metro", columns: ["Separada", "Estampa", "Cliente", "Quantidade"],
+          rows: prints.map(print => [print.separated === true, print.title, print.customerName || "Sem cliente", print.quantity]),
+        }] : undefined,
+      }} /><button type="button" className="primary" onClick={print}><Printer size={16} /> Imprimir ficha</button></div>
       {notice && <p role="status">{notice}</p>}
     </div>
   </Modal>;

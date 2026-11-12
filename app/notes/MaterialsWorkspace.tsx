@@ -10,6 +10,7 @@ import type { MaterialTarget, MaterialProductionOrder, MaterialCustomer, Materia
 import { Plus, Link2 } from "lucide-react";
 import { customerNameKey } from "../finance-model";
 import NoteDialog from "./NoteDialog";
+import PdfDownloadButton from "../PdfDownloadButton";
 import { groupMaterialLines, materialLines, materialQuantity, materialsCsv, materialsText, materialTotals, splitMaterialOrders, type MaterialLine, type MaterialOrder } from "./materials-model";
 import "./materials.css";
 
@@ -136,7 +137,15 @@ function MaterialsExport({ lines, title, close }: { lines: MaterialLine[]; title
   return <NoteDialog title="Exportar materiais" close={close} wide>
     <div className="materials-export-options"><label>Fornecedor<select value={supplier} onChange={event => setSupplier(event.target.value)}><option value="">Todos os fornecedores</option>{groupMaterialLines(lines).map(([name]) => <option key={name}>{name}</option>)}</select></label><label><input type="checkbox" checked={prices} onChange={event => setPrices(event.target.checked)} /> Incluir valores</label><p>{selected.length} linhas de material · {decimal(totals.kg)} kg{totals.sets ? ` · ${totals.sets} conj.` : ""}</p></div>
     <textarea className="materials-export-preview" aria-label="Prévia da exportação de materiais" value={text} readOnly />
-    <footer className="materials-export-actions"><button className="secondary" type="button" onClick={() => void copy()}><Clipboard size={16} /> Copiar lista</button><button className="secondary" type="button" onClick={download}><Download size={16} /> Baixar CSV</button><button className="primary" type="button" onClick={() => window.print()}><Printer size={16} /> PDF / Imprimir</button></footer>
+    <footer className="materials-export-actions"><button className="secondary" type="button" onClick={() => void copy()}><Clipboard size={16} /> Copiar lista</button><button className="secondary" type="button" onClick={download}><Download size={16} /> Baixar CSV</button><PdfDownloadButton disabled={!selected.length} report={{
+      title, filename: "materiais-psyzon", subtitle: "Lista de compras",
+      sections: groups.map(([name, items]) => ({
+        title: prices ? `${name} · ${currency(materialTotals(items).cost)}` : name,
+        columns: ["Pedido", "Material", "Quantidade", ...(prices ? ["Valor unitário", "Subtotal"] : [])],
+        rows: items.map(line => [[line.order, line.client].filter(Boolean).join("\n"), [line.material, line.color].filter(Boolean).join("\n"), materialQuantity(line), ...(prices ? [`${currency(line.price)}/${line.unit}`, currency(line.cost)] : [])]),
+      })),
+      footer: `${decimal(totals.kg)} kg${totals.sets ? ` · ${totals.sets} conj.` : ""}${prices ? ` · Total geral: ${currency(totals.cost)}` : ""}`,
+    }} /><button className="primary" type="button" onClick={() => window.print()}><Printer size={16} /> Imprimir</button></footer>
     {notice && <p className="materials-feedback" role="status">{notice}</p>}
     {typeof document !== "undefined" && createPortal(<div className="materials-report" aria-hidden="true"><header><Layers size={20} /><div><h1>{title}</h1><p>PSYZON GO · Lista de compras</p></div></header>{groups.map(([name, items]) => <section key={name}><h2>{name}</h2><MaterialTable lines={items} prices={prices} report />{prices && <p>Subtotal · <b>{currency(materialTotals(items).cost)}</b></p>}</section>)}<footer>{decimal(totals.kg)} kg{totals.sets ? ` · ${totals.sets} conj.` : ""}{prices && <strong>Total geral · {currency(totals.cost)}</strong>}</footer></div>, document.body)}
   </NoteDialog>;

@@ -1,7 +1,10 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
+import { Printer } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { Order } from "./order-model";
 import {
+  confirmedEntries,
   sewingBalances,
   sewingOrderBalances,
   sewingPerson,
@@ -12,6 +15,8 @@ import { poloExtra } from "./order-pricing";
 import { CountUp } from "./MotionValue";
 import "./sewing.css";
 import NoteDialog from "./notes/NoteDialog";
+import PdfDownloadButton from "./PdfDownloadButton";
+import type { PdfReport } from "./pdf-report";
 export type SewingChange =
   | { type: "person"; name: string }
   | { type: "person-rename"; from: string; name: string }
@@ -48,6 +53,7 @@ export default function SewingWorkspace({
   const [kind, setKind] = useState<"print" | "payment">("print");
   const [filter, setFilter] = useState("pending");
   const [search, setSearch] = useState("");
+  const [reportOpen, setReportOpen] = useState(false);
   const working = useRef(false);
   const balances = sewingBalances(orders, ledger),
     current = balances.find((item) => item.person === person) || balances[0];
@@ -63,6 +69,15 @@ export default function SewingWorkspace({
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Bahia",
   }).format(new Date());
+  const summary = [
+    ["Costura", current.total],
+    ["Estampagens descontadas", current.prints],
+    ["Pago", current.paid],
+    [current.balance < 0 ? "Crédito disponível" : "A pagar", Math.abs(current.balance)],
+  ] as const;
+  const reportEntries = reportOpen ? confirmedEntries(orders, ledger)
+    .filter(entry => entry.person === current.person)
+    .sort((a, b) => b.date.localeCompare(a.date)) : [];
   async function run(change: SewingChange) {
     if (working.current) return false;
     working.current = true;
@@ -156,6 +171,9 @@ export default function SewingWorkspace({
         ))}
       </nav>
       <div className="sewing-person-actions">
+        <button type="button" className="secondary" onClick={() => setReportOpen(true)}>
+          <Printer size={16} /> PDF de costura
+        </button>
         <button
           className="secondary"
           disabled={busy}
@@ -251,19 +269,11 @@ export default function SewingWorkspace({
         </p>
       )}
       <div className="sewing-summary">
-        {[
-          ["Costura", current.total],
-          ["Estampagens descontadas", current.prints],
-          ["Pago", current.paid],
-          [
-            current.balance < 0 ? "Crédito disponível" : "A pagar",
-            Math.abs(current.balance),
-          ],
-        ].map(([label, amount]) => (
+        {summary.map(([label, amount]) => (
           <article className="panel" key={label}>
             <small>{label}</small>
             <strong>
-              <CountUp value={Number(amount)} format={money} />
+              <CountUp value={amount} format={money} />
             </strong>
           </article>
         ))}
@@ -547,6 +557,56 @@ export default function SewingWorkspace({
             </div>
           ))}
       </section>
+      {reportOpen && <SewingReport close={() => setReportOpen(false)} report={{
+        title: "Extrato de costura",
+        filename: `costura-${current.person}-${today}`,
+        subtitle: `${current.person} · ${today.split("-").reverse().join("/")}`,
+        text: summary.map(([label, amount]) => `${label}: ${money(amount)}`).join("\n"),
+        sections: [
+          {
+            title: "Pedidos vinculados",
+            columns: ["Pedido", "Peças", "Costura", "Pago", "Desconto", "Pendente", "Situação"],
+            rows: orderRows.map(({ order, cost, paid, credit, remaining, excluded }) => [
+              `${order.customer}\n${order.product}`, order.quantity, money(cost), money(paid), money(credit), money(remaining),
+              excluded ? "Sem cobrança" : remaining === 0 ? "Quitado" : paid + credit > 0 ? "Parcial" : "Pendente",
+            ]),
+          },
+          {
+            title: "Lançamentos",
+            columns: ["Data", "Tipo", "Referência", "Valor"],
+            rows: reportEntries.map(entry => [
+              entry.date.split("-").reverse().join("/"),
+              entry.kind === "print" ? "Estampagem" : "Pagamento",
+              [entry.name, entry.kind === "print" ? `${entry.quantity} estampagens` : "", orders.find(order => order.id === entry.orderId)?.customer].filter(Boolean).join(" · ") || "—",
+              money(entry.amount),
+            ]),
+          },
+        ].filter(section => section.rows.length > 0),
+      }} />}
     </section>
   );
+}
+
+function SewingReport({ report, close }: { report: PdfReport; close: () => void }) {
+  return <NoteDialog title="Extrato de costura" close={close}>
+    <div className="sewing-report-preview">
+      <strong>{report.subtitle}</strong>
+      <p>{report.text}</p>
+    </div>
+    <footer className="an-export-actions">
+      <PdfDownloadButton report={report} />
+      <button type="button" className="an-primary" onClick={() => window.print()}><Printer size={16} /> Imprimir</button>
+    </footer>
+    {createPortal(<article className="sewing-print-report" aria-hidden="true">
+      <header><small>PSYZON GO</small><h1>{report.title}</h1><p>{report.subtitle}</p></header>
+      <p>{report.text}</p>
+      {report.sections?.map(section => <section key={section.title}>
+        <h2>{section.title}</h2>
+        <table>
+          <thead><tr>{section.columns.map(column => <th key={column} scope="col">{column}</th>)}</tr></thead>
+          <tbody>{section.rows.map((row, index) => <tr key={index}>{row.map((cell, cellIndex) => <td key={cellIndex}>{cell}</td>)}</tr>)}</tbody>
+        </table>
+      </section>)}
+    </article>, document.body)}
+  </NoteDialog>;
 }

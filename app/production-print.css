@@ -3,7 +3,11 @@
   html:has(.production-print-root) { background: white; }
   body:has(.production-print-root) { margin: 0; background: white; color: #142b55; zoom: 1 !important; font-family: Arial, sans-serif; }
   body:has(.production-print-root) > *:not(.production-print-root) { display: none !important; }
-  .production-print-root { display: block !important; color-scheme: light; --sheet-ink: color-mix(in srgb, var(--sheet-accent, #142b55) 25%, #141820); --sheet-tint: color-mix(in srgb, var(--sheet-accent, #142b55) 12%, white); --sheet-line: color-mix(in srgb, var(--sheet-accent, #142b55) 26%, #b8bec8); color: var(--sheet-ink); }
+  .production-print-root { display: block !important; }
+}
+
+@media screen, print {
+  .production-print-root { color-scheme: light; --sheet-ink: color-mix(in srgb, var(--sheet-accent, #142b55) 25%, #141820); --sheet-tint: color-mix(in srgb, var(--sheet-accent, #142b55) 12%, white); --sheet-line: color-mix(in srgb, var(--sheet-accent, #142b55) 26%, #b8bec8); color: var(--sheet-ink); }
   .production-sheet { width: 100%; display: flex; flex-direction: column; break-after: page; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .production-sheet:last-child { break-after: auto; }
   .production-sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 10mm; padding: 2mm 0 3mm; border-bottom: .3mm solid var(--sheet-line); }
@@ -78,4 +82,17 @@
   .production-sheet:has(.production-product-photo) .production-sheet-footer { padding-top: 3mm; }
   .production-sheet:has(.production-attention) .production-piece { padding-block: .9mm; }
   .production-sheet-header p, .production-attention p, .production-group h2 span { overflow-wrap: anywhere; }
+}
+
+@media screen {
+  .production-print-root.production-pdf-source {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: -200vw;
+    width: 190mm;
+    font: 16px Arial, sans-serif;
+    background: white;
+    pointer-events: none;
+  }
 }

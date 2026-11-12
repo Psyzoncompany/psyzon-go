@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { exportAIMessage, formatAIAmount, formatAIDate, readAIAnswer } from "./ai/answer-format";
+import { cashQuestion } from "./ai/cash-question";
 import "./ai-answer.css";
 import type { AICashPlan, AIConversation, AIIntegrationStatus, AIMessage, AISettings } from "./ai/types";
 
@@ -62,7 +63,7 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
 const quickPrompts = [
   { icon: Landmark, label: "Como está meu financeiro?", prompt: "Como está meu financeiro neste mês? Compare entradas, saídas, resultado e valores a receber." },
-  { icon: AlertTriangle, label: "Quais contas pagar primeiro?", prompt: "Consulte contas a pagar, prazos e caixa registrado. Priorize as contas e mostre o impacto no caixa com premissas claras." },
+  { icon: AlertTriangle, label: "Quais contas pagar primeiro?", prompt: cashQuestion },
   { icon: RefreshCw, label: "Conferir movimentações", prompt: "Confira a conciliação com o Mercado Pago e audite também todas as saídas empresariais. Mostre os valores usando exatamente a formatação brasileira retornada pelo sistema, as divergências, possíveis duplicidades e o que precisa ser revisado." },
   { icon: Clock3, label: "Pedidos atrasados", prompt: "Quais pedidos estão atrasados e qual deve ser minha prioridade?" },
   { icon: TrendingUp, label: "Quais pedidos têm melhor margem?", prompt: "Compare os pedidos com custos registrados e informe quais dados faltam para comparar as margens." },
@@ -416,7 +417,7 @@ function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, on
         </div>}
 
         {(actions.length > 0 || canRefreshPlan) && <div className="ai-response-actions">
-          {canRefreshPlan && <button onClick={() => onPrompt(quickPrompts[1].prompt)}><RefreshCw size={14} /> Atualizar projeção de caixa</button>}
+          {canRefreshPlan && <button onClick={() => onPrompt(cashQuestion)}><RefreshCw size={14} /> Atualizar projeção de caixa</button>}
           {actions.map((action, index) => <button key={index} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}
         </div>}
 

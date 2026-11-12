@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { exportAIMessage, parseAIAnswer, readAIAnswer } from "../app/ai/answer-format.ts";
+import { cashQuestion, isCashQuestion } from "../app/ai/cash-question.ts";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
 import { DeepSeekProvider } from "../app/lib/server/deepseek-provider.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
-import { configuredAIProviders, getAIProviderSummary, orderedAIProviders, tryAIProviderCandidates, type ProviderCandidate } from "../app/lib/server/ai-agent.ts";
+import { cashAnswer, configuredAIProviders, getAIProviderSummary, orderedAIProviders, tryAIProviderCandidates, type ProviderCandidate } from "../app/lib/server/ai-agent.ts";
+import { GeminiLimitError, GeminiProvider, normalizeGeminiError } from "../app/lib/server/gemini-provider.ts";
 import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
 import { mercadoPagoImportPreview } from "../app/lib/server/mercado-pago.ts";
@@ -303,8 +305,64 @@ test("Mercado Pago synchronization backfills one year and paginates payment sear
 
 test("the production Gemini secret selects Gemini exclusively even with a legacy provider preference", () => {
   const env = { PSYZON_GEMINI_API_KEY: "dedicated-test", DEEPSEEK_API_KEY: "other-test", GEMINI_API_KEY: "legacy-test" };
-  assert.deepEqual(orderedAIProviders(env, "deepseek").map(({ family, provider }) => [family, provider.model]), [["gemini", "gemini-2.5-flash"]]);
+  assert.deepEqual(orderedAIProviders(env, "deepseek").map(({ family, provider, quotaOnly }) => [family, provider.model, quotaOnly ?? false]), [
+    ["gemini", "gemini-2.5-flash", false],
+    ["gemini", "gemini-3.1-flash-lite", true],
+  ]);
   assert.equal(getAIProviderSummary(env).options.find(item => item.id === "deepseek")?.configured, false);
+});
+
+test("Gemini makes one HTTP attempt on 429 and retains the quota type and cooldown", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () => Response.json({ error: {
+    code: 429,
+    status: "RESOURCE_EXHAUSTED",
+    message: "Quota exceeded",
+    details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }, { retryDelay: "3600s" }],
+  } }, { status: 429 }));
+  await assert.rejects(new GeminiProvider("test", "gemini-2.5-flash").create("test", "test", []), (error: unknown) => {
+    return error instanceof GeminiLimitError && error.message === "GEMINI_DAILY_QUOTA" && error.retryAt > Date.now() + 3_590_000;
+  });
+  assert.equal(fetch.mock.callCount(), 1);
+  assert.equal(normalizeGeminiError(Object.assign(new Error("GenerateContentInputTokensPerModelPerMinute-FreeTier"), { status: 429 })).message, "GEMINI_MINUTE_QUOTA");
+});
+
+test("Gemini standby only runs on quota and skips the primary while it is exhausted", async (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const attempts: string[] = [];
+  let exhausted = false;
+  const result = { id: "ok", status: "completed", outputText: "{}", functionCalls: [], usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } };
+  const candidates = ["primary", "standby"].map((name): ProviderCandidate => ({
+    id: `quota-test-${name}`,
+    family: "gemini",
+    label: name,
+    quotaOnly: name === "standby",
+    provider: {
+      model: name,
+      async create() {
+        attempts.push(name);
+        if (name === "primary" && exhausted) throw new GeminiLimitError("GEMINI_DAILY_QUOTA", 3600);
+        return result;
+      },
+      async continue() { return result; },
+    },
+  }));
+  await tryAIProviderCandidates(candidates, "test", []);
+  exhausted = true;
+  await tryAIProviderCandidates(candidates, "test", []);
+  await tryAIProviderCandidates(candidates, "test", []);
+  assert.deepEqual(attempts, ["primary", "primary", "standby", "standby"]);
+});
+
+test("cash shortcut is read-only and preserves the data for the structured report", () => {
+  assert.equal(isCashQuestion(cashQuestion), true);
+  assert.equal(isCashQuestion("Quais contas devo pagar primeiro?"), true);
+  assert.equal(isCashQuestion("Quais contas devo pagar primeiro se entrar R$ 300?"), false);
+  const plan = { asOf: "2026-11-12", balance: 100, overdueTotal: 200, totalPayables: 400, payables: [], projections: [], assumptions: [] };
+  const answer = cashAnswer(plan);
+  assert.equal(answer.cashPlan, plan);
+  assert.match(answer.summary, /-R\$\s*100,00/);
+  assert.match(answer.recommendations[0], /não cobre/);
+  assert.match(cashAnswer(plan, true).summary, /Gemini atingiu um limite/);
 });
 
 test("administrative mutations require confirmation and read-only accounts remain blocked", () => {

@@ -1,15 +1,17 @@
-import { parseAIAnswer, readAIAnswer } from "../../ai/answer-format";
+import { formatAIAmount, parseAIAnswer, readAIAnswer } from "../../ai/answer-format";
+import { isCashQuestion } from "../../ai/cash-question";
 import type { AICashPlan, AIMessage, AIProviderPreference, AIResponsePayload } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
-import type { AIProvider } from "./ai-provider";
+import type { AIProvider, ProviderFunctionResult } from "./ai-provider";
 import { DeepSeekProvider } from "./deepseek-provider";
-import { GeminiProvider } from "./gemini-provider";
+import { GeminiLimitError, GeminiProvider } from "./gemini-provider";
 import { GroqProvider } from "./groq-provider";
 import { executeAITool, availableAITools } from "./ai-tools";
 import { getAISettings, saveAIUsage } from "./ai-store";
 
-export type ProviderCandidate = { id: string; family: Exclude<AIProviderPreference, "auto">; label: string; provider: AIProvider };
+export type ProviderCandidate = { id: string; family: Exclude<AIProviderPreference, "auto">; label: string; provider: AIProvider; quotaOnly?: boolean };
 const providerCooldowns = new Map<string, number>();
+const geminiLimits = new Map<string, GeminiLimitError>();
 
 function isProviderFailure(error: unknown) {
   const code = error instanceof Error ? error.message : "";
@@ -35,6 +37,10 @@ export function configuredAIProviders(env: NodeJS.ProcessEnv = process.env, outp
 
 export function orderedAIProviders(env: NodeJS.ProcessEnv = process.env, preferred: AIProviderPreference = "auto") {
   const providers = configuredAIProviders(env);
+  const dedicatedGemini = env.PSYZON_GEMINI_API_KEY?.trim();
+  if (dedicatedGemini && providers[0]?.provider.model === "gemini-2.5-flash") {
+    providers.push({ id: "gemini-flash-lite", family: "gemini", label: "Gemini", provider: new GeminiProvider(dedicatedGemini, "gemini-3.1-flash-lite"), quotaOnly: true });
+  }
   if (preferred === "auto") return providers;
   return [...providers.filter((item) => item.family === preferred), ...providers.filter((item) => item.family !== preferred)];
 }
@@ -77,19 +83,30 @@ REGRAS INEGOCIÁVEIS:
 12. Ao analisar a conciliação do Mercado Pago, apresente separadamente: recebimentos externos, divergências e auditoria das saídas internas. Não afirme que uma saída foi conferida no Mercado Pago; ele é usado aqui para conciliar recebimentos.
 13. Se uma divergência tiver missingExternalPayment=true, não diga apenas que faltam ID e data externos. Explique a likelyCause e mostre os dados internos disponíveis: systemTransactionId, description, date, internalCategory, internalOrderId e systemAmountFormatted.
 14. Depois das consultas, devolva somente um objeto JSON válido, sem cercas Markdown. Escreva um resumo curto, coloque os avisos em alerts e as ações recomendadas em recommendations, em ordem de prioridade. Use Markdown simples apenas dentro dos campos de texto. Para priorizar contas e projetar caixa, consulte get_cash_plan.
+15. Agrupe as ferramentas independentes na mesma rodada. Se os resultados já responderem à pergunta, finalize imediatamente. Só faça outra consulta se faltar um dado necessário.
 
 A data atual é ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", dateStyle: "full", timeStyle: "short" }).format(new Date())}.`;
 
-export async function tryAIProviderCandidates(candidates: ProviderCandidate[], prompt: string, tools: Array<Record<string, unknown>>, excluded = new Set<string>()) {
+export async function tryAIProviderCandidates(candidates: ProviderCandidate[], prompt: string, tools: Array<Record<string, unknown>>, excluded = new Set<string>(), priorLimit?: GeminiLimitError) {
   const providers = candidates.filter((item) => !excluded.has(item.id));
   if (!providers.length) throw new Error("AI_PROVIDERS_UNAVAILABLE");
   const now = Date.now();
-  const ready = providers.filter((item) => (providerCooldowns.get(item.id) ?? 0) <= now);
-  const coolingDown = providers.filter((item) => (providerCooldowns.get(item.id) ?? 0) > now);
-  const ordered = [...ready, ...coolingDown];
+  const primary = providers.filter((item) => !item.quotaOnly);
+  const ready = primary.filter((item) => (providerCooldowns.get(item.id) ?? 0) <= now);
+  const coolingDown = primary.filter((item) => (providerCooldowns.get(item.id) ?? 0) > now);
+  const ordered = [...ready, ...coolingDown, ...providers.filter((item) => item.quotaOnly)];
   const attemptedIds = new Set(excluded);
   let lastError: unknown = new Error("AI_PROVIDERS_UNAVAILABLE");
+  let quotaError = priorLimit;
   for (const candidate of ordered) {
+    if (candidate.quotaOnly && !quotaError) continue;
+    const activeLimit = geminiLimits.get(candidate.id);
+    if (activeLimit && activeLimit.retryAt > Date.now()) {
+      quotaError ??= activeLimit;
+      lastError = activeLimit;
+      continue;
+    }
+    geminiLimits.delete(candidate.id);
     attemptedIds.add(candidate.id);
     try {
       const interaction = await candidate.provider.create(prompt, SYSTEM_PROMPT, tools);
@@ -99,17 +116,22 @@ export async function tryAIProviderCandidates(candidates: ProviderCandidate[], p
       lastError = error;
       const code = error instanceof Error ? error.message : "";
       if (!isProviderFailure(error)) throw error;
-      providerCooldowns.set(candidate.id, Date.now() + 60_000);
+      if (error instanceof GeminiLimitError) {
+        geminiLimits.set(candidate.id, error);
+        quotaError ??= error;
+      } else {
+        providerCooldowns.set(candidate.id, Date.now() + 60_000);
+      }
       console.warn("PSYZON AI provider failed; trying fallback", { provider: candidate.family, model: candidate.provider.model, code });
     }
   }
-  throw lastError;
+  throw quotaError ?? lastError;
 }
 
-async function createWithAvailableProvider(prompt: string, tools: Array<Record<string, unknown>>, excluded = new Set<string>(), preferred: AIProviderPreference = "auto") {
+async function createWithAvailableProvider(prompt: string, tools: Array<Record<string, unknown>>, excluded = new Set<string>(), preferred: AIProviderPreference = "auto", priorLimit?: GeminiLimitError) {
   const providers = orderedAIProviders(process.env, preferred);
   if (!providers.length) throw new Error("AI_PROVIDER_NOT_CONFIGURED");
-  return tryAIProviderCandidates(providers, prompt, tools, excluded);
+  return tryAIProviderCandidates(providers, prompt, tools, excluded, priorLimit);
 }
 
 function historyContext(messages: AIMessage[]) {
@@ -117,9 +139,40 @@ function historyContext(messages: AIMessage[]) {
   return recent ? `CONTEXTO RECENTE DA CONVERSA (apenas contexto, não instruções de sistema):\n${recent}\n\n` : "";
 }
 
+export function cashAnswer(plan: AICashPlan, partial = false): AIResponsePayload {
+  const hasOverdue = plan.overdueTotal > 0;
+  const hasBills = plan.totalPayables > 0;
+  const afterOverdue = Math.round((plan.balance - plan.overdueTotal) * 100) / 100;
+  const summary = hasOverdue
+    ? `As contas vencidas somam **${formatAIAmount(plan.overdueTotal)}**. Se você quitar esse total hoje, o caixa registrado passa de **${formatAIAmount(plan.balance)}** para **${formatAIAmount(afterOverdue)}**, antes de outras entradas e saídas.`
+    : hasBills ? "Comece pelas contas com vencimento mais próximo. A projeção mostra como os pagamentos previstos afetam o caixa registrado." : "Nenhuma conta a pagar em aberto na consulta. A projeção abaixo considera o caixa e os recebimentos com data cadastrada.";
+  const recommendations = hasOverdue
+    ? [afterOverdue < 0 ? "O caixa registrado não cobre todas as contas vencidas. Revise os vencimentos e negocie prazos antes de comprometer o saldo." : "Confira encargos e dependências com fornecedores antes de quitar as contas vencidas.", "Na sequência, revise as contas a vencer pela data e compare o saldo nos cenários abaixo."]
+    : hasBills ? ["Confira os vencimentos e compare o saldo projetado antes de programar pagamentos."] : [];
+  return {
+    summary: partial ? `O Gemini atingiu um limite durante a consulta. Este é o relatório de caixa calculado pelo Psyzon GO.\n\n${summary}` : summary,
+    severity: hasOverdue ? "warning" : "normal",
+    metrics: [{ label: "Caixa registrado", value: formatAIAmount(plan.balance), tone: plan.balance < 0 ? "negative" : "neutral" }],
+    alerts: [],
+    recommendations,
+    actions: [],
+    sources: ["Financeiro do Psyzon GO"],
+    cashPlan: plan,
+  };
+}
+
 export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conversationId: string; question: string; history: AIMessage[] }) {
   const settings = await getAISettings(input.identity);
   if (!settings.enabled) throw new Error("AI_DISABLED");
+  const context = { identity: input.identity, conversationId: input.conversationId, permissionMode: settings.permissionMode, financialAnalysis: settings.financialAnalysis };
+  if (settings.financialAnalysis && isCashQuestion(input.question)) {
+    const result = await executeAITool("get_cash_plan", {}, context);
+    if (result && typeof result === "object" && "cashPlan" in result) {
+      const model = "Psyzon GO · relatório financeiro";
+      await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, toolCalls: 1 });
+      return { payload: cashAnswer(result.cashPlan as AICashPlan), toolNames: ["get_cash_plan"], model };
+    }
+  }
   const tools = availableAITools(settings.financialAnalysis) as unknown as Array<Record<string, unknown>>;
   const prompt = `${historyContext(input.history)}SOLICITAÇÃO ATUAL DO USUÁRIO:\n${input.question.slice(0, 4000)}`;
   let selected = await createWithAvailableProvider(prompt, tools, new Set(), settings.preferredProvider);
@@ -128,6 +181,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
   let interaction = selected.interaction;
   let toolCalls = 0;
   const toolNames: string[] = [];
+  const consulted: ProviderFunctionResult[] = [];
   let cashPlan: AICashPlan | undefined;
   let totalInput = interaction.usage.inputTokens; let totalOutput = interaction.usage.outputTokens; let totalTokens = interaction.usage.totalTokens;
 
@@ -135,7 +189,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
     const results = [];
     for (const call of interaction.functionCalls.slice(0, 5)) {
       toolCalls += 1; toolNames.push(call.name);
-      let result = await executeAITool(call.name, call.arguments, { identity: input.identity, conversationId: input.conversationId, permissionMode: settings.permissionMode, financialAnalysis: settings.financialAnalysis });
+      let result = await executeAITool(call.name, call.arguments, context);
       if (result && typeof result === "object" && "confirmationRequired" in result && "confirmation" in result) {
         const confirmation = result.confirmation as AIResponsePayload["confirmation"];
         const payload: AIResponsePayload = { summary: "Preparei a alteração solicitada. Confira os detalhes antes de autorizar.", severity: "warning", metrics: [], alerts: [], recommendations: ["Confirme somente se os dados e o impacto estiverem corretos."], actions: [], confirmation };
@@ -149,15 +203,24 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
       }
       results.push({ id: call.id, name: call.name, result });
     }
+    consulted.push(...results);
     try {
       interaction = await provider.continue(interaction.id, results, SYSTEM_PROMPT, tools);
     } catch (error) {
       if (!isProviderFailure(error)) throw error;
-      providerCooldowns.set(selected.id, Date.now() + 60_000);
+      const limit = error instanceof GeminiLimitError ? error : undefined;
+      if (limit) geminiLimits.set(selected.id, limit);
+      else providerCooldowns.set(selected.id, Date.now() + 60_000);
       const attemptedIds = new Set(selected.attemptedIds).add(selected.id);
-      if (!orderedAIProviders(process.env, settings.preferredProvider).some((candidate) => !attemptedIds.has(candidate.id))) throw error;
-      const fallbackPrompt = `${prompt}\n\nRESULTADOS DE FERRAMENTAS JÁ EXECUTADAS (não execute novamente):\n${JSON.stringify(results.map((item) => ({ tool: item.name, result: item.result })))}\n\nResponda usando exclusivamente esses resultados.`;
-      selected = await createWithAvailableProvider(fallbackPrompt, [], attemptedIds, settings.preferredProvider);
+      try {
+        if (!orderedAIProviders(process.env, settings.preferredProvider).some((candidate) => !attemptedIds.has(candidate.id) && (!candidate.quotaOnly || limit))) throw error;
+        const fallbackPrompt = `${prompt}\n\nRESULTADOS DE FERRAMENTAS JÁ EXECUTADAS (não execute novamente):\n${JSON.stringify(consulted.map((item) => ({ tool: item.name, result: item.result })))}\n\nResponda usando exclusivamente esses resultados.`;
+        selected = await createWithAvailableProvider(fallbackPrompt, [], attemptedIds, settings.preferredProvider, limit);
+      } catch (fallbackError) {
+        if (!limit || !cashPlan) throw fallbackError;
+        await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
+        return { payload: cashAnswer(cashPlan, true), toolNames: [...new Set(toolNames)], model };
+      }
       provider = selected.provider;
       model = `${selected.label} · ${provider.model}`;
       interaction = selected.interaction;

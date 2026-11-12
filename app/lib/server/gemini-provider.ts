@@ -16,13 +16,27 @@ const responseSchema = {
   required: ["summary", "severity", "metrics", "alerts", "recommendations", "actions"],
 };
 
-function normalizeGeminiError(error: unknown) {
+export class GeminiLimitError extends Error {
+  readonly retryAt: number;
+
+  constructor(code: string, retrySeconds: number) {
+    super(code);
+    this.retryAt = Date.now() + Math.max(1000, Math.min(86_400_000, retrySeconds * 1000));
+  }
+}
+
+export function normalizeGeminiError(error: unknown) {
   if (error instanceof Error && error.message.startsWith("GEMINI_")) return error;
   const details = error && typeof error === "object" ? error as Record<string, unknown> : {};
   const status = Number(details.status ?? details.statusCode ?? details.code ?? 0);
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (status === 401 || status === 403 || message.includes("api key not valid")) return new Error("GEMINI_KEY_INVALID");
-  if (status === 429 || message.includes("quota")) return new Error("GEMINI_QUOTA_EXCEEDED");
+  if (status === 429 || message.includes("quota")) {
+    const retrySeconds = Number(message.match(/"retrydelay"\s*:\s*"([\d.]+)s"/)?.[1]) || 60;
+    if (/requestsperday|tokensper[a-z]*day/.test(message)) return new GeminiLimitError("GEMINI_DAILY_QUOTA", retrySeconds);
+    if (/requestsperminute|tokensper[a-z]*minute/.test(message)) return new GeminiLimitError("GEMINI_MINUTE_QUOTA", retrySeconds);
+    return new GeminiLimitError("GEMINI_QUOTA_EXCEEDED", retrySeconds);
+  }
   if (status === 404 || message.includes("model") && message.includes("not found")) return new Error("GEMINI_MODEL_NOT_FOUND");
   if (status === 400) return new Error("GEMINI_REQUEST_INVALID");
   if (status >= 500) return new Error("GEMINI_UNAVAILABLE");
@@ -37,7 +51,10 @@ export class GeminiProvider implements AIProvider {
 
   constructor(apiKey: string, model = "gemini-3.6-flash", private readonly outputSchema: Record<string, unknown> = responseSchema) {
     this.model = model;
-    this.client = new GoogleGenAI({ apiKey, httpOptions: { timeout: 45000 } });
+    this.client = new GoogleGenAI({
+      apiKey,
+      httpOptions: { timeout: 45000, retryOptions: { attempts: 2, httpStatusCodes: [408, 500, 502, 503, 504] } },
+    });
   }
 
   private async generate(systemInstruction: string, tools: Array<Record<string, unknown>>): Promise<ProviderInteraction> {

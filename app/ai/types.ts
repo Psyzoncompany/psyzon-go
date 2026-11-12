@@ -15,7 +15,7 @@ export type AIMetric = {
   label: string;
   value: string;
   trend?: string;
-  tone?: "positive" | "negative" | "neutral";
+  tone?: "positive" | "negative" | "neutral" | "info";
 };
 
 export type AIAlert = {
@@ -43,6 +43,24 @@ export type AIConfirmation = {
   expiresAt: number;
 };
 
+export type AICashPlan = {
+  asOf: string;
+  balance: number;
+  overdueTotal: number;
+  totalPayables: number;
+  payables: Array<{ id: string; description: string; dueDate: string | null; amount: number }>;
+  projections: Array<{
+    days: number;
+    through: string;
+    expenses: number;
+    receipts: number;
+    conservative: number;
+    likely: number;
+    optimistic: number;
+  }>;
+  assumptions: string[];
+};
+
 export type AIResponsePayload = {
   summary: string;
   severity: "normal" | "info" | "warning" | "critical";
@@ -52,6 +70,7 @@ export type AIResponsePayload = {
   actions: AIAction[];
   confidence?: "alta" | "média" | "baixa";
   sources?: string[];
+  cashPlan?: AICashPlan;
   confirmation?: AIConfirmation;
 };
 

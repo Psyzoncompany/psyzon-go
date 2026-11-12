@@ -1,4 +1,4 @@
-import type { AIPermissionMode } from "../../ai/types";
+import type { AICashPlan, AIPermissionMode } from "../../ai/types";
 import { synchronizedOrderQuantities } from "../../order-quantity-sync";
 import type { Order } from "../../order-model";
 import type { BusinessNote } from "../../notes-model";
@@ -235,22 +235,47 @@ const getCashPlan: ToolDefinition = {
     const payment = amount("payment"), extra = amount("extraReceipt"), delay = amount("delayedReceipt"), reserve = amount("reserve");
     const due = (bill: Bill) => bill.dueDate || bill.dueDay ? billDueDate(bill, monthKey()) : "";
     const summarize = (bill: Bill) => ({ id: bill.id, description: bill.description, category: bill.category, dueDate: due(bill) || null, amountFormatted: formatMoney(bill.amount), overdue: Boolean(due(bill) && due(bill) < date) });
+    const sorted = [...payable].sort((a, b) => (due(a) || "9999").localeCompare(due(b) || "9999"));
+    const priorityBills = sorted.slice(0, 25);
+    const limitations = [
+      "O caixa registrado considera as movimentações empresariais lançadas até a data da análise. O saldo bancário precisa ser conferido separadamente.",
+      "As projeções incluem contas em aberto com data cadastrada, inclusive as vencidas. Recebíveis de clientes sem data ficam fora da projeção.",
+      "Juros, multas e reserva mínima dependem dos dados informados. A data de entrega não confirma o pagamento.",
+    ];
+    if (!recorded.length) limitations.push("Ainda não há movimentações empresariais registradas para calcular um saldo de caixa.");
+    if (payment) limitations.push(`Saída adicional imediata simulada em todos os cenários: ${formatMoney(payment)}.`);
+    if (delay) limitations.push(`Até ${formatMoney(delay)} de recebimentos previstos foram descontados por possível atraso.`);
+    if (extra) limitations.push(`Entrada adicional de ${formatMoney(extra)} incluída no cenário otimista.`);
+    if (reserve) limitations.push(`A reserva de ${formatMoney(reserve)} é considerada na análise de disponibilidade e permanece no saldo projetado.`);
+    const projections: AICashPlan["projections"] = [7, 15, 30].map(days => {
+      const through = dayOffset(date, days);
+      const expenses = roundMoney(payable.filter(bill => due(bill) && due(bill) <= through).reduce((sum, bill) => sum + bill.amount, 0));
+      const receipts = roundMoney(receivable.filter(bill => due(bill) && due(bill) <= through).reduce((sum, bill) => sum + bill.amount, 0));
+      const conservative = roundMoney(balance - payment - expenses);
+      const likely = roundMoney(conservative + Math.max(0, receipts - delay));
+      return { days, through, expenses, receipts, conservative, likely, optimistic: roundMoney(likely + extra) };
+    });
+    const cashPlan: AICashPlan = {
+      asOf: date,
+      balance,
+      overdueTotal: roundMoney(sorted.filter(bill => due(bill) && due(bill) < date).reduce((sum, bill) => sum + bill.amount, 0)),
+      totalPayables: roundMoney(sorted.reduce((sum, bill) => sum + bill.amount, 0)),
+      payables: priorityBills.map(bill => ({ id: bill.id, description: bill.description, dueDate: due(bill) || null, amount: bill.amount })),
+      projections,
+      assumptions: limitations,
+    };
     return {
+      cashPlan,
       asOf: date, recordedBalanceFormatted: formatMoney(balance), knownBusinessMovements: recorded.length, afterImmediatePaymentFormatted: formatMoney(balance - payment),
-      payables: [...payable].sort((a,b) => (due(a) || "9999").localeCompare(due(b) || "9999")).slice(0,25).map(summarize),
+      payables: priorityBills.map(summarize),
       receivableBills: receivable.slice(0,25).map(summarize),
       customerReceivablesWithoutConfirmedDatesFormatted: formatMoney(debtors.reduce((sum, customer) => sum + customer.pending, 0)),
-      projections: [7,15,30].map(days => {
-        const end = dayOffset(date,days);
-        const out = payable.filter(bill => due(bill) && due(bill) <= end).reduce((sum,bill) => sum + bill.amount,0);
-        const expected = receivable.filter(bill => due(bill) && due(bill) <= end).reduce((sum,bill) => sum + bill.amount,0);
-        const conservative = balance - payment - out;
-        const likely = conservative + Math.max(0, expected - delay);
-        return { days, through: end, scheduledExpensesFormatted: formatMoney(out), expectedReceiptsFormatted: formatMoney(expected),
-          conservativeFormatted: formatMoney(conservative), likelyFormatted: formatMoney(likely), optimisticFormatted: formatMoney(likely + extra),
-          likelyAfterReserveFormatted: formatMoney(likely - reserve) };
-      }),
-      limitations: ["Saldo calculado sobre movimentações empresariais registradas; não confirma saldo bancário.", "Projeções incluem apenas contas em aberto deste ciclo com datas cadastradas. Saldos de clientes não possuem data confirmada de recebimento.", "Juros, multas e reserva mínima dependem de dados informados. A data de entrega não garante o pagamento."],
+      projections: projections.map(point => ({
+        days: point.days, through: point.through, scheduledExpensesFormatted: formatMoney(point.expenses), expectedReceiptsFormatted: formatMoney(point.receipts),
+        conservativeFormatted: formatMoney(point.conservative), likelyFormatted: formatMoney(point.likely), optimisticFormatted: formatMoney(point.optimistic),
+        likelyAfterReserveFormatted: formatMoney(point.likely - reserve),
+      })),
+      limitations,
     };
   },
 };

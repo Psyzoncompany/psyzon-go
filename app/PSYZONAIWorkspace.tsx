@@ -29,7 +29,9 @@ import {
   X,
 } from "lucide-react";
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import type { AIConversation, AIIntegrationStatus, AIMessage, AISettings } from "./ai/types";
+import { exportAIMessage, formatAIAmount, formatAIDate, readAIAnswer } from "./ai/answer-format";
+import "./ai-answer.css";
+import type { AICashPlan, AIConversation, AIIntegrationStatus, AIMessage, AISettings } from "./ai/types";
 
 type AIViewTarget = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "ai";
 
@@ -199,7 +201,15 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
     });
     return () => { cancelled = true; };
   }, [api]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => {
+    const end = endRef.current;
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+    if (!loading && messages.at(-1)?.role === "assistant") {
+      end?.previousElementSibling?.scrollIntoView({ behavior, block: "start" });
+    } else {
+      end?.scrollIntoView({ behavior, block: "end" });
+    }
+  }, [messages, loading]);
   useEffect(() => {
     if (!activeConversation || localConversation.current === activeConversation) return;
     let cancelled = false;
@@ -273,11 +283,11 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
   };
 
   const copyMessage = async (message: AIMessage) => {
-    await navigator.clipboard.writeText(message.content); setCopiedId(message.id); window.setTimeout(() => setCopiedId(""), 1500);
+    await navigator.clipboard.writeText(exportAIMessage(message)); setCopiedId(message.id); window.setTimeout(() => setCopiedId(""), 1500);
   };
 
   const exportConversation = () => {
-    const content = messages.map((message) => `${message.role === "user" ? "VOCÊ" : "PSYZON AI"}\n${message.content}`).join("\n\n---\n\n");
+    const content = messages.map((message) => `${message.role === "user" ? "VOCÊ" : "PSYZON AI"}\n${exportAIMessage(message)}`).join("\n\n---\n\n");
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" }); const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a"); anchor.href = url; anchor.download = `psyzon-ai-${new Date().toISOString().slice(0, 10)}.txt`; anchor.click(); URL.revokeObjectURL(url);
   };
@@ -345,6 +355,171 @@ function IntegrationCard({ icon: Icon, name, configured, detail, action }: { ico
 }
 
 function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, onCancel }: { message: AIMessage; copied: boolean; onCopy: () => void; onNavigate: (target: AIViewTarget) => void; onPrompt: (prompt: string) => void; onConfirm: (id: string) => void; onCancel: (id: string) => void }) {
-  const payload = message.payload;
-  return <article className="ai-message assistant"><div className="ai-message-avatar"><Sparkles size={16} /></div><div className="ai-answer"><div className="ai-answer-summary"><MarkdownText text={payload?.summary ?? message.content} /></div>{payload?.metrics?.length ? <div className="ai-response-metrics">{payload.metrics.map((metric) => <div key={metric.label}><small>{metric.label}</small><b className={metric.tone ?? "neutral"}>{metric.value}</b>{metric.trend && <span>{metric.trend}</span>}</div>)}</div> : null}{payload?.alerts?.length ? <div className="ai-response-alerts">{payload.alerts.map((alert, index) => <button key={`${alert.title}-${index}`} className={alert.severity} onClick={() => alert.entityType && onNavigate(alert.entityType === "order" ? "producao" : alert.entityType === "client" ? "clientes" : "financeiro")}><span>{alert.severity === "critical" || alert.severity === "warning" ? <AlertTriangle size={15} /> : <BarChart3 size={15} />}</span><span><b>{alert.title}</b><small>{alert.detail}</small></span>{alert.entityType && <ArrowRight size={14} />}</button>)}</div> : null}{payload?.recommendations?.length ? <div className="ai-recommendations"><header><BrainCircuit size={15} /><b>Recomendações</b></header>{payload.recommendations.map((item, index) => <div key={item}><span>{index + 1}</span><p>{item}</p></div>)}</div> : null}{payload?.confirmation && <div className="ai-confirmation"><header><ShieldCheck size={17} /><div><b>Confirmação necessária</b><small>Alteração financeira importante</small></div></header><dl><div><dt>Ação</dt><dd>{payload.confirmation.action}</dd></div>{payload.confirmation.currentValue && <div><dt>Valor atual</dt><dd>{payload.confirmation.currentValue}</dd></div>}{payload.confirmation.newValue && <div><dt>Novo valor</dt><dd>{payload.confirmation.newValue}</dd></div>}<div><dt>Motivo</dt><dd>{payload.confirmation.reason}</dd></div><div><dt>Impacto</dt><dd>{payload.confirmation.impact}</dd></div></dl><footer><button onClick={() => onCancel(payload.confirmation!.id)}>Cancelar</button><button onClick={() => onConfirm(payload.confirmation!.id)}><Check size={15} /> Confirmar alteração</button></footer></div>}{payload?.actions?.length ? <div className="ai-response-actions">{payload.actions.map((action) => <button key={`${action.label}-${action.target ?? action.prompt}`} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}</div> : null}<footer className="ai-answer-footer">{message.toolNames?.length ? <span><ShieldCheck size={12} /> {message.toolNames.length} fonte(s) consultada(s)</span> : <span>PSYZON AI</span>}{payload?.confidence && <span>Confiança {payload.confidence}</span>}<button onClick={onCopy}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copiado" : "Copiar"}</button></footer></div></article>;
+  const { summary, metrics, alerts, recommendations, actions, cashPlan, confirmation, sources, confidence } = readAIAnswer(message);
+  const orderedAlerts = [...alerts].sort((a, b) => alertPriority[a.severity] - alertPriority[b.severity]);
+  const canRefreshPlan = !cashPlan && message.toolNames?.includes("get_cash_plan");
+  const structured = metrics.length > 0 || alerts.length > 0 || recommendations.length > 0 || Boolean(cashPlan);
+
+  return (
+    <article className="ai-message assistant">
+      <div className="ai-message-avatar"><Sparkles size={16} /></div>
+      <div className="ai-answer">
+        <div className="ai-answer-summary">
+          {structured && <h3 className="ai-answer-heading">Resumo</h3>}
+          <MarkdownText text={summary} />
+        </div>
+
+        {metrics.length > 0 && <section className="ai-answer-section">
+          <h3 className="ai-answer-heading">Indicadores</h3>
+          <dl className="ai-response-metrics">
+            {metrics.map((metric, index) => <div key={index}>
+              <dt>{metric.label}</dt>
+              <dd className={metric.tone ?? "neutral"}>{metric.value}</dd>
+              {metric.trend && <dd className="ai-metric-trend">{metric.trend}</dd>}
+            </div>)}
+          </dl>
+        </section>}
+
+        {orderedAlerts.length > 0 && <section className="ai-answer-section">
+          <h3 className="ai-answer-heading">Atenção</h3>
+          <ul className="ai-alert-list">
+            {orderedAlerts.map((alert, index) => <li key={index} className={alert.severity}>
+              <span className="ai-alert-icon" aria-hidden="true">{alert.severity === "critical" || alert.severity === "warning" ? <AlertTriangle size={16} /> : <BarChart3 size={16} />}</span>
+              <div><b>{formatInlineMarkdown(alert.title)}</b><p>{formatInlineMarkdown(alert.detail)}</p></div>
+              {alert.entityType && <button type="button" aria-label={`Abrir módulo do alerta ${alert.title}`} onClick={() => onNavigate(alert.entityType === "order" ? "producao" : alert.entityType === "client" ? "clientes" : "financeiro")}><ArrowRight size={16} /></button>}
+            </li>)}
+          </ul>
+        </section>}
+
+        {cashPlan && <AICashReport plan={cashPlan} onOpenFinance={() => onNavigate("financeiro")} />}
+
+        {recommendations.length > 0 && <section className="ai-answer-section">
+          <h3 className="ai-answer-heading">Próximos passos</h3>
+          <ol className="ai-answer-steps">
+            {recommendations.map((item, index) => <li key={index}><MarkdownText text={item} /></li>)}
+          </ol>
+        </section>}
+
+        {confirmation && <div className="ai-confirmation">
+          <header><ShieldCheck size={17} /><div><b>Confirmação necessária</b><small>Alteração financeira importante</small></div></header>
+          <dl>
+            <div><dt>Ação</dt><dd>{confirmation.action}</dd></div>
+            {confirmation.currentValue && <div><dt>Valor atual</dt><dd>{confirmation.currentValue}</dd></div>}
+            {confirmation.newValue && <div><dt>Novo valor</dt><dd>{confirmation.newValue}</dd></div>}
+            <div><dt>Motivo</dt><dd>{confirmation.reason}</dd></div>
+            <div><dt>Impacto</dt><dd>{confirmation.impact}</dd></div>
+          </dl>
+          <footer>
+            <button onClick={() => onCancel(confirmation.id)}>Cancelar</button>
+            <button onClick={() => onConfirm(confirmation.id)}><Check size={15} /> Confirmar alteração</button>
+          </footer>
+        </div>}
+
+        {(actions.length > 0 || canRefreshPlan) && <div className="ai-response-actions">
+          {canRefreshPlan && <button onClick={() => onPrompt(quickPrompts[1].prompt)}><RefreshCw size={14} /> Atualizar projeção de caixa</button>}
+          {actions.map((action, index) => <button key={index} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}
+        </div>}
+
+        <footer className="ai-answer-footer">
+          <span><ShieldCheck size={12} />{sources?.length ? sources.join(" · ") : message.toolNames?.length ? `${message.toolNames.length} consulta(s) ao sistema` : "PSYZON AI"}</span>
+          {confidence && <span>Confiança {confidence}</span>}
+          <button onClick={onCopy}>{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? "Copiado" : "Copiar"}</button>
+        </footer>
+      </div>
+    </article>
+  );
+}
+
+const alertPriority = { critical: 0, warning: 1, info: 2, success: 3 };
+
+const cashScenarios = [
+  { key: "conservative", label: "Conservador", description: "Considera os pagamentos previstos no período." },
+  { key: "likely", label: "Provável", description: "Considera os pagamentos e os recebimentos com data prevista." },
+  { key: "optimistic", label: "Otimista", description: "Inclui uma entrada adicional quando informada na simulação." },
+] as const;
+
+function AICashReport({ plan, onOpenFinance }: { plan: AICashPlan; onOpenFinance: () => void }) {
+  const [scenario, setScenario] = useState<(typeof cashScenarios)[number]["key"]>("likely");
+  const [expanded, setExpanded] = useState(false);
+  const active = cashScenarios.find((item) => item.key === scenario)!;
+  const allBalances = [plan.balance, ...plan.projections.flatMap((point) => cashScenarios.map(({ key }) => point[key]))];
+  const min = Math.min(0, ...allBalances);
+  const max = Math.max(0, ...allBalances);
+  const position = (amount: number) => 100 * (amount - min) / (max - min || 1);
+  const zero = position(0);
+  const points = [
+    { label: "Caixa registrado", date: plan.asOf, balance: plan.balance },
+    ...plan.projections.map((point) => ({ label: `Em ${point.days} dias`, date: point.through, balance: point[scenario] })),
+  ];
+  const priorityBills = expanded ? plan.payables : plan.payables.slice(0, 5);
+
+  return <>
+    <section className="ai-answer-section ai-cash-card">
+      <h3 className="ai-answer-heading">Contas por prioridade</h3>
+      <p className="ai-cash-caption">Por vencimento em {formatAIDate(plan.asOf)}</p>
+      <dl className="ai-cash-totals">
+        <div><dt>Total em aberto</dt><dd>{formatAIAmount(plan.totalPayables)}</dd></div>
+        <div><dt>Vencidas</dt><dd className={plan.overdueTotal > 0 ? "negative" : undefined}>{formatAIAmount(plan.overdueTotal)}</dd></div>
+      </dl>
+      {priorityBills.length ? <ol className="ai-cash-priorities">
+        {priorityBills.map((bill) => {
+          const overdue = bill.dueDate && bill.dueDate < plan.asOf;
+          const dueToday = bill.dueDate === plan.asOf;
+          return <li key={bill.id}>
+            <div className="ai-cash-bill">
+              <div>
+                <b>{bill.description}</b>
+                <small className={overdue ? "negative" : dueToday ? "due-today" : undefined}>
+                  {bill.dueDate ? `${overdue ? "Vencida · " : dueToday ? "Vence hoje · " : ""}${formatAIDate(bill.dueDate)}` : "Sem vencimento"}
+                </small>
+              </div>
+              <strong>{formatAIAmount(bill.amount)}</strong>
+            </div>
+          </li>;
+        })}
+      </ol> : <p className="ai-cash-caption">Nenhuma conta em aberto.</p>}
+      <div className="ai-response-actions">
+        {plan.payables.length > 5 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Mostrar 5 primeiras" : "Mostrar mais contas"}</button>}
+        <button type="button" onClick={onOpenFinance}>Abrir Financeiro <ArrowRight size={14} /></button>
+      </div>
+    </section>
+
+    <section className="ai-answer-section ai-cash-card">
+      <h3 className="ai-answer-heading">Projeção de caixa</h3>
+      <div className="ai-cash-scenarios" role="group" aria-label="Cenários da projeção">
+        {cashScenarios.map(({ key, label }) => <button key={key} type="button" aria-pressed={scenario === key} onClick={() => setScenario(key)}>{label}</button>)}
+      </div>
+      <p className="ai-cash-caption">{active.description}</p>
+      <ul className="ai-cash-chart" aria-label={`Saldos projetados no cenário ${active.label.toLowerCase()}`} aria-live="polite">
+        {points.map(({ label, date, balance }, index) => {
+          const point = plan.projections[index - 1];
+          const delta = Math.round((balance - plan.balance) * 100) / 100;
+          return <li key={label}>
+            <div className="ai-cash-point-label"><span><b>{label}</b><small>{formatAIDate(date)}</small></span><strong className={balance < 0 ? "negative" : undefined}>{formatAIAmount(balance)}</strong></div>
+            <div className="ai-cash-track" aria-hidden="true">
+              <div className="ai-cash-zero" style={{ left: `${zero}%` }} />
+              <div className="ai-cash-bar" data-tone={balance < 0 ? "negative" : point ? "projected" : "recorded"} style={{ left: `${Math.min(position(balance), zero)}%`, width: `${Math.abs(position(balance) - zero)}%` }} />
+            </div>
+            {point && <small className="ai-cash-change">
+              {delta === 0 ? "Sem variação" : `${delta < 0 ? "Queda" : "Aumento"} de ${formatAIAmount(Math.abs(delta))}`} em relação ao caixa registrado
+            </small>}
+          </li>;
+        })}
+      </ul>
+      <details className="ai-cash-breakdown">
+        <summary>Ver entradas e saídas previstas</summary>
+        <dl>
+          {plan.projections.map(({ days, expenses, receipts }) => <div key={days}>
+            <dt>{days} dias</dt>
+            <dd>Saídas {formatAIAmount(expenses)} · Entradas {formatAIAmount(receipts)}</dd>
+          </div>)}
+        </dl>
+      </details>
+    </section>
+
+    <section className="ai-answer-section ai-cash-premises">
+      <h3 className="ai-answer-heading">Premissas</h3>
+      <ul>{plan.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>
+    </section>
+  </>;
 }

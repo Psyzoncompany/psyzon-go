@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { exportAIMessage, parseAIAnswer, readAIAnswer } from "../app/ai/answer-format.ts";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
 import { DeepSeekProvider } from "../app/lib/server/deepseek-provider.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
@@ -8,6 +9,34 @@ import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
 import { mercadoPagoImportPreview } from "../app/lib/server/mercado-pago.ts";
 import { buildMercadoPagoReconciliation, type ProviderPayment, type SystemTransaction } from "../app/lib/server/reconciliation-core.ts";
+
+test("AI reads Gemini's fenced JSON and recovers saved answers without trusting model actions", () => {
+  const json = JSON.stringify({
+    summary: "Saldo registrado em **R$ 1.000,00**.",
+    metrics: [{ label: "Caixa", value: "R$ 1.000,00", tone: "info" }],
+    alerts: [{ title: "Contas vencidas", detail: "Duas contas.", severity: "critical" }],
+    recommendations: ["Regularize as contas vencidas."],
+    confirmation: { id: "model-generated" },
+    cashPlan: { balance: 999999 },
+    actions: [{ type: "navigate", label: "Financeiro", target: "financeiro" }, { type: "navigate", label: "Inválida", target: "external" }],
+  });
+  const text = ["```json", json, "```"].join("\n");
+  const answer = parseAIAnswer(text);
+  assert.deepEqual(answer, parseAIAnswer(json));
+  assert.equal(answer.metrics[0].tone, "info");
+  assert.equal(answer.actions.length, 1);
+  assert.equal(answer.confirmation, undefined);
+  assert.equal(answer.cashPlan, undefined);
+  const legacy = { id: "answer", role: "assistant" as const, content: text, createdAt: 1, payload: { ...parseAIAnswer(""), summary: text } };
+  assert.equal(readAIAnswer(legacy).alerts[0].title, "Contas vencidas");
+  assert.match(exportAIMessage(legacy), /Indicadores[\s\S]+Próximos passos/);
+  assert.doesNotMatch(exportAIMessage(legacy), /```json|"summary"/);
+});
+
+test("AI hides a truncated response envelope and retains plain Markdown responses", () => {
+  assert.match(parseAIAnswer('```json\n{"summary": "Incomplete').summary, /Envie a pergunta novamente/);
+  assert.equal(parseAIAnswer("## Contas\n- Vence amanhã").summary, "## Contas\n- Vence amanhã");
+});
 
 const local = (overrides: Partial<SystemTransaction> = {}): SystemTransaction => ({
   id: "local-1",

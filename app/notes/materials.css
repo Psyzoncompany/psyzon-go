@@ -80,3 +80,5 @@
 .materials-shopping li { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 6px 0; }
 .materials-shopping li button { width: auto; height: auto; min-height: 40px; text-align: left; justify-content: flex-start; overflow-wrap: anywhere; }
 .materials-shopping li > span { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.materials-purchase-deadline { display: inline-flex; margin: 0 16px 12px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: var(--blue-soft); color: var(--blue); }
+.materials-purchase-deadline[data-overdue="true"] { background: var(--red-soft); color: var(--red); }

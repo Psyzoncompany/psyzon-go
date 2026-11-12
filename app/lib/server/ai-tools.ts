@@ -3,12 +3,15 @@ import { synchronizedOrderQuantities } from "../../order-quantity-sync";
 import type { Order } from "../../order-model";
 import type { BusinessNote } from "../../notes-model";
 import { billDueDate, customerBalances, customerNameKey, financialSummary, roundMoney, type Bill, type Customer } from "../../finance-model";
+import { operationCosts } from "../../operations-data";
+import { orderResult } from "../../order-result";
+import type { ClosingTransaction } from "../../monthly-closing";
 import { openFinanceReport } from "./ai-operations";
 import { materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOrders } from "../../notes/materials-model";
 import { notePhotoOrderId } from "../../order-photo-sync";
 import { orderStatuses, normalizeOrderStatus } from "../../order-model";
 import { restockTasks, restockBills, restockPrefix } from "../../notes/restock-model";
-import { readSewing, sewingBalances, sewingBills, sewingEntriesForPeriod, sewingEntryTotals, sewingNoteId, sewingOrderBalances } from "../../sewing-model";
+import { readSewing, sewingBalances, sewingBills, sewingEntriesForPeriod, sewingEntryTotals, sewingNoteId, sewingOrderBalances, sewingInCustody } from "../../sewing-model";
 import { millis, readDocument, toDraft, type NoteMaterial } from "../../notes-model";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
@@ -149,7 +152,7 @@ const getOrders: ToolDefinition = {
       if (query && !`${item.id} ${text(item.customer)} ${text(item.product)}`.toLocaleLowerCase("pt-BR").includes(query)) return false;
       return true;
     }).sort((a, b) => text(a.dueDate).localeCompare(text(b.dueDate))).slice(0, limit);
-    return { count: orders.length, orders: orders.map((item) => ({ id: item.id, customer: text(item.customer), product: text(item.product), quantity: number(item.quantity), total: number(item.total), paid: number(item.paid), pending: Math.max(0, number(item.total) - number(item.paid)), dueDate: text(item.dueDate), status: text(item.status), overdue: isOverdue(item) })) };
+    return { count: orders.length, orders: orders.map((item) => ({ id: item.id, customer: text(item.customer), product: text(item.product), quantity: number(item.quantity), total: number(item.total), paid: number(item.paid), pending: Math.max(0, number(item.total) - number(item.paid)), paymentDueDate: text(item.paymentDueDate) || null, lastChargedAt: text(item.lastChargedAt) || null, dueDate: text(item.dueDate), status: text(item.status), overdue: isOverdue(item) })) };
   },
 };
 
@@ -252,6 +255,8 @@ const getSewingSummary: ToolDefinition = {
           costFormatted: formatMoney(row.total),
           printCreditFormatted: formatMoney(row.printCredit),
           paidFormatted: formatMoney(row.paid),
+          creditUsedFormatted: formatMoney(row.offsets),
+          creditUsedInPeriodFormatted: formatMoney(totals.offsets),
           payableFormatted: formatMoney(Math.max(0, row.balance)),
           overpaymentFormatted: formatMoney(Math.max(0, -row.balance)),
           paidInPeriodFormatted: formatMoney(totals.paid),
@@ -262,6 +267,10 @@ const getSewingSummary: ToolDefinition = {
           })),
           recentEntries: entries.slice(0, 8)
             .map(item => ({ kind: item.kind, reference: item.name || null, date: item.date, amountFormatted: formatMoney(item.amount) })),
+          pieces: [...new Set((ledger.movements ?? []).filter(item => item.person === row.person).map(item => item.orderId))].map(id => ({
+            customer: orders.find(order => order.id === id)?.customer ?? "Pedido removido",
+            ...sewingInCustody(ledger.movements ?? [], id, row.person),
+          })),
         };
       }),
     };
@@ -285,13 +294,18 @@ const getMaterials: ToolDefinition = {
         count: lines.length,
         kg: totals.kg,
         sets: totals.sets,
-        ...(financialAnalysis ? { costFormatted: formatMoney(totals.cost) } : {}),
-        lines: lines.slice(0, 20).map(({ price: _price, cost, ...line }) => ({ ...line, ...(financialAnalysis ? { costFormatted: formatMoney(cost) } : {}) })),
+        ...(financialAnalysis ? { plannedCostFormatted: formatMoney(totals.cost) } : {}),
+        lines: lines.slice(0, 20).map(({ price: _price, cost, ...line }) => ({ ...line, ...(financialAnalysis ? { plannedCostFormatted: formatMoney(cost) } : {}) })),
       };
     };
     return {
       pendingPurchase: entries(false),
       purchased: entries(true),
+      purchaseDeadlines: splitMaterialOrders(orders, false).filter(order => matchesQuery(`${order.title} ${order.client}`, query)).map(order => ({ title: order.title, client: order.client, purchaseDueDate: order.purchaseDueDate ?? null })),
+      ...(financialAnalysis ? {
+        reviewedPurchaseCostFormatted: formatMoney(splitMaterialOrders(orders, true).flatMap(order => order.materials).reduce((sum, item) => sum + (item.actualCost === undefined ? 0 : item.actualCost + (item.purchaseFreight ?? 0)), 0)),
+        unreviewedPurchases: splitMaterialOrders(orders, true).flatMap(order => order.materials).filter(item => item.actualCost === undefined).length,
+      } : {}),
       additionalFabric: orders.filter(order => order.extraFabricKg && matchesQuery(`${order.title} ${order.client}`, query))
         .slice(0, 12).map(({ title, client, extraFabricKg }) => ({ title, client, extraFabricKg })),
       restock: restockTasks(notes).filter(item => matchesQuery(item.title, query)).slice(0, 15)
@@ -394,32 +408,27 @@ const getProfitAnalysis: ToolDefinition = {
 };
 
 const getOrderCostEstimate: ToolDefinition = {
-  declaration: { type: "function", name: "get_order_cost_estimate", description: "Compara preço, saldo e custo parcial planejado por pedido. Mostra a margem estimada quando há material vinculado. Não presume custos de acabamento, frete, tributos ou estoque disponível.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } } } },
+  declaration: { type: "function", name: "get_order_cost_estimate", description: "Compara preço, saldo, custos reais conferidos e custos pendentes por pedido. Mostra a margem estimada quando há material vinculado. Não presume custos de acabamento, frete, tributos ou estoque disponível.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } } } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
     const data = await getBusinessData(identity);
     const orders = data.orders as unknown as Order[];
     const notes = data.notes as unknown as BusinessNote[];
-    const ledger = readSewing(notes);
-    const sewingCosts = new Map(ledger.people.flatMap(person => sewingOrderBalances(orders, ledger, person).map(row => [row.order.id, row.cost] as const)));
-    const materialCosts = new Map<string, number>();
-    for (const note of notes) {
-      const doc = readDocument(note.content);
-      if (doc.status === "trash" || !doc.orderId || !note.materials?.length) continue;
-      materialCosts.set(doc.orderId, (materialCosts.get(doc.orderId) ?? 0) + note.materials.reduce((sum, item) => sum + number(item.totalCost), 0));
-    }
+    const costs = operationCosts(orders, notes, data.customers as unknown as Customer[], data.transactions as unknown as ClosingTransaction[]);
     const query = text(args.query).toLocaleLowerCase("pt-BR");
     const limit = Math.max(1, Math.min(20, Math.floor(number(args.limit, 10))));
     return {
       items: orders.filter(order => order.status !== "Orçamento" && `${order.id} ${order.customer} ${order.product}`.toLocaleLowerCase("pt-BR").includes(query))
         .sort((a,b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, limit).map(order => {
-          const material = materialCosts.get(order.id);
-          const sewing = sewingCosts.get(order.id);
-          const partial = roundMoney((material ?? 0) + (sewing ?? 0));
+          const result = orderResult(order, costs.costs.get(order.id), costs.sewing.get(order.id));
+          const material = result.material, sewing = result.sewing, partial = result.total;
           return {
             id: order.id, customer: order.customer, product: order.product, pieces: order.quantity, status: order.status, deadline: order.dueDate,
             saleFormatted: formatMoney(order.total), receivedFormatted: formatMoney(order.paid), remainingFormatted: formatMoney(Math.max(0, order.total - order.paid)),
-            materialPlanFormatted: material === undefined ? null : formatMoney(material), sewingFormatted: sewing === undefined ? null : formatMoney(sewing),
+            materialActualOrRegisteredFormatted: material === undefined ? null : formatMoney(material),
+            missingCosts: result.missing, costsConfirmed: result.confirmed,
+            dtfCostFormatted: result.dtf === undefined ? null : formatMoney(result.dtf),
+            otherCostsFormatted: formatMoney(result.other), sewingFormatted: sewing === undefined ? null : formatMoney(sewing),
             partialCostPerPieceFormatted: material === undefined || order.quantity <= 0 ? null : formatMoney(partial / order.quantity),
             grossPartialMargin: material !== undefined && order.total > 0 ? roundMoney((order.total - partial) / order.total * 100) : null,
           };

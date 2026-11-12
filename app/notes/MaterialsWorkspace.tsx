@@ -8,14 +8,17 @@ import { currency, decimal, type NoteMaterial } from "../notes-model";
 import MaterialEntryDialog from "./MaterialEntryDialog";
 import type { MaterialTarget, MaterialProductionOrder, MaterialCustomer, MaterialSaveInput } from "./material-binding";
 import { Plus, Link2 } from "lucide-react";
-import { customerNameKey } from "../finance-model";
+import { customerNameKey, localDateValue } from "../finance-model";
 import NoteDialog from "./NoteDialog";
 import PdfDownloadButton from "../PdfDownloadButton";
 import { fabricShoppingList, groupMaterialLines, materialLines, materialQuantity, materialsCsv, materialsText, materialTotals, splitMaterialOrders, type MaterialLine, type MaterialOrder } from "./materials-model";
 import "./materials.css";
+import PurchaseCostReview, { type PurchaseCostInput, type LinkedExpense } from "./PurchaseCostReview";
 
 type Props = {
   uid: string;
+  expenses: LinkedExpense[];
+  reviewPurchase: (input: PurchaseCostInput) => Promise<void>;
   targets: MaterialTarget[];
   productionOrders: MaterialProductionOrder[];
   customers: MaterialCustomer[];
@@ -26,12 +29,13 @@ type Props = {
   complete: (id: string, materialIds: string[], completed: boolean) => Promise<void>;
 };
 
-export default function MaterialsWorkspace({ uid, targets, productionOrders, customers, saveMaterial, orders, back, openNote, complete }: Props) {
+export default function MaterialsWorkspace({ uid, targets, productionOrders, customers, saveMaterial, orders, back, openNote, complete, expenses, reviewPurchase }: Props) {
   const [entry,setEntry] = useState<{ id?: string; bindingOnly?: boolean; material?: NoteMaterial } | null>(null);
   const [completed, setCompleted] = useState(false);
   const [query, setQuery] = useState("");
   const [supplier, setSupplier] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
+  const [review, setReview] = useState<{ order: MaterialOrder; material: NoteMaterial }>();
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
@@ -44,6 +48,8 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
   const filtered = current.filter(order => (!selectedSupplier || order.materials.some(item => item.supplier === selectedSupplier)) && (!search || customerNameKey([order.title, order.client, ...order.materials.flatMap(item => [item.supplier, item.fabricType, item.color, item.collarColor ?? ""])].join(" ")).includes(search))).map(order => ({ ...order, materials: selectedSupplier ? order.materials.filter(material => material.supplier === selectedSupplier) : order.materials }));
   const allLines = filtered.flatMap(materialLines);
   const totals = materialTotals(filtered.flatMap(materialLines));
+  const actualTotal = (items: NoteMaterial[]) => items.reduce((sum, item) => sum + (item.actualCost === undefined ? 0 : item.actualCost + (item.purchaseFreight ?? 0)), 0);
+  const unreviewed = filtered.flatMap(order => order.materials).filter(item => item.actualCost === undefined).length;
   const shopping = shoppingOpen ? fabricShoppingList(orders, productionOrders) : [];
 
   function show(next: boolean) {
@@ -73,7 +79,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">
       <article><small>Pedidos na lista</small><strong><CountUp value={filtered.length} /></strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
       <article><small>Quantidade total</small><strong><CountUp value={totals.kg} format={decimal} /> kg</strong><span>{totals.sets} conjuntos de gola e punho</span></article>
-      <article><small>Valor estimado</small><strong><CountUp value={totals.cost} format={currency} /></strong><span>Materiais dos pedidos exibidos</span></article>
+      <article><small>{completed ? "Custo real conferido" : "Valor estimado"}</small><strong><CountUp value={completed ? actualTotal(filtered.flatMap(order => order.materials)) : totals.cost} format={currency} /></strong><span>{completed && unreviewed ? `${unreviewed} compra(s) a conferir` : "Materiais dos pedidos exibidos"}</span></article>
     </div>
     <div className="materials-toolbar">
       <div className="materials-tabs" aria-label="Situação da compra">
@@ -88,16 +94,19 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
       {filtered.map(order => {
         const lines = materialLines(order);
         return <article className="materials-order" key={order.id}>
-          <header><div><h2>{order.title}</h2>{order.client && <p>{order.client}</p>}</div><strong>{currency(materialTotals(lines).cost)}</strong><button className="materials-note-link" type="button" aria-label={`Abrir anotação ${order.title}`} onClick={() => openNote(order.id)}><ArrowUpRight size={16} /></button></header>
-          <MaterialTable lines={lines} prices />
+          <header><div><h2>{order.title}</h2>{order.client && <p>{order.client}</p>}</div><strong>{completed ? order.materials.some(item => item.actualCost === undefined) ? "Custo a conferir" : currency(actualTotal(order.materials)) : currency(materialTotals(lines).cost)}</strong><button className="materials-note-link" type="button" aria-label={`Abrir anotação ${order.title}`} onClick={() => openNote(order.id)}><ArrowUpRight size={16} /></button></header>
+          {!completed && order.purchaseDueDate && <p className="materials-purchase-deadline" data-overdue={order.purchaseDueDate < localDateValue()}>Comprar até {order.purchaseDueDate.split("-").reverse().join("/")}</p>}
+          <MaterialTable lines={lines} prices={!completed} />
+          {completed && <div className="materials-order-actions">{order.materials.map(material => <button className="secondary" key={material.id} onClick={() => setReview({ order, material })}>{material.actualCost === undefined ? "Conferir custo" : "Editar custo real"} · {material.fabricType} · {material.color}{material.actualCost === undefined ? "" : " · " + currency(material.actualCost + (material.purchaseFreight ?? 0))}</button>)}</div>}
           {completed && (order.extraFabricKg ?? 0) > 0 && <p className="materials-extra-forecast">Previsão adicional de malha · {decimal(order.extraFabricKg ?? 0)} kg</p>}
           <footer><div className="materials-order-actions"><button type="button" className="secondary" onClick={() => setEntry({id:order.id})}><Plus size={14} /> Adicionar material</button><button type="button" className="secondary" onClick={() => setEntry({id:order.id,bindingOnly:true})}><Link2 size={14} /> Vincular pedido / cliente</button><label><input type="checkbox" checked={completed} disabled={!!busy} onChange={() => void change(order)} aria-label={`${completed ? "Reabrir" : "Concluir"} pedido ${order.title}`} />{busy === order.id ? "Salvando…" : completed ? "Reabrir pedido" : "Concluir pedido"}</label></div>{!completed && <div className="materials-item-edit">{order.materials.map(material => <button key={material.id} onClick={() => setEntry({id:order.id,material})}>Editar {material.fabricType} · {material.color}</button>)}</div>}</footer>
         </article>;
       })}
       {!filtered.length && <div className="materials-empty"><PackageCheck size={29} /><h2>{current.length ? "Nenhum pedido encontrado" : completed ? "Nenhum pedido concluído" : "Nenhum pedido pendente"}</h2><p>{current.length ? "Experimente outra busca ou fornecedor." : completed ? "Os pedidos marcados com check aparecem aqui." : "Use Adicionar materiais para começar o planejamento de compras."}</p></div>}
     </div>
+    {review && <PurchaseCostReview noteId={review.order.id} orderId={review.order.productionOrderId} material={review.material} expenses={expenses} save={reviewPurchase} close={() => setReview(undefined)} />}
     {entry && <MaterialEntryDialog uid={uid} targets={targets} orders={productionOrders} customers={customers} initialId={entry.id} material={entry.material} bindingOnly={entry.bindingOnly} save={saveMaterial} close={() => setEntry(null)} />}
-    {exportOpen && <MaterialsExport lines={allLines} title={completed ? "Materiais concluídos" : "Materiais pendentes"} close={() => setExportOpen(false)} />}
+    {exportOpen && <MaterialsExport lines={allLines} title={completed ? "Planejamento dos materiais concluídos" : "Materiais pendentes"} close={() => setExportOpen(false)} />}
     {shoppingOpen && <NoteDialog title="Compras por fornecedor" close={() => setShoppingOpen(false)} wide>
       <div className="materials-shopping">
         {shopping.length ? <>

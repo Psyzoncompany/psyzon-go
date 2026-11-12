@@ -17,6 +17,8 @@ import { CountUp } from "./MotionValue";
 import "./sewing.css";
 import NoteDialog from "./notes/NoteDialog";
 import PdfDownloadButton from "./PdfDownloadButton";
+import SewingOperations from "./SewingOperations";
+import type { SewingMovement } from "./sewing-model";
 import type { PdfReport } from "./pdf-report";
 
 const months = Array.from({ length: 12 }, (_, index) => ({
@@ -29,6 +31,7 @@ export type SewingChange =
   | { type: "person-remove"; from: string; name: string }
   | { type: "assign"; orderId: string; person: string; rate: number }
   | { type: "entry"; entry: SewingEntry }
+  | { type: "movement"; movement: SewingMovement }
   | { type: "remove"; id: string }
   | { type: "exclude-order"; orderId: string; excluded: boolean }
   | { type: "hide-order"; orderId: string }
@@ -83,6 +86,7 @@ export default function SewingWorkspace({
     ["Costura", current.total],
     ["Crédito de estampagens", current.printCredit],
     ["Pago", current.paid],
+    ["Crédito utilizado", current.offsets],
     [current.balance < 0 ? "Pagamento a maior" : "A pagar", Math.abs(current.balance)],
   ] as const;
   const years = [...new Set([today.slice(0, 4), ...ledger.entries.map(entry => entry.date.slice(0, 4)).filter(value => /^\d{4}$/.test(value))])].sort().reverse();
@@ -288,6 +292,7 @@ export default function SewingWorkspace({
           </article>
         ))}
       </div>
+      <SewingOperations person={current.person} ledger={ledger} orders={orders.filter(order => order.status !== "Orçamento")} credit={current.printCredit} balance={current.balance} save={save} money={money} />
       <form className="panel sewing-entry" onSubmit={addEntry}>
         <label>
           Nome / referência
@@ -361,12 +366,12 @@ export default function SewingWorkspace({
           </div>
         </header>
         {!visible.length && <p className="sewing-empty">Nenhum pedido nesta seleção.</p>}
-        {visible.map(({ order, cost, paid, remaining, excluded }) => {
+        {visible.map(({ order, cost, paid, offset, remaining, excluded }) => {
           const expanded = expandedOrderId === order.id;
           const rate = ledger.rates[order.id] ?? (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4);
           const linkedPayments = ledger.entries.filter(entry => entry.orderId === order.id && entry.kind === "payment");
           const lastPayment = linkedPayments.findLast(entry => entry.person === current.person);
-          const status = remaining === 0 ? "Quitado" : paid > 0 ? "Pagamento parcial" : "Pendente";
+          const status = remaining === 0 ? "Quitado" : paid + offset > 0 ? "Pagamento parcial" : "Pendente";
           return (
             <div key={order.id} className="sewing-linked-row">
               <div className="sewing-linked-name">
@@ -401,7 +406,7 @@ export default function SewingWorkspace({
                 <label>Tarifa<select aria-label={`Tipo de costura de ${order.customer}`} disabled={busy} value={rate} onChange={event =>
                   void run({ type: "assign", orderId: order.id, person: current.person, rate: Number(event.target.value) })
                 }><option value={4}>Camisa · R$ 4</option><option value={7}>Polo · R$ 7</option></select></label>
-                <span className="sewing-linked-breakdown"><small>Costura {money(cost)}</small><small>Pago {money(paid)}</small></span>
+                <span className="sewing-linked-breakdown"><small>Costura {money(cost)}</small><small>Pago {money(paid)}</small>{offset > 0 && <small>Crédito utilizado {money(offset)}</small>}</span>
                 {linkedPayments.length === 0 && <button type="button" className="secondary" disabled={busy} onClick={() => {
                   if (confirm("Remover a cobrança de costura deste pedido?"))
                     void run({ type: "exclude-order", orderId: order.id, excluded: true });
@@ -431,7 +436,8 @@ export default function SewingWorkspace({
         </header>
         <dl className="sewing-period-totals">
           <div><dt>Pago no período</dt><dd>{money(periodTotals.paid)}</dd></div>
-          <div><dt>Crédito de estampagens no período</dt><dd>{money(periodTotals.printCredit)}</dd></div>
+          <div><dt>Crédito líquido de estampagens no período</dt><dd>{money(periodTotals.printCredit)}</dd></div>
+          <div><dt>Crédito utilizado no período</dt><dd>{money(periodTotals.offsets)}</dd></div>
           {allPaidInPeriod !== null && <div><dt>Pago a todas no período</dt><dd>{money(allPaidInPeriod)}</dd></div>}
         </dl>
         {!periodEntries.length && <p className="sewing-empty">Nenhum lançamento no período.</p>}
@@ -442,7 +448,7 @@ export default function SewingWorkspace({
                   {entry.name ||
                     (entry.kind === "print"
                       ? entry.quantity + " estampagens"
-                      : "Pagamento")}
+                      : entry.kind === "offset" ? "Acerto de crédito" : "Pagamento")}
                 </b>
                 <small>
                   {entry.date.split("-").reverse().join("/")}
@@ -506,16 +512,17 @@ export default function SewingWorkspace({
         subtitle: `${current.person} · ${periodLabel}`,
         text: [
           `Pago no período: ${money(periodTotals.paid)}`,
-          `Crédito de estampagens no período: ${money(periodTotals.printCredit)}`,
+          `Crédito líquido de estampagens no período: ${money(periodTotals.printCredit)}`,
+          `Crédito utilizado no período: ${money(periodTotals.offsets)}`,
           `A pagar atualmente: ${money(Math.max(0, current.balance))}`,
         ].join("\n"),
         sections: [
           {
             title: "Pedidos vinculados · situação atual",
-            columns: ["Pedido", "Peças", "Costura", "Pago", "Pendente", "Situação"],
-            rows: orderRows.map(({ order, cost, paid, remaining, excluded }) => [
-              `${order.customer}\n${order.product}`, order.quantity, money(cost), money(paid), money(remaining),
-              excluded ? "Sem cobrança" : remaining === 0 ? "Quitado" : paid > 0 ? "Parcial" : "Pendente",
+            columns: ["Pedido", "Peças", "Costura", "Pago", "Crédito usado", "Pendente", "Situação"],
+            rows: orderRows.map(({ order, cost, paid, offset, remaining, excluded }) => [
+              `${order.customer}\n${order.product}`, order.quantity, money(cost), money(paid), money(offset), money(remaining),
+              excluded ? "Sem cobrança" : remaining === 0 ? "Quitado" : paid + offset > 0 ? "Parcial" : "Pendente",
             ]),
           },
           {
@@ -523,7 +530,7 @@ export default function SewingWorkspace({
             columns: ["Data", "Tipo", "Referência", "Valor"],
             rows: periodEntries.map(entry => [
               entry.date.split("-").reverse().join("/"),
-              entry.kind === "print" ? "Crédito de estampagem" : "Pagamento",
+              entry.kind === "print" ? "Crédito de estampagem" : entry.kind === "offset" ? "Acerto de crédito" : "Pagamento",
               [entry.name, entry.kind === "print" ? `${entry.quantity} estampagens` : "", orders.find(order => order.id === entry.orderId)?.customer].filter(Boolean).join(" · ") || "—",
               money(entry.amount),
             ]),

@@ -14,7 +14,7 @@ export default function NoteDialog({ title, close, children, wide = false }: { t
     const keydown = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); }
       if (e.key === "Tab") {
-        const focusable = [...root.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea,select,a[href],[tabindex="0"]')].filter(el => el.getClientRects().length);
+        const focusable = [...root.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea,select,summary,a[href],[tabindex="0"]')].filter(el => el.getClientRects().length);
         const first = focusable[0], last = focusable.at(-1);
         if (!first) { e.preventDefault(); return; }
         if (e.shiftKey && (document.activeElement === first || !root.contains(document.activeElement))) { e.preventDefault(); last?.focus(); }

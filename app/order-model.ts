@@ -39,6 +39,11 @@ export type Order = {
   dtfStatus?: OrderDtfStatus;
   createdAt?: unknown;
   deliveredAt?: string | null;
+  paymentDueDate?: string | null;
+  lastChargedAt?: string | null;
+  costsConfirmedAt?: string | null;
+  costsFingerprint?: string | null;
+  customerMaterial?: boolean;
 };
 
 export function dtfAlertDays(order: Pick<Order, "dtfStatus" | "dueDate" | "status">, today: string) {

@@ -3,6 +3,7 @@
 import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
+import type { PurchaseCostInput, LinkedExpense } from "./notes/PurchaseCostReview";
 import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
 import { forecastMaterial } from "./material-forecast";
 import { customerNameKey } from "./finance-model";
@@ -21,7 +22,7 @@ import ProductionChecklist from "./ProductionChecklist";
 import { notePhotoOrderId } from "./order-photo-sync";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
+type Props = { expenses: LinkedExpense[]; reviewPurchase: (input: PurchaseCostInput) => Promise<void>; productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
 type Filter = "all" | "pinned" | "ready" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -31,7 +32,7 @@ const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { 
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
 const queues = new Map<string, QueueEntry>();
 
-export default function NotesWorkspace({ productionOnly = false, uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials }: Props) {
+export default function NotesWorkspace({ productionOnly = false, uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials, expenses, reviewPurchase }: Props) {
   const readyOrderIds = useMemo(() => new Set(orders.filter(order => order.status === "Pronto" || order.status === "Entregue").map(order => order.id)), [orders]);
   const isReady = (document: { orderId: string; customerId: string }) => readyOrderIds.has(notePhotoOrderId(document,orders,customers) ?? "");
   const initialNote = notes.find(note => note.id === initialNoteId);
@@ -253,7 +254,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
   if (materialsOpen) {
     const purchases = new Map(notes.map(note => [note.id, note.purchasedMaterialIds]));
     const materialOrders = materialOrdersFromNotes(allNotes.map(({ id, draft }) => ({ id, draft, purchasedIds: purchases.get(id) })), orders, customers);
-    return <MaterialsWorkspace uid={uid} targets={allNotes.filter(note => note.draft.document.status !== "trash").map(({id,draft}) => ({ id,title:draft.title || "Sem título",orderId:draft.document.orderId,customerId:draft.document.customerId,materials:draft.materials }))} productionOrders={orders} customers={customers} saveMaterial={saveMaterial} orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
+    return <MaterialsWorkspace expenses={expenses} reviewPurchase={reviewPurchase} uid={uid} targets={allNotes.filter(note => note.draft.document.status !== "trash").map(({id,draft}) => ({ id,title:draft.title || "Sem título",orderId:draft.document.orderId,customerId:draft.document.customerId,materials:draft.materials }))} productionOrders={orders} customers={customers} saveMaterial={saveMaterial} orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
   }
 
   return <div className={`apple-notes ${showChecklist ? "an-production-mode" : ""} ${sidebar ? "" : "an-sidebar-hidden"} ${mobileEditor ? "an-mobile-editor" : ""} ${calculator ? "an-has-calculator" : ""}`}>

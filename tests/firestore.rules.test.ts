@@ -309,3 +309,25 @@ test("Pluggy imports are valid but bank caches remain server-only", async () => 
   });
   await assertFails(getDoc(doc(db, "users/user-a/pluggyAccounts/account-1")));
 });
+
+test("monthly closing snapshots are owner-only and cannot be overwritten", async () => {
+  const owner = environment.authenticatedContext("closing-owner").firestore();
+  const other = environment.authenticatedContext("other-user").firestore();
+  const ref = doc(owner, "users/closing-owner/monthlyClosings/2026-11");
+  const snapshot = { month: "2026-11", snapshot: JSON.stringify({ month: "2026-11", totals: { received: 100 } }), createdAt: serverTimestamp() };
+  await assertSucceeds(setDoc(ref, snapshot));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(other, "users/closing-owner/monthlyClosings/2026-11")));
+  await assertFails(updateDoc(ref, { snapshot: "{}" }));
+  await assertFails(setDoc(doc(owner, "users/closing-owner/monthlyClosings/invalid"), snapshot));
+  await assertSucceeds(deleteDoc(ref));
+});
+
+test("order review and collection dates accept empty legacy values and validate new values", async () => {
+  const db = environment.authenticatedContext("review-owner").firestore();
+  const ref = doc(db, "users/review-owner/orders/a");
+  await assertSucceeds(setDoc(ref, { ...validOrder(), paymentDueDate: "2026-11-15", lastChargedAt: null, costsConfirmedAt: null, costsFingerprint: null, customerMaterial: true }));
+  await assertFails(updateDoc(ref, { paymentDueDate: "tomorrow" }));
+  await assertFails(updateDoc(ref, { customerMaterial: "yes" }));
+  await assertSucceeds(updateDoc(ref, { costsConfirmedAt: "2026-11-12", costsFingerprint: "[100,20]" }));
+});

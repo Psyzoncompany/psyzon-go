@@ -166,11 +166,11 @@ test("historical totals filter by person, year and month and keep printing separ
     { ...base, id: "print", kind: "print", amount: 8, date: "2026-11-11" },
     { ...base, id: "other", person: "Maria", amount: 100, date: "2026-11-11" },
   ];
-  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa")), { paid: 85, printCredit: 8 });
-  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026")), { paid: 75, printCredit: 8 });
-  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-11")), { paid: 45, printCredit: 8 });
-  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-12")), { paid: 0, printCredit: 0 });
-  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, undefined, "2026")), { paid: 175, printCredit: 8 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa")), { paid: 85, printCredit: 8, offsets: 0 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026")), { paid: 75, printCredit: 8, offsets: 0 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-11")), { paid: 45, printCredit: 8, offsets: 0 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, "Zefa", "2026-12")), { paid: 0, printCredit: 0, offsets: 0 });
+  assert.deepEqual(sewingEntryTotals(sewingEntriesForPeriod(entries, undefined, "2026")), { paid: 175, printCredit: 8, offsets: 0 });
 });
 test("renaming the default seamstress survives reload and applies to new orders", () => {
   const ledger = readSewing([
@@ -187,4 +187,29 @@ test("renaming the default seamstress survives reload and applies to new orders"
   ]);
   assert.deepEqual(ledger.people, ["Maria"]);
   assert.equal(sewingBalances(orders, ledger)[0].total, 85);
+});
+
+test("manual settlements consume print credit and debt without creating a cash payment", () => {
+  const ledger: SewingLedger = { people: ["Zefa"], assignments: {}, rates: {}, entries: [
+    { id: "print", person: "Zefa", kind: "print", quantity: 25, amount: 100, date: "2026-11-01" },
+    { id: "offset", person: "Zefa", kind: "offset", quantity: 0, amount: 40, date: "2026-11-02" },
+  ] };
+  assert.equal(sewingBalances(orders, ledger)[0].printCredit, 60);
+  assert.equal(sewingBalances(orders, ledger)[0].balance, 45);
+  assert.equal(sewingBalances(orders, ledger)[0].paid, 0);
+  assert.deepEqual(sewingOrderBalances(orders, ledger, "Zefa").map(row => [row.remaining, row.offset]), [[24,40],[21,0]]);
+  ledger.entries = ledger.entries.filter(item => item.id !== "offset");
+  assert.equal(sewingBalances(orders, ledger)[0].balance, 85);
+  assert.equal(sewingBalances(orders, ledger)[0].printCredit, 100);
+});
+
+test("physical custody accepts partial returns and rejects returns or sends exceeding available pieces", async () => {
+  const { validateSewingMovement, sewingInCustody } = await import("../app/sewing-model");
+  const ledger = { ...readSewing([]), movements: [{ id: "sent", person: "Zefa", orderId: "a", kind: "sent" as const, quantity: 16, date: "2026-11-01", deadline: "2026-11-12" }] };
+  const returned = { id: "returned", person: "Zefa", orderId: "a", kind: "returned" as const, quantity: 10, date: "2026-11-02" };
+  assert.doesNotThrow(() => validateSewingMovement(ledger, orders, returned, "2026-11-12"));
+  assert.throws(() => validateSewingMovement(ledger, orders, { ...returned, quantity: 17 }, "2026-11-12"));
+  assert.throws(() => validateSewingMovement(ledger, orders, { ...returned, kind: "sent", quantity: 1 }, "2026-11-12"));
+  ledger.movements.push(returned);
+  assert.deepEqual(sewingInCustody(ledger.movements, "a", "Zefa"), { sent: 16, returned: 10, remaining: 6 });
 });

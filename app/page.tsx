@@ -15,11 +15,17 @@ import { forecastMaterial } from "./material-forecast";
 import { urgentOrder } from "./order-model";
 import { orderAlerts, type OrderAlert } from "./order-alerts";
 import { indexOrderPayments, nextOrderAction } from "./order-follow-up";
-import { indexOrderCosts } from "./order-result";
-import { materialOrdersFromNotes } from "./notes/materials-model";
-import { toDraft } from "./notes-model";
+import { orderResult } from "./order-result";
+import { monthlyClosing, type MonthlyClosingReport } from "./monthly-closing";
+import MonthlyClosingWorkspace from "./MonthlyClosingWorkspace";
+import CollectionAgenda from "./CollectionAgenda";
+import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
+import { preparePaymentSound, paymentSucceeded } from "./payment-feedback";
+import { operationCosts } from "./operations-data";
+import type { PurchaseCostInput } from "./notes/PurchaseCostReview";
+import { toDraft, type NoteMaterial } from "./notes-model";
 import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
-import { readSewing, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
+import { readSewing, sewingBalances, validateSewingMovement, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { indexDtfCustomerLinks } from "./dtf-links";
@@ -63,6 +69,7 @@ import {
   deleteField,
   doc,
   getFirestore,
+  getDocs,
   onSnapshot,
   runTransaction,
   serverTimestamp,
@@ -160,7 +167,7 @@ const firebaseConfig = {
 };
 
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
-type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks";
+type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks" | "monthlyClosings";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
@@ -549,7 +556,9 @@ export default function HomePage() {
     if (!window.confirm("Apagar definitivamente todos os pedidos, incluindo DTF, clientes, contas, movimentações, anotações, afazeres e histórico desta conta?")) return;
     setResetting(true);
     try {
+      const closings = await getDocs(userCollection(uid, "monthlyClosings"));
       const records = [
+        ...closings.docs.map(item => ["monthlyClosings", item.id] as const),
         ...orders.map((item) => ["orders", item.id] as const),
         ...dtfOrders.map((item) => ["dtfOrders", item.id] as const),
         ...customers.map((item) => ["customers", item.id] as const),
@@ -583,7 +592,10 @@ export default function HomePage() {
 
   const saveSewing = async (change: SewingChange) => {
     if (firebaseState !== "live") throw new Error("Aguarde a sincronização.");
+    if (change.type === "pay-order" || (change.type === "entry" && change.entry.kind === "payment")) preparePaymentSound(uid);
+    let paymentInfo: { description: string; amount: number } | undefined;
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
+      paymentInfo = undefined;
       const ref = userDocument(uid, "notes", sewingNoteId);
       const snapshot = await transaction.get(ref);
       const ledger = readSewing(
@@ -592,8 +604,9 @@ export default function HomePage() {
           : [],
       );
       let operation = change;
-      if (change.type === "pay-order") {
-        if (ledger.entries.some((entry) => entry.id === change.id)) return;
+      if (change.type === "pay-order" || change.type === "movement" || (change.type === "entry" && change.entry.kind === "offset")) {
+        const operationId = change.type === "entry" ? change.entry.id : change.type === "movement" ? change.movement.id : change.id;
+        if (ledger.entries.some(entry => entry.id === operationId) || ledger.movements?.some(item => item.id === operationId)) return;
         // Read the source documents in the same transaction as the settlement.
         const [orderSnapshots, noteSnapshots] = await Promise.all([
           Promise.all(
@@ -625,27 +638,36 @@ export default function HomePage() {
           latestNotes,
           customers,
         );
-        const person = sewingPerson(ledger, change.orderId);
-        const row = sewingOrderBalances(effective, ledger, person).find(
-          (row) => row.order.id === change.orderId,
-        );
-        if (!row || row.remaining <= 0 || row.remaining !== change.expected)
-          throw new Error(
-            "O saldo deste pedido mudou. Confira o valor atualizado antes de pagar.",
+        if (change.type === "movement") {
+          const movement = change.movement;
+          validateSewingMovement(ledger, effective, movement, calendarDate);
+          ledger.movements = [...(ledger.movements ?? []), movement];
+        } else if (change.type === "entry") {
+          const balance = sewingBalances(effective, ledger).find(item => item.person === change.entry.person);
+          if (!balance || change.entry.amount > balance.printCredit || change.entry.amount > balance.balance) throw new Error("O crédito ou a dívida mudou. Confira o valor disponível.");
+        } else {
+          const person = sewingPerson(ledger, change.orderId);
+          const row = sewingOrderBalances(effective, ledger, person).find(
+            (row) => row.order.id === change.orderId,
           );
-        operation = {
-          type: "entry",
-          entry: {
-            id: change.id,
-            kind: "payment",
-            person,
-            quantity: 0,
-            amount: row.remaining,
-            date: change.date,
-            orderId: change.orderId,
-            name: "Costura · " + row.order.customer.slice(0, 140),
-          },
-        };
+          if (!row || row.remaining <= 0 || row.remaining !== change.expected)
+            throw new Error(
+              "O saldo deste pedido mudou. Confira o valor atualizado antes de pagar.",
+            );
+          operation = {
+            type: "entry",
+            entry: {
+              id: change.id,
+              kind: "payment",
+              person,
+              quantity: 0,
+              amount: row.remaining,
+              date: change.date,
+              orderId: change.orderId,
+              name: "Costura · " + row.order.customer.slice(0, 140),
+            },
+          };
+        }
       }
       if (
         operation.type === "person-rename" ||
@@ -671,6 +693,7 @@ export default function HomePage() {
           ledger.defaultPerson = name;
         for (const [id, person] of Object.entries(ledger.assignments))
           if (person === from) ledger.assignments[id] = name;
+        for (const movement of ledger.movements ?? []) if (movement.person === from) movement.person = name;
         for (const entry of ledger.entries)
           if (entry.person === from) {
             entry.person = name;
@@ -722,7 +745,7 @@ export default function HomePage() {
           entry.amount <= 0 ||
           entry.amount > 100000000 ||
           (entry.name !== undefined && entry.name.length > 160) ||
-          !["print", "payment"].includes(entry.kind) ||
+          !["print", "payment", "offset"].includes(entry.kind) ||
           !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(entry.date)
         )
           throw new Error("Lançamento inválido.");
@@ -733,9 +756,11 @@ export default function HomePage() {
             ![entry.quantity * 2, entry.quantity * 4].includes(entry.amount))
         )
           throw new Error("Quantidade inválida.");
+        if (entry.date > calendarDate) throw new Error("A data não pode estar no futuro.");
         if (ledger.entries.some((item) => item.id === entry.id)) return;
         ledger.entries.push(entry);
-        if (entry.kind === "payment")
+        if (entry.kind === "payment") {
+          paymentInfo = { description: "Costura · " + entry.person, amount: entry.amount };
           transaction.set(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
             {
@@ -748,6 +773,7 @@ export default function HomePage() {
               createdAt: serverTimestamp(),
             },
           );
+        }
       } else if (operation.type === "rename") {
         const entry = ledger.entries.find((entry) => entry.id === operation.id);
         if (
@@ -759,6 +785,11 @@ export default function HomePage() {
           throw new Error("Informe um nome válido para a estampagem.");
         entry.name = operation.name.trim();
       } else if (operation.type === "remove") {
+        const candidate = ledger.entries.find(item => item.id === operation.id);
+        if (candidate?.kind === "print") {
+          const balance = sewingBalances(orders, ledger).find(item => item.person === candidate.person);
+          if ((balance?.printCredit ?? 0) < candidate.amount) throw new Error("Desfaça o acerto que utilizou este crédito antes de remover a estampagem.");
+        }
         const entry = ledger.entries.find((item) => item.id === operation.id);
         if (entry?.kind === "payment")
           transaction.delete(
@@ -777,6 +808,7 @@ export default function HomePage() {
         updatedAt: serverTimestamp(),
       });
     });
+    if (paymentInfo) paymentSucceeded({ uid, title: "Pagamento de costura registrado", ...paymentInfo });
   };
 
   const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
@@ -784,13 +816,9 @@ export default function HomePage() {
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
-  const orderCosts = useMemo(() => {
-    if (view !== "producao") return new Map();
-    const materialNotes = notes.filter(note => note.materials?.length && note.id !== sewingNoteId && !note.id.startsWith(restockPrefix));
-    const materials = materialOrdersFromNotes(materialNotes.map(note => ({ id: note.id, draft: toDraft(note), purchasedIds: note.purchasedMaterialIds })), orders, customers.filter(customer => !customer.archived));
-    return indexOrderCosts(materials, transactions);
-  }, [view, notes, orders, customers, transactions]);
-  const sewingCosts = useMemo(() => view === "producao" ? new Map(sewingLedger.people.flatMap(person => sewingOrderBalances(orders, sewingLedger, person).filter(row => !row.excluded).map(row => [row.order.id, row.cost] as const))) : new Map<string, number>(), [view, orders, sewingLedger]);
+  const operations = useMemo(() => ["producao", "historico"].includes(view) ? operationCosts(orders, notes, customers, transactions) : undefined, [view, orders, notes, customers, transactions]);
+  const orderCosts = operations?.costs ?? new Map();
+  const sewingCosts = operations?.sewing ?? new Map<string, number>();
   const alerts = useMemo(() => (["producao", "inicio"].includes(view)) ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
   const orderPayments = useMemo(() => indexOrderPayments(transactions), [transactions]);
   const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
@@ -1208,7 +1236,92 @@ export default function HomePage() {
           if (entry) transaction.set(ref, entry);
         }
       }
-      if (mode !== "date") transaction.update(noteRef, { ...(mode === "complete" ? { materials } : {}), purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
+      if (mode !== "date") transaction.update(noteRef, { materials: mode === "reopen" ? materials.map(item => { if (!selected.has(item.id)) return item; const { actualCost, purchaseFreight, purchaseDate, linkedExpenseIds, linkedExpenseAmount, ...plan } = item; return plan; }) : materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
+    });
+  };
+
+  const reviewPurchaseCost = async (input: PurchaseCostInput) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a conexão.");
+    if (![input.amount, input.freight].every(value => Number.isFinite(value) && value >= 0 && value <= 100000000) || input.amount + input.freight > 100000000 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > calendarDate) throw new Error("Confira os valores e a data.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const ref = userDocument(uid, "notes", input.noteId);
+      const [snapshot, expenseDocs, otherNotes] = await Promise.all([
+        transaction.get(ref),
+        Promise.all([...new Set(input.expenseIds)].map(id => transaction.get(userDocument(uid, "transactions", id)))),
+        Promise.all(notes.filter(note => note.id !== input.noteId && note.materials?.length).map(note => transaction.get(userDocument(uid, "notes", note.id)))),
+      ]);
+      if (!snapshot.exists()) throw new Error("A anotação foi removida.");
+      const note = { ...snapshot.data(), id: snapshot.id } as BusinessNote;
+      const material = note.materials?.find(item => item.id === input.materialId);
+      if (!material || JSON.stringify(toDraft(note).materials.find(item => item.id === material.id)) !== input.expected || !note.purchasedMaterialIds?.includes(material.id)) throw new Error("A compra mudou. Reabra a conferência.");
+      const orderId = notePhotoOrderId(readDocument(note.content), orders, customers);
+      const expenses = expenseDocs.map(snapshot => snapshot.exists() ? { ...snapshot.data(), id: snapshot.id } as Transaction : undefined);
+      if (expenses.some(item => !item || !orderId || item.orderId !== orderId || item.type !== "expense" || item.source === "customer_refund" || item.category === "Costura")) throw new Error("Há pagamentos inválidos para esta compra.");
+      const reused = otherNotes.flatMap(snapshot => snapshot.exists() ? (snapshot.data().materials ?? []) as NoteMaterial[] : []).concat(note.materials?.filter(item => item.id !== material.id) ?? []);
+      if (reused.some(item => item.linkedExpenseIds?.some(id => input.expenseIds.includes(id)))) throw new Error("Um dos pagamentos já pertence a outra compra.");
+      const linkedTotal = roundMoney(expenses.reduce((sum, item) => sum + (item?.amount ?? 0), 0));
+      if (linkedTotal > roundMoney(input.amount + input.freight)) throw new Error("Os pagamentos selecionados ultrapassam o custo real informado.");
+      transaction.update(ref, { materials: note.materials!.map(item => item.id === material.id ? { ...item, actualCost: roundMoney(input.amount), purchaseFreight: roundMoney(input.freight), purchaseDate: input.date, linkedExpenseIds: [...new Set(input.expenseIds)], linkedExpenseAmount: linkedTotal } : item), updatedAt: serverTimestamp() });
+    });
+  };
+
+  const markCharged = async (order: Order) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a conexão.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const ref = userDocument(uid, "orders", order.id);
+      const snapshot = await transaction.get(ref);
+      if (!snapshot.exists() || snapshot.data().status === "Orçamento" || snapshot.data().paid >= snapshot.data().total) throw new Error("Este pedido não tem saldo para cobrança.");
+      transaction.update(ref, { lastChargedAt: calendarDate });
+    });
+  };
+
+  const confirmOrderCosts = async (order: Order, fingerprint: string) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a conexão.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const ref = userDocument(uid, "orders", order.id);
+      const [source, latestNotes, latestTransactions] = await Promise.all([
+        transaction.get(ref),
+        Promise.all(notes.map(note => transaction.get(userDocument(uid, "notes", note.id)))),
+        Promise.all(transactions.map(item => transaction.get(userDocument(uid, "transactions", item.id)))),
+      ]);
+      if (!source.exists()) throw new Error("O pedido foi removido.");
+      const raw = { ...source.data(), id: source.id } as Order;
+      const currentNotes = latestNotes.filter(doc => doc.exists()).map(doc => ({ ...doc.data(), id: doc.id }) as BusinessNote);
+      const currentTransactions = latestTransactions.filter(doc => doc.exists()).map(doc => ({ ...doc.data(), id: doc.id }) as Transaction);
+      const currentOrders = synchronizedOrderQuantities(storedOrders.map(item => item.id === raw.id ? raw : item), currentNotes, customers);
+      const current = currentOrders.find(item => item.id === raw.id)!;
+      const data = operationCosts(currentOrders, currentNotes, customers, currentTransactions);
+      const result = orderResult(current, data.costs.get(raw.id), data.sewing.get(raw.id));
+      if (current.status === "Orçamento" || result.missing.length || result.fingerprint !== fingerprint) throw new Error("Há custos pendentes ou valores alterados. Confira os registros antes de confirmar.");
+      transaction.update(ref, { costsConfirmedAt: calendarDate, costsFingerprint: result.fingerprint });
+    });
+  };
+
+  const saveMonthlyClosing = async (report: MonthlyClosingReport) => {
+    if (firebaseState !== "live" || historyConnection !== "live") throw new Error("Aguarde a sincronização do histórico.");
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(report.month) || report.month > calendarDate.slice(0,7)) throw new Error("Mês inválido.");
+    await runTransaction(getFirestore(getApps()[0]), async transaction => {
+      const ref = userDocument(uid, "monthlyClosings", report.month);
+      const [existing, orderDocs, noteDocs, customerDocs, transactionDocs, billDocs] = await Promise.all([
+        transaction.get(ref),
+        Promise.all(storedOrders.map(item => transaction.get(userDocument(uid, "orders", item.id)))),
+        Promise.all(notes.map(item => transaction.get(userDocument(uid, "notes", item.id)))),
+        Promise.all(customers.map(item => transaction.get(userDocument(uid, "customers", item.id)))),
+        Promise.all(transactions.map(item => transaction.get(userDocument(uid, "transactions", item.id)))),
+        Promise.all(bills.map(item => transaction.get(userDocument(uid, "bills", item.id)))),
+      ]);
+      if (existing.exists()) throw new Error("Este mês já foi guardado. Consulte o fechamento salvo.");
+      const latestOrders = orderDocs.filter(item => item.exists()).map(item => ({ ...item.data(), id: item.id, status: normalizeOrderStatus(item.data().status) }) as Order);
+      const latestNotes = noteDocs.filter(item => item.exists()).map(item => ({ ...item.data(), id: item.id }) as BusinessNote);
+      const latestCustomers = customerDocs.filter(item => item.exists()).map(item => ({ ...item.data(), id: item.id }) as Customer);
+      const latestTransactions = transactionDocs.filter(item => item.exists()).map(item => ({ ...item.data(), id: item.id }) as Transaction);
+      const latestBills = billDocs.filter(item => item.exists()).map(item => ({ ...item.data(), id: item.id }) as Bill);
+      const effective = synchronizedOrderQuantities(latestOrders, latestNotes, latestCustomers);
+      const current = monthlyClosing({ orders: effective, notes: latestNotes, customers: latestCustomers, transactions: latestTransactions, bills: latestBills }, report.month, calendarDate);
+      if (JSON.stringify(current) !== JSON.stringify(report)) throw new Error("Os dados mudaram durante a revisão. Confira a versão atualizada e tente novamente.");
+      const snapshot = JSON.stringify(current);
+      if (snapshot.length > 900000) throw new Error("O mês contém registros demais para um fechamento único.");
+      transaction.set(ref, { month: report.month, snapshot, createdAt: serverTimestamp() });
     });
   };
 
@@ -1225,6 +1338,8 @@ export default function HomePage() {
       return roundMoney(value);
     };
     const updatedOrder = {
+      paymentDueDate: String(form.get("paymentDueDate") || "") || null,
+      customerMaterial: form.get("customerMaterial") === "on",
       dtfCost: readCost("dtfCost"),
       otherCost: readCost("otherCost"),
       shirtType:
@@ -1257,6 +1372,7 @@ export default function HomePage() {
       notes: String(form.get("notes") || ""),
       photoData: String(form.get("photoData") || ""),
     };
+    if (updatedOrder.paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(updatedOrder.paymentDueDate)) throw new Error("Confira a data combinada para pagamento.");
     if (updatedOrder.unitPrice !== undefined) {
       validateShirtPrice(
         updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
@@ -1309,6 +1425,7 @@ export default function HomePage() {
         current.data().paid !== editingOrder.paid ||
         (effective.dtfCost ?? null) !== (editingOrder.dtfCost ?? null) ||
         (effective.otherCost ?? null) !== (editingOrder.otherCost ?? null) ||
+        (latestRaw.paymentDueDate ?? null) !== (editingOrder.paymentDueDate ?? null) ||
         (effective.childUnitPrice ?? null) !== (editingOrder.childUnitPrice ?? null) ||
         (partialPayment > 0 && effective.status === "Orçamento") ||
         effective.total !== editingOrder.total ||
@@ -1632,6 +1749,7 @@ export default function HomePage() {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
     if (billIsSettled(bill)) return false;
     const receiving = bill.direction === "receivable";
+    if (!receiving) preparePaymentSound(uid);
     if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return false;
     const paymentDate = localDateValue();
     const month = paymentDate.slice(0, 7);
@@ -1647,7 +1765,8 @@ export default function HomePage() {
       transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
       transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
     });
-    showToast(receiving ? "Recebimento registrado" : "Pagamento registrado");
+    if (receiving) showToast("Recebimento registrado");
+    else paymentSucceeded({ uid, title: "Pagamento registrado", description: bill.description, amount: bill.amount });
     return true;
   };
 
@@ -1732,17 +1851,20 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
+          {view === "inicio" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}
           {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />}
-          {view === "producao" && <ProductionBoard orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
           {view === "ai" && <PSYZONAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
+          {view === "financeiro" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}
           {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
+          {view === "historico" && <MonthlyClosingWorkspace uid={uid} today={calendarDate} data={{ orders, notes, customers, transactions, bills }} save={saveMonthlyClosing} money={displayMoney} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1754,7 +1876,7 @@ export default function HomePage() {
           />}
 
 
-          {view === "mais" && <MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} />}
+          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
         </section>
       </main>
 
@@ -1766,7 +1888,7 @@ export default function HomePage() {
 
       <MobileNavigation view={view} navigate={setView} /><SiteTypewriter page={view} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
-        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
+        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
@@ -1776,6 +1898,7 @@ export default function HomePage() {
 
 
       {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={confirmPrivacy} />}
+      <PaymentFeedback key={uid} uid={uid} />
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );
@@ -1887,5 +2010,5 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>{order.status !== "Orçamento" && <label className="full">Data combinada para pagamento<input name="paymentDueDate" type="date" defaultValue={order.paymentDueDate ?? ""} /></label>}<OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}{order.status !== "Orçamento" && <label className="full"><span><input name="customerMaterial" type="checkbox" defaultChecked={order.customerMaterial} /> Material fornecido pelo cliente (sem custo)</span></label>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

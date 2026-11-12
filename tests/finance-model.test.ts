@@ -361,3 +361,46 @@ test("order result separates purchased and planned material, receipts and refund
   assert.equal(result.receivedAfterCosts, 10);
   assert.equal(result.margin, 62);
 });
+
+test("actual material costs replace the plan, absorb linked payments, and invalidate review on changes", async () => {
+  const { indexOrderCosts, orderResult } = await import("../app/order-result");
+  const material = { id: "m", totalCost: 200, actualCost: 120, purchaseFreight: 10, linkedExpenseIds: ["expense"], linkedExpenseAmount: 130 };
+  const note = { id: "n", productionOrderId: "a", title: "Compra", client: "Ana", materials: [material], purchasedIds: ["m"] } as Parameters<typeof indexOrderCosts>[0][number];
+  const expense = { id: "expense", orderId: "a", type: "expense", amount: 130 };
+  const order = { id: "a", quantity: 10, total: 500, paid: 200, dtfStatus: "none" } as Order;
+  const costs = indexOrderCosts([note],[expense]).get("a");
+  const result = orderResult(order, costs, 40);
+  assert.equal(result.total, 170);
+  assert.deepEqual(result.missing, []);
+  const reviewed = { ...order, costsConfirmedAt: "2026-11-12", costsFingerprint: result.fingerprint };
+  assert.equal(orderResult(reviewed, costs, 40).confirmed, true);
+  assert.equal(orderResult(reviewed, costs, 44).confirmed, false);
+  assert.equal(orderResult(reviewed, indexOrderCosts([note], [{...expense, amount: 125}]).get("a"), 40).missing.includes("Pagamento de material alterado após a conferência"), true);
+  const moved = indexOrderCosts([note], [{...expense, orderId: "another"}]);
+  assert.equal(orderResult(reviewed, moved.get("a"), 40).confirmed, false);
+  assert.equal(moved.get("another")?.otherExpenses, 130);
+});
+
+test("monthly closing excludes unreviewed profit and counts receipts, sewing and reviewed purchases once", async () => {
+  const { monthlyClosing } = await import("../app/monthly-closing");
+  const order = { id: "a", customer: "Ana", product: "Camisa", quantity: 10, total: 500, paid: 150, status: "Entregue", deliveredAt: "2026-11-11", dueDate: "2026-11-11", dtfStatus: "none", customerMaterial: true } as Order;
+  const data = { orders: [order], customers: [], notes: [], bills: [], transactions: [{ id: "income", description: "Parcela", type: "income", account: "business", amount: 150, orderId: "a", transactionDate: "2026-11-02" }] };
+  const report = monthlyClosing(data, "2026-11", "2026-11-12");
+  assert.equal(report.totals.received, 150);
+  assert.equal(report.totals.delivered, 1);
+  assert.equal(report.totals.verifiedResult, 0);
+  assert.equal(report.totals.unverifiedOrders, 1);
+  assert.equal(report.pending[0].detail, "Conferência de custos não confirmada");
+  const earlier = monthlyClosing(data, "2026-10", "2026-11-12");
+  assert.equal(earlier.totals.received, 0);
+  assert.equal(earlier.totals.delivered, 0);
+});
+
+test("material purchase deadline stays seven days before delivery across months and years", async () => {
+  const { materialPurchaseDeadline } = await import("../app/notes/materials-model");
+  assert.equal(materialPurchaseDeadline("2026-11-21"), "2026-11-14");
+  assert.equal(materialPurchaseDeadline("2027-01-03"), "2026-12-27");
+  assert.equal(materialPurchaseDeadline("2028-03-03"), "2028-02-25");
+  assert.equal(materialPurchaseDeadline("2026-02-30"), undefined);
+  assert.equal(materialPurchaseDeadline(), undefined);
+});

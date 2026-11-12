@@ -1,0 +1,23 @@
+.operations-panel { padding: 16px; margin-block: 12px; min-width: 0; }
+.operations-panel > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.operations-panel h2 { margin: 0; font-size: 17px; }
+.operations-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.operations-actions button { min-height: 42px; }
+.operations-form { padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.operations-form label { display: grid; gap: 5px; font-size: 13px; min-width: 0; }
+.operations-form input, .operations-form select, .operations-month { min-height: 44px; padding: 9px; border-radius: 9px; border: 1px solid var(--border); background: var(--card); color: var(--text); min-width: 0; max-width: 100%; }
+.operations-list { list-style: none; padding: 0; margin: 12px 0 0; }
+.operations-list li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 13px; }
+.operations-list li > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.operations-list small, .operations-muted { color: var(--muted); font-size: 12px; }
+.operations-form p { margin: 0; font-size: 13px; }
+.operations-metrics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,140px),1fr)); gap: 8px; margin-block: 12px; }
+.operations-metrics > div { padding: 12px; background: var(--card-subtle); border-radius: 12px; min-width: 0; }
+.operations-metrics dt { font-size: 12px; color: var(--muted); }
+.operations-metrics dd { margin: 6px 0 0; font-weight: 750; font-size: 18px; overflow-wrap: anywhere; }
+.operations-expenses { max-height: 160px; overflow: auto; }
+.operations-expenses label { display: flex; flex-direction: row; align-items: center; gap: 8px; margin-block: 6px; }
+.operations-expenses input { min-height: 20px; }
+.operations-warning { color: var(--red); }
+.operations-panel summary { padding-block: 10px; cursor: pointer; font-size: 13px; }
+@media(max-width:760px) { .operations-panel { padding: 12px; } .operations-panel header .operations-actions { width: 100%; } }

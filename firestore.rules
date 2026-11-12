@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "childQuantity", "pricingMode", "shirtType"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "paymentDueDate", "lastChargedAt", "costsConfirmedAt", "costsFingerprint", "customerMaterial", "childQuantity", "pricingMode", "shirtType"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
@@ -50,6 +50,11 @@ service cloud.firestore {
         && data.quantity is int && data.quantity > 0 && data.quantity <= 1000000
         && (!("shirtType" in data) || data.shirtType in ["standard","polo"])
         && money(data.total, true)
+        && (!("paymentDueDate" in data) || data.paymentDueDate == null || calendarDate(data.paymentDueDate))
+        && (!("lastChargedAt" in data) || data.lastChargedAt == null || calendarDate(data.lastChargedAt))
+        && (!("costsConfirmedAt" in data) || data.costsConfirmedAt == null || calendarDate(data.costsConfirmedAt))
+        && optionalNullableText(data, "costsFingerprint", 60000)
+        && (!("customerMaterial" in data) || data.customerMaterial is bool)
         && (!("deliveredAt" in data) || data.deliveredAt == null || calendarDate(data.deliveredAt))
         && (!("dtfCost" in data) || data.dtfCost == null || money(data.dtfCost, true))
         && (!("otherCost" in data) || data.otherCost == null || money(data.otherCost, true))
@@ -211,6 +216,15 @@ service cloud.firestore {
       allow get, list, delete: if owns(uid);
       allow create: if owns(uid) && validTask(request.resource.data) && request.resource.data.createdAt == request.time;
       allow update: if owns(uid) && validTask(request.resource.data) && unchanged("createdAt");
+    }
+
+    match /users/{uid}/monthlyClosings/{month} {
+      allow get, list, delete: if owns(uid);
+      allow create: if owns(uid) && month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+        && request.resource.data.keys().hasOnly(["month", "snapshot", "createdAt"])
+        && request.resource.data.month == month
+        && text(request.resource.data.snapshot, 2, 900000)
+        && request.resource.data.createdAt == request.time;
     }
 
     match /users/{uid}/orders/{documentId} {

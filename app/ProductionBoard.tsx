@@ -22,6 +22,7 @@ import "./notes/notes.css";
 
 type Props = {
   orders: Order[];
+  confirmCosts: (order: Order, fingerprint: string) => Promise<void>;
   orderCosts: ReadonlyMap<string, OrderCosts>;
   sewingCosts: ReadonlyMap<string, number>;
   orderPayments: ReadonlyMap<string, OrderPayment[]>;
@@ -40,7 +41,7 @@ type Props = {
   openChecklist: (order: Order) => void;
 };
 
-export default function ProductionBoard({ orders, orderCosts, sewingCosts, orderPayments, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
+export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewingCosts, orderPayments, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [alertId, setAlertId] = useState("");
   const alertOrder = orders.find(order => order.id === alertId);
@@ -154,7 +155,7 @@ export default function ProductionBoard({ orders, orderCosts, sewingCosts, order
         />}
       </div>
     </NoteDialog>}
-    {selected && createPortal(<OrderDetails {...actionsFor(selected)} payments={orderPayments.get(selected.id) ?? []} costs={orderCosts.get(selected.id)} sewingCost={sewingCosts.get(selected.id)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
+    {selected && createPortal(<OrderDetails confirmCosts={confirmCosts} {...actionsFor(selected)} payments={orderPayments.get(selected.id) ?? []} costs={orderCosts.get(selected.id)} sewingCost={sewingCosts.get(selected.id)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
     {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
   </section>;
 }
@@ -245,7 +246,9 @@ function OrderPaymentHistory({ order, payments, displayMoney }: { order: Order; 
   </section>;
 }
 
-function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error, payments, costs, sewingCost }: OrderActionsProps & { move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string; payments: OrderPayment[]; costs?: OrderCosts; sewingCost?: number }) {
+function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error, payments, costs, sewingCost, confirmCosts }: OrderActionsProps & { move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string; payments: OrderPayment[]; costs?: OrderCosts; sewingCost?: number; confirmCosts: Props["confirmCosts"] }) {
+  const [costBusy, setCostBusy] = useState(false);
+  const [costError, setCostError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const next = nextOrderStatus(order.status);
   async function copyQuote() {
@@ -283,7 +286,7 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           {adultPrice !== null && order.quantity > children && <div><dt>Adultas</dt><dd>{order.quantity - children} un. × {displayMoney(adultPrice)}</dd></div>}
           {adultPrice !== null && children > 0 && <div><dt>Infantis</dt><dd>{children} un. × {displayMoney(order.childUnitPrice ?? Math.max(0, adultPrice - 5))}</dd></div>}
           {order.dtfStatus && order.dtfStatus !== "none" && <div><dt>DTF</dt><dd>{orderDtfStatus[order.dtfStatus]}</dd></div>}
-          {order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}
+          {order.paymentDueDate && <div><dt>Pagamento combinado</dt><dd>{order.paymentDueDate.split("-").reverse().join("/")}</dd></div>}{order.lastChargedAt && <div><dt>Última cobrança</dt><dd>{order.lastChargedAt.split("-").reverse().join("/")}</dd></div>}{order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}
         </dl>
         {order.notes && <section className="order-details-notes"><h3>Observações</h3><p>{order.notes}</p></section>}
         {order.status !== "Orçamento" && <details className="order-details-disclosure">
@@ -291,8 +294,11 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           <OrderPaymentHistory order={order} payments={payments} displayMoney={displayMoney} />
         </details>}
         {order.status !== "Orçamento" && <details className="order-details-disclosure">
-          <summary><span>Custo e resultado</span><small>{displayMoney(result.result)}</small><ChevronDown size={16} /></summary>
+          <summary><span>Custo e resultado</span><small>{result.confirmed ? "Conferido · " : "Conferir · "}{displayMoney(result.result)}</small><ChevronDown size={16} /></summary>
           <section className="order-details-costs" aria-label="Custo e resultado">
+            {costError && <p className="form-error" role="alert">{costError}</p>}
+            {result.missing.length > 0 && <ul>{result.missing.map(item => <li key={item}>{item}</li>)}</ul>}
+            <button className="secondary" disabled={costBusy || result.missing.length > 0 || result.confirmed} onClick={async () => { setCostBusy(true); setCostError(""); try { await confirmCosts(order, result.fingerprint); } catch(cause) { setCostError(cause instanceof Error ? cause.message : "Falha ao confirmar."); } finally { setCostBusy(false); } }}>{result.confirmed ? "Custos conferidos" : costBusy ? "Salvando…" : "Confirmar custos do pedido"}</button>
             <dl className="order-details-specs">
               <div><dt>Material comprado</dt><dd>{result.material == null ? "Sem registro" : displayMoney(result.material)}</dd></div>
               {result.plannedMaterial != null && <div><dt>Material a comprar</dt><dd>{displayMoney(result.plannedMaterial)} · previsão</dd></div>}

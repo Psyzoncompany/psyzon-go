@@ -6,6 +6,7 @@ import { customerNameKey } from "../finance-model";
 export type MaterialOrder = {
   id: string;
   productionOrderId?: string;
+  purchaseDueDate?: string;
   title: string;
   client: string;
   materials: NoteMaterial[];
@@ -28,7 +29,7 @@ export type MaterialLine = {
 };
 
 type MaterialNote = { id: string; draft: NoteDraft; purchasedIds?: string[] };
-type LinkedOrder = { id: string; customer: string; quantity?: number };
+type LinkedOrder = { id: string; customer: string; quantity?: number; dueDate?: string };
 type LinkedCustomer = { id: string; name: string };
 
 export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrder[], customers: LinkedCustomer[]): MaterialOrder[] {
@@ -42,6 +43,7 @@ export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrd
     return {
       id,
       productionOrderId: linkedId,
+      purchaseDueDate: materialPurchaseDeadline(linkedId ? ordersById.get(linkedId)?.dueDate : undefined),
       title: title || "Anotação sem título",
       client: ordersById.get(document.orderId)?.customer || customersById.get(document.customerId) || "",
       materials: materials.map(material => purchased.has(material.id) ? material : forecastMaterial(material, quantity)),
@@ -53,6 +55,14 @@ export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrd
       }),
     };
   });
+}
+
+export function materialPurchaseDeadline(delivery?: string) {
+  if (!delivery || !/^\d{4}-\d{2}-\d{2}$/.test(delivery)) return undefined;
+  const date = new Date(delivery + "T12:00:00Z");
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== delivery) return undefined;
+  date.setUTCDate(date.getUTCDate() - 7);
+  return date.toISOString().slice(0, 10);
 }
 
 export function fabricShoppingList(orders: MaterialOrder[], productionOrders: Array<{ id: string; customer: string; product: string; status?: string }>) {

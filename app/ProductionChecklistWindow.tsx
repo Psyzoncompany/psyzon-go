@@ -18,7 +18,7 @@ export default function ProductionChecklistWindow({ customer, close, children, t
       if ((event.target as HTMLElement).closest(".modal-backdrop")) return;
       if (event.key === "Escape") { event.stopPropagation(); close(); }
       if (event.key !== "Tab") return;
-      const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]') ?? []).filter(el => el.getClientRects().length);
+      const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,a[href],[tabindex="0"]') ?? []).filter(el => el.getClientRects().length);
       if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
       else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
     };
@@ -28,7 +28,7 @@ export default function ProductionChecklistWindow({ customer, close, children, t
   return <div className="production-checklist-overlay">
     <button className="production-checklist-dismiss" aria-label="Fechar lista de produção" onClick={close} />
     <div ref={panel} className="production-checklist-window" role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby="production-window-title">
-      <header className="production-window-heading"><div><h2 id="production-window-title">{title}</h2><p>{customer} · Vinculado ao pedido</p></div><button type="button" aria-label={title === "Checklist de produção" ? "Fechar checklist" : "Fechar detalhes do pedido"} onClick={close}><X size={22} /></button></header>
+      <header className="production-window-heading"><div><h2 id="production-window-title">{title}</h2><p>{customer}</p></div><button type="button" aria-label={title === "Checklist de produção" ? "Fechar checklist" : "Fechar detalhes do pedido"} onClick={close}><X size={22} /></button></header>
       {children}
     </div>
   </div>;

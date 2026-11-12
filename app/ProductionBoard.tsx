@@ -56,8 +56,15 @@ export default function ProductionBoard({ orders, orderPayments, displayMoney, u
   const selected = orders.find(order => order.id === selectedId);
   for (const order of orders) if (filter !== "late" || dueTone(order.dueDate, order.status) === "danger") grouped.get(order.status)?.push(order);
   for (const stage of productionStages) grouped.get(stage)?.sort((a, b) => sort === "customer" ? a.customer.localeCompare(b.customer, "pt-BR") : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
-  const delivered = grouped.get("Entregue") ?? [];
-  const deliveredCount = orders.filter(order => order.status === "Entregue").length;
+  const delivered = orders.filter(order => order.status === "Entregue").sort((a, b) => (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""));
+  const deliveryMonths = new Map<string, Order[]>();
+  for (const order of delivered) {
+    const month = order.deliveredAt?.slice(0, 7) ?? "";
+    const entries = deliveryMonths.get(month) ?? [];
+    entries.push(order);
+    deliveryMonths.set(month, entries);
+  }
+  const deliveredCount = delivered.length;
   async function run(order: Order, action: () => Promise<void>) {
     setError("");
     setWorking(current => new Set(current).add(order.id));
@@ -112,15 +119,17 @@ export default function ProductionBoard({ orders, orderPayments, displayMoney, u
     </div>
     <details className="production-delivered">
       <summary data-production-drop="Entregue" data-drop-active={drag.dragged?.stage === "Entregue"}><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count"><CountUp value={delivered.length} /></span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
-      {delivered.length ? <ul>{delivered.map(order => {
+      {delivered.length ? [...deliveryMonths].map(([month, entries], index) => <details className="production-delivery-month" key={month} open={index === 0}>
+        <summary><strong>{month ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(month + "-01T12:00:00Z")) : "Sem data de entrega registrada"}</strong><span className="production-count">{entries.length}</span></summary>
+        <ul>{entries.map(order => {
         const actions = actionsFor(order);
         return <li key={order.id} className="production-delivered-row">
           <OrderPhoto order={order} />
-          <div className="production-delivered-name"><b>{order.product}</b><small>{order.customer} · {order.quantity} un.</small></div>
+          <div className="production-delivered-name"><b>{order.product}</b><small>{order.customer} · {order.quantity} un.{order.deliveredAt && " · " + order.deliveredAt.split("-").reverse().join("/")}</small></div>
           <button className="production-note-link" onClick={() => setSelectedId(order.id)}>Ver pedido</button><button type="button" className="production-note-link" aria-haspopup="dialog" aria-label={`Pendências de ${order.customer} (${alerts.get(order.id)?.length ?? 0})`} onClick={() => setAlertId(order.id)}><AlertTriangle size={16} /></button>
           <div className="production-delivered-actions"><button className="production-note-link" onClick={actions.openChecklist}><ClipboardList size={15} /> Abrir lista</button><OrderActions {...actions} /></div>
         </li>;
-      })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
+      })}</ul></details>) : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
     {alertOrder && <NoteDialog title="Pendências do pedido" close={() => setAlertId("")}>
       <div className="order-alert-panel">

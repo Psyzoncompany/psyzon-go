@@ -36,6 +36,7 @@ export type Order = {
   photoData?: string;
   dtfStatus?: OrderDtfStatus;
   createdAt?: unknown;
+  deliveredAt?: string | null;
 };
 
 export function dtfAlertDays(order: Pick<Order, "dtfStatus" | "dueDate" | "status">, today: string) {

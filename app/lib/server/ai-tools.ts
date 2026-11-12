@@ -574,7 +574,7 @@ const updateOrderStatus: ToolDefinition = {
     if (!orderStatuses.some(stage => stage === status)) throw new Error("Etapa inválida.");
     const previous = await getUserDocument(context.identity, "orders", orderId);
     if (!previous) throw new Error("Pedido não encontrado.");
-    const updated = await patchUserDocument(context.identity, "orders", orderId, { status });
+    const updated = await patchUserDocument(context.identity, "orders", orderId, { status, deliveredAt: status === "Entregue" ? previous.deliveredAt || (previous.status === "Entregue" ? null : today()) : null });
     await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "update_order_status", action: "update", entity: "order", entityId: orderId, arguments: { status, reason: text(args.reason) }, previousValue: { status: previous.status }, newValue: { status }, status: "success", riskLevel: 2 });
     return { success: true, orderId, previousStatus: previous.status, status: updated.status };
   },

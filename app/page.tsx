@@ -1053,7 +1053,7 @@ export default function HomePage() {
   const updateStatus = async (order: Order, status: OrderStatus) => {
     if (firebaseState !== "live") throw new Error("Aguarde a conexão para atualizar a etapa.");
     try {
-      await updateDoc(userDocument(uid, "orders", order.id), { status });
+      await updateDoc(userDocument(uid, "orders", order.id), { status, deliveredAt: status === "Entregue" ? order.deliveredAt || calendarDate : null });
       showToast(status === "Entregue" ? "Pedido movido para Entregues" : "Etapa do pedido atualizada");
     } catch {
       throw new Error("Não foi possível salvar a etapa. Tente novamente.");
@@ -1302,6 +1302,7 @@ export default function HomePage() {
       );
       transaction.update(orderRef, {
         ...updatedOrder,
+        deliveredAt: updatedOrder.status === "Entregue" ? (latestRaw.deliveredAt ?? (latestRaw.status === "Entregue" ? null : calendarDate)) : null,
         quantity:
           effective.checklistQuantity !== undefined
             ? current.data().quantity

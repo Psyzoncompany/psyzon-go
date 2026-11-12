@@ -50,7 +50,7 @@ export default function SewingWorkspace({
   const [personDialog, setPersonDialog] = useState<"edit" | "remove" | null>(
     null,
   );
-  const [kind, setKind] = useState<"print" | "payment">("print");
+  const [kind, setKind] = useState<"print" | "print-front" | "payment">("print");
   const [filter, setFilter] = useState("pending");
   const [search, setSearch] = useState("");
   const [reportOpen, setReportOpen] = useState(false);
@@ -98,10 +98,10 @@ export default function SewingWorkspace({
     event.preventDefault();
     const form = event.currentTarget,
       values = new FormData(form);
-    const kind = values.get("kind") as "print" | "payment",
+    const kind = values.get("kind") === "payment" ? "payment" : "print",
       quantity = Number(values.get("quantity"));
     const amount =
-      kind === "print" ? quantity * 4 : Number(values.get("amount"));
+      kind === "print" ? quantity * (values.get("kind") === "print-front" ? 2 : 4) : Number(values.get("amount"));
     if (
       !Number.isFinite(amount) ||
       amount <= 0 ||
@@ -284,9 +284,9 @@ export default function SewingWorkspace({
           <input
             name="name"
             maxLength={160}
-            required={kind === "print"}
+            required={kind !== "payment"}
             placeholder={
-              kind === "print"
+              kind !== "payment"
                 ? "Ex.: Camisas Igreja · João"
                 : "Ex.: Acerto da semana"
             }
@@ -298,13 +298,14 @@ export default function SewingWorkspace({
             aria-label="Lançamento"
             name="kind"
             value={kind}
-            onChange={(e) => setKind(e.target.value as "print" | "payment")}
+            onChange={(e) => setKind(e.target.value as typeof kind)}
           >
             <option value="print">Estampagens · R$ 4 cada</option>
+            <option value="print-front">Estampagem só frente · R$ 2 cada</option>
             <option value="payment">Pagamento de costura</option>
           </select>
         </label>
-        {kind === "print" ? (
+        {kind !== "payment" ? (
           <label>
             Quantidade de estampagens
             <input name="quantity" type="number" min="1" step="1" required />

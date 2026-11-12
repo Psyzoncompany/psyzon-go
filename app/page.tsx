@@ -702,7 +702,7 @@ export default function HomePage() {
           entry.kind === "print" &&
           (!Number.isInteger(entry.quantity) ||
             entry.quantity < 1 ||
-            entry.amount !== entry.quantity * 4)
+            ![entry.quantity * 2, entry.quantity * 4].includes(entry.amount))
         )
           throw new Error("Quantidade inválida.");
         if (ledger.entries.some((item) => item.id === entry.id)) return;

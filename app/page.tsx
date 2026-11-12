@@ -9,6 +9,9 @@ import OrderPricingFields from "./OrderPricingFields";
 import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import CustomersWorkspace from "./CustomersWorkspace";
+import { FlowDashboard, FlowFinance, FlowMovementEditor } from "./FlowWorkspace";
+import { productionSummary } from "./production-checklist";
+import { dayOffset, type FlowMovement } from "./flow-model";
 import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
 import ProductionBoard from "./ProductionBoard";
 import { forecastMaterial } from "./material-forecast";
@@ -91,6 +94,10 @@ import {
   RotateCcw,
   Search,
   Settings,
+  ClipboardList,
+  FileText,
+  PackagePlus,
+  Sparkles,
   Spool,
   Sun,
   UsersRound,
@@ -99,7 +106,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-type CreateKind = "pedido" | "cliente";
+type CreateKind = "pedido" | "cliente" | "orcamento";
 type UISize = "compact" | "comfortable" | "large" | "extra-large";
 type DocumentPictureInPictureController = {
   window: Window | null;
@@ -137,6 +144,7 @@ type AppNotification = {
   orderId?: string;
 };
 
+const FlowAI = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
@@ -230,6 +238,12 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "historico", label: "Histórico", icon: History },
   { id: "mais", label: "Configuração", icon: Settings },
 ];
+const flowNavGroups = [
+  { label: "Visão geral", items: [navItems[0], navItems[5], navItems[6]] },
+  { label: "Operação", items: [{ id: "pedidos", label: "Pedidos", icon: ClipboardList }, navItems[1], { id: "orcamentos", label: "Orçamentos", icon: FileText }, navItems[4], navItems[2], { id: "reposicao", label: "Reposição de estoque", icon: PackagePlus }, navItems[3]] },
+  { label: "Conta", items: [{ id: "ai", label: "Assistente IA", icon: Sparkles }, navItems[7]] },
+] satisfies typeof navGroups;
+
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "dtf", "notas", "clientes"].includes(item.id)) },
   { label: "Gestão", items: navItems.filter((item) => ["financeiro", "historico"].includes(item.id)) },
@@ -275,10 +289,13 @@ export default function HomePage() {
   const [toast, setToast] = useState("");
   const [floatingHost, setFloatingHost] = useState<Window | null>(null);
   const [standardSidebarCollapsed, setStandardSidebarCollapsed] = useState(false);
+  const [flowSidebarCollapsed, setFlowSidebarCollapsed] = useState(false);
   const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
   const studio = interfaceAppearance.appearance.theme === "studio-glass";
-  const sidebarCollapsed = studio ? studioSidebarCollapsed : standardSidebarCollapsed;
-  const setSidebarCollapsed = studio ? setStudioSidebarCollapsed : setStandardSidebarCollapsed;
+  const flow = interfaceAppearance.appearance.theme === "psyzon-flow";
+  const [movementDraft, setMovementDraft] = useState<{ type: "income" | "expense"; item?: FlowMovement }>();
+  const sidebarCollapsed = flow ? flowSidebarCollapsed : studio ? studioSidebarCollapsed : standardSidebarCollapsed;
+  const setSidebarCollapsed = flow ? setFlowSidebarCollapsed : studio ? setStudioSidebarCollapsed : setStandardSidebarCollapsed;
   const searchRef = useRef<HTMLInputElement>(null);
   const floatingWindowRef = useRef<Window | null>(null);
   const floatingOpeningRef = useRef(false);
@@ -756,13 +773,25 @@ export default function HomePage() {
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
-  const alerts = useMemo(() => (view === "producao" || view === "inicio") ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
+  const flowSizes = useMemo(() => {
+    const summaries = new Map<string, string>();
+    if (!flow) return summaries;
+    for (const note of [...notes].sort((a,b) => millis(a.updatedAt) - millis(b.updatedAt))) {
+      const { status, orderId, productionChecklist } = readDocument(note.content);
+      if (orderId && status !== "trash" && productionChecklist?.rows.length) summaries.set(orderId, productionSummary(productionChecklist.rows).map(({ size, quantity }) => `${size} × ${quantity}`).join(" · "));
+    }
+    return summaries;
+  }, [flow, notes]);
+  const alerts = useMemo(() => (["producao", "inicio", "pedidos", "orcamentos"].includes(view)) ? orderAlerts(orders, notes, customers, dtfOrders, sewingLedger, money.format) : new Map(), [view, orders, notes, customers, dtfOrders, sewingLedger]);
   const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
   const allPayables = [...bills, ...stockPayables, ...sewingPayables];
   const visibleCustomers = balances.filter((customer) => !customer.archived);
   const { pending, toPay: payable, debtors } = financialSummary(balances, allPayables, calendarDate.slice(0, 7));
+  const flowCash = useMemo(() => transactions.filter(item => item.account === "business"), [transactions]);
+  const flowAccounts = flow && (view === "inicio" || view === "financeiro")
+    ? financialSummary(balances, allPayables.filter(bill => bill.account === "business"), calendarDate.slice(0,7)) : undefined;
   const nextPayables = view === "inicio" ? nextMonthPayables(allPayables, calendarDate.slice(0, 7)) : undefined;
   const orderBalances = orderReceivables(balances, orders);
   const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
@@ -882,7 +911,7 @@ export default function HomePage() {
     if (!kind) return;
 
     try {
-      if (kind === "pedido") {
+      if (kind === "pedido" || kind === "orcamento") {
         const nextOrder: Omit<Order, "id"> = {
           customer: String(form.get("customer")).trim(),
           phone: String(form.get("phone") || ""),
@@ -899,7 +928,7 @@ export default function HomePage() {
           total: Number(form.get("total")),
           paid: Number(form.get("paid")),
           dueDate: String(form.get("dueDate")),
-          status: "Aguardando material",
+          status: kind === "orcamento" ? "Orçamento" : "Aguardando material",
           dtfStatus: String(form.get("dtfStatus")) as OrderDtfStatus,
           notes: String(form.get("notes") || ""),
           photoData: String(form.get("photoData") || ""),
@@ -973,7 +1002,7 @@ export default function HomePage() {
           });
         }
         await batch.commit();
-        showToast("Pedido criado e financeiro atualizado");
+        showToast(kind === "orcamento" ? "Orçamento criado" : "Pedido criado e financeiro atualizado");
       } else if (kind === "cliente") {
         const name = String(form.get("name")).trim();
         const existing = customers.find(
@@ -1642,7 +1671,7 @@ export default function HomePage() {
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
         </div>
         <nav>
-          {navGroups.map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || (["materiais", "afazeres", "reposicao", "costureiras"].includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
+          {(flow ? flowNavGroups : navGroups).map((group) => <div className="nav-group" key={group.label}><small>{group.label}</small>{group.items.map((item) => <NavButton key={item.id} item={item} active={view === item.id || ((flow ? ["materiais", "afazeres", "costureiras"] : ["materiais", "afazeres", "reposicao", "costureiras"]).includes(view) && item.id === "notas")} onClick={() => setView(item.id)} />)}</div>)}
         </nav>
         <div className={`sync-status ${firebaseState}`}><span /><b>{firebaseState === "live" ? "Firebase em tempo real" : firebaseState === "connecting" ? "Conectando…" : "Erro de sincronização"}</b></div>
         <button className="profile" onClick={() => setView("mais")}><span>{initials}</span><span><b>{userName}</b><small>{user.email}</small></span><ChevronRight size={15} /></button>
@@ -1667,16 +1696,26 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
-          {view === "producao" && <ProductionBoard today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
+          {nextPayables && !flow && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} updateStatus={(order: Order, status: OrderStatus) => void updateStatus(order, status).catch(error => showToast(error.message))} />}
+          {flowAccounts && view === "inicio" && <FlowDashboard firstName={firstName} transactions={flowCash} today={calendarDate} hidden={privateValues} money={displayTotal} payable={flowAccounts.toPay} receivable={flowAccounts.pending} upcoming={flowAccounts.payable.filter(bill => (bill.dueDate || bill.dueDay) && billDueDate(bill,calendarDate.slice(0,7)) <= dayOffset(calendarDate,7)).length} orders={productionOrders} navigate={setView} createOrder={() => setModal("pedido")} createQuote={() => setModal("orcamento")} record={type => setMovementDraft({ type })} togglePrivacy={() => requestPrivacy(!privateValues)} notifications={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} notificationCount={notifications.length} />}
+          {(["producao", "pedidos", "orcamentos"].includes(view)) && <ProductionBoard key={view} sizeSummaries={flow ? flowSizes : undefined} flowMode={view === "pedidos" ? "orders" : view === "orcamentos" ? "quotes" : flow ? "board" : undefined} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={view === "orcamentos" ? photoProductionOrders.filter(order => order.status === "Orçamento") : view === "pedidos" ? photoProductionOrders.filter(order => order.status !== "Orçamento") : photoProductionOrders} displayMoney={flow ? displayTotal : displayMoney} updateStatus={updateStatus} onCreate={() => setModal(view === "orcamentos" ? "orcamento" : "pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
-          {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
+          {view === "clientes" && <CustomersWorkspace flowOrders={flow ? productionOrders : undefined} customers={visibleCustomers} displayMoney={flow ? displayTotal : displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
-          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
+          {view === "ai" && <FlowAI getIdToken={() => user.getIdToken()} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
+          {flowAccounts && view === "financeiro" && <FlowFinance transactions={flowCash} today={calendarDate} hidden={privateValues} money={displayTotal} payable={flowAccounts.toPay} receivable={flowAccounts.pending} record={type => setMovementDraft({ type })} forecast={view === "financeiro" ? [7, 30, 90].map(days => {
+            const until = dayOffset(calendarDate, days);
+            const scheduled = (bill: Bill) => (bill.dueDate || bill.dueDay) && billDueDate(bill,calendarDate.slice(0,7)) <= until;
+            const income = flowAccounts.receivable.filter(scheduled).reduce((sum,bill) => sum + bill.amount, 0)
+              + productionOrders.filter(order => order.dueDate && order.dueDate <= until).reduce((sum,order) => sum + (order.receivable ?? 0), 0);
+            const expenses = flowAccounts.payable.filter(scheduled).reduce((sum,bill) => sum + bill.amount, 0);
+            return { days, income: roundMoney(income), expenses: roundMoney(expenses) };
+          }) : []} onEdit={item => { if (item.type !== "transfer") setMovementDraft({ type: item.type, item }); }} />}
+          {view === "financeiro" && <FinanceWorkspace flowOrders={flow ? productionOrders : undefined} today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={flow ? displayTotal : displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "historico" && <HistoryWorkspace
             key={uid} today={historyDate(Date.now())} connection={historyConnection}
             rows={historyRows(orders, bills, transactions, historyEntries, calendarDate.slice(0, 7))}
@@ -1695,12 +1734,25 @@ export default function HomePage() {
       {view !== "notas" && view !== "historico" && view !== "afazeres" && view !== "reposicao" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
 
 
-      <MobileNavigation view={view} navigate={setView} /><SiteTypewriter page={view} />
+      <MobileNavigation flow={flow} view={view} navigate={setView} /><SiteTypewriter page={view} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
         {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
+      {movementDraft && <FlowMovementEditor today={calendarDate} draft={movementDraft} close={() => setMovementDraft(undefined)} save={async (input, id) => {
+        if (firebaseState !== "live") throw new Error("Aguarde a conexão com o financeiro.");
+        if (!input.description || !input.category || !input.transactionDate || input.transactionDate > calendarDate || !Number.isFinite(input.amount) || input.amount <= 0 || input.amount > 100000000) throw new Error("Confira os dados da movimentação.");
+        if (id) {
+          const reference = userDocument(uid, "transactions", id);
+          await runTransaction(getFirestore(getApps()[0]), async transaction => {
+            const item = (await transaction.get(reference)).data() as Transaction | undefined;
+            if (!item || item.account !== "business" || item.source || item.orderId || item.billId || item.customerId || item.provider || item.type !== input.type) throw new Error("Este lançamento é gerenciado pelo registro de origem.");
+            transaction.update(reference, input);
+          });
+        } else await addDoc(userCollection(uid, "transactions"), { ...input, account: "business", createdAt: serverTimestamp() });
+        showToast(id ? "Movimentação atualizada" : "Movimentação registrada");
+      }} />}
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}
 
@@ -1724,7 +1776,7 @@ function AuthScreenV2({ error, onSignIn }: { error: string; onSignIn: () => void
 
 function NavButton({ item, active, onClick }: { item: (typeof navItems)[number]; active: boolean; onClick: () => void }) {
   const Icon = item.icon;
-  return <button className={active ? "active" : ""} onClick={onClick} title={item.label} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>;
+  return <button className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={onClick} title={item.label} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>;
 }
 
 function localDateValue(date = new Date()) {
@@ -1808,7 +1860,7 @@ function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {
 
 function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind === "pedido" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label></div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header>{kind !== "orcamento" && <div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div>}<form key={kind} onSubmit={onSubmit}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
 }
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

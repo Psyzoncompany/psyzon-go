@@ -3,10 +3,12 @@
 import { useState, type FormEvent } from "react";
 import Modal from "./Modal";
 import { Check, MessageCircle, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
-import type { CustomerBalance } from "./finance-model";
+import type { Order } from "./order-model";
+import { customerNameKey, type CustomerBalance } from "./finance-model";
 
 type Props = {
   customers: CustomerBalance[];
+  flowOrders?: Order[];
   displayMoney: (value: number) => string;
   onCreate: () => void;
   onSave: (customer: CustomerBalance, total: number, pending: number) => Promise<void>;
@@ -15,7 +17,11 @@ type Props = {
   openDtf: (customerId: string) => void;
 };
 
-export default function CustomersWorkspace({ customers, displayMoney, onCreate, onSave, onDelete, dtfCount, openDtf }: Props) {
+export default function CustomersWorkspace({ customers, flowOrders, displayMoney, onCreate, onSave, onDelete, dtfCount, openDtf }: Props) {
+  const [profileId, setProfileId] = useState("");
+  const [query, setQuery] = useState("");
+  const profile = customers.find(item => item.id === profileId);
+  const shown = flowOrders ? customers.filter(item => customerNameKey(item.name + " " + (item.company ?? "")).includes(customerNameKey(query))) : customers;
   const [editing, setEditing] = useState<CustomerBalance | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -35,16 +41,24 @@ export default function CustomersWorkspace({ customers, displayMoney, onCreate, 
   return <>
     <div className="page-heading compact"><div><h1>Clientes</h1><p>Cadastro e valores a receber.</p></div><button className="primary" onClick={onCreate}><Plus size={17} /> Novo cliente</button></div>
     {error && !editing && <p role="alert" className="form-error">{error}</p>}
-    <div className="customer-grid">{customers.map((customer) => {
+    {flowOrders && <div className="flow-order-tools"><input type="search" aria-label="Buscar clientes" placeholder="Nome ou empresa" value={query} onChange={event => setQuery(event.target.value)} /></div>}
+    <div className="customer-grid">{shown.map((customer) => {
       const phone = customer.phone.replace(/\D/g, "");
       const count = dtfCount(customer);
       return <article className="customer-card" key={customer.id}>
         <div className="customer-card-top"><span className="avatar large">{customer.name.split(" ").map((part) => part[0]).slice(0, 2).join("")}</span><div><h3>{customer.name}</h3><p>{customer.company || customer.phone || "Sem contato"}</p></div><div className="customer-actions"><button aria-label={`Editar valores de ${customer.name}`} title="Editar valores" onClick={() => { setError(""); setEditing(customer); }}><Pencil size={16} /></button><button disabled={busy} aria-label={`Excluir cliente ${customer.name}`} title="Excluir cliente" onClick={async () => { setBusy(true); setError(""); try { await onDelete(customer); } catch { setError("Não foi possível excluir o cliente."); } finally { setBusy(false); } }}><Trash2 size={16} /></button></div></div>
         <div className="customer-stats"><span><small>Total comprado</small><b>{displayMoney(customer.total)}</b></span><span><small>{customer.credit ? "Crédito disponível" : "Saldo pendente"}</small><b className={customer.pending ? "negative" : "positive"}>{displayMoney(customer.credit ?? customer.pending)}</b></span></div>
-        <footer><span>{customer.orderCount} {customer.orderCount === 1 ? "pedido" : "pedidos"}</span>{count > 0 && <button type="button" className="customer-dtf-link" aria-label={`Pedidos DTF de ${customer.name}`} onClick={() => openDtf(customer.id)}><Printer size={14} /> {count} DTF</button>}{phone && <a href={`https://wa.me/${phone.length <= 11 ? `55${phone}` : phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> WhatsApp</a>}</footer>
+        <footer>{flowOrders && <button type="button" className="flow-text-button" onClick={() => setProfileId(customer.id)}>Ver perfil</button>}<span>{customer.orderCount} {customer.orderCount === 1 ? "pedido" : "pedidos"}</span>{count > 0 && <button type="button" className="customer-dtf-link" aria-label={`Pedidos DTF de ${customer.name}`} onClick={() => openDtf(customer.id)}><Printer size={14} /> {count} DTF</button>}{phone && <a href={`https://wa.me/${phone.length <= 11 ? `55${phone}` : phone}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> WhatsApp</a>}</footer>
       </article>;
     })}</div>
     {!customers.length && <div className="panel finance-empty">Nenhum cliente cadastrado.</div>}
+    {flowOrders && customers.length > 0 && !shown.length && <p className="flow-empty">Nenhum cliente encontrado.</p>}
+    {flowOrders && profile && <Modal titleId="flow-customer-title" busy={false} close={() => setProfileId("")}>
+      <header><div><h2 id="flow-customer-title">{profile.name}</h2><p>{[profile.company, profile.phone].filter(Boolean).join(" · ")}</p></div><button type="button" aria-label="Fechar" onClick={() => setProfileId("")}><X size={20} /></button></header>
+      <section className="flow-customer-profile"><b>Pendente {displayMoney(profile.pending)}</b><h3>Histórico de pedidos</h3>
+      <ul className="flow-customer-orders">{flowOrders.filter(order => customerNameKey(order.customer) === customerNameKey(profile.name)).map(order => <li key={order.id}><div><b>{order.product}</b><small>{order.status} · {order.quantity} un.</small></div><strong>{displayMoney(order.total)}</strong></li>)}</ul>
+      </section>
+    </Modal>}
     {editing && <Modal titleId="customer-edit-title" busy={busy} close={() => setEditing(null)}><header><div><h2 id="customer-edit-title">Editar valores</h2><p>{editing.name}</p></div><button disabled={busy} aria-label="Fechar" onClick={() => setEditing(null)}><X size={20} /></button></header><form onSubmit={save}><label className="full">Total comprado<input name="total" type="number" min="0" max="100000000" step="0.01" required defaultValue={editing.total} /></label><label className="full">Saldo pendente<input name="pending" type="number" min="0" max="100000000" step="0.01" required defaultValue={editing.pending} /></label>{error && <p className="form-error" role="alert">{error}</p>}<footer><button type="button" className="secondary" disabled={busy} onClick={() => setEditing(null)}>Cancelar</button><button type="submit" className="primary" disabled={busy}><Check size={17} />{busy ? "Salvando…" : "Salvar valores"}</button></footer></form></Modal>}
   </>;
 }

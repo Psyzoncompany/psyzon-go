@@ -10,10 +10,14 @@ import { financeDate, financeStatus, recurrenceLabel, sortedBills } from "./fina
 import { Check, Pencil, Plus, Trash2, Undo2, X, ReceiptText, ArrowDownLeft, WalletCards, CheckCheck, ArrowUpRight } from "lucide-react";
 import { billDueDate, billIsSettled, financialSummary, localDateValue, nextMonthPayables, type Bill, type CustomerBalance } from "./finance-model";
 
+import { customerNameKey } from "./finance-model";
+import type { Order } from "./order-model";
+
 export type BillInput = Omit<Bill, "id" | "createdAt" | "lastPaidMonth" | "paidInstallments" | "settled">;
 type Expense = { id: string; description: string; amount: number; type: string; transactionDate?: string; createdAt?: unknown; category?: string };
 type Props = {
   today?: string;
+  flowOrders?: Order[];
   bills: Bill[];
   restock: Bill[];
   openRestock: (bill?: Bill) => void;
@@ -37,7 +41,7 @@ export function expenseDate(item: Expense) {
   return date && Number.isFinite(date.getTime()) ? localDateValue(date) : "";
 }
 
-export default function FinanceWorkspace({ today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
+export default function FinanceWorkspace({ flowOrders, today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
   const [selectedMonth, setMonth] = useState<string | null>(null);
   const month = selectedMonth ?? currentMonth;
   const [editor, setEditor] = useState<{ bill: Bill | null } | null>(null);
@@ -79,7 +83,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
   const openCount = `${payable.length} ${payable.length === 1 ? "conta em aberto" : "contas em aberto"}`;
   const paidSum = settledBills.reduce((sum, bill) => sum + bill.amount, 0);
   return <div className="finance-workspace finance-premium">
-    <div className="page-heading compact"><div><TypedHeading>Financeiro</TypedHeading></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
+    <div className="page-heading compact"><div><TypedHeading>{flowOrders ? "Contas" : "Financeiro"}</TypedHeading></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
       <div className="finance-premium-summary"><article><small>A pagar</small><strong><CountUp value={toPay} format={displayTotal} /></strong><span>{openCount}</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
       <div className="finance-premium-columns">
@@ -98,7 +102,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
           <button type="button" className="finance-sheet-secondary" disabled={busy} onClick={() => editBill(selectedBill)}><Pencil size={18}/> Editar conta</button><button type="button" className="finance-sheet-danger" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={18}/> Excluir conta</button>
         </div>}
       </>}
-      {selectedCustomer && (selectedCustomer.credit ? <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.credit)}</div><p className="finance-sheet-description">Crédito disponível para compras futuras ou devolução.</p><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onRefund(selectedCustomer); setSelected(null); })}>Registrar devolução</button></> : <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.pending)}</div><p className="finance-sheet-description">Saldo pendente de {selectedCustomer.orderCount} pedido(s).</p><dl className="finance-sheet-data"><div><dt>Total comprado</dt><dd>{displayMoney(selectedCustomer.total)}</dd></div>{selectedCustomer.phone && <div><dt>Telefone</dt><dd>{selectedCustomer.phone}</dd></div>}</dl><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onReceive(selectedCustomer); setSelected(null); })}><Check size={18}/>Registrar recebimento</button></>)}
+      {selectedCustomer && (selectedCustomer.credit ? <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.credit)}</div><p className="finance-sheet-description">Crédito disponível para compras futuras ou devolução.</p><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onRefund(selectedCustomer); setSelected(null); })}>Registrar devolução</button></> : <><div className="finance-sheet-amount">{displayMoney(selectedCustomer.pending)}</div><p className="finance-sheet-description">Saldo pendente de {selectedCustomer.orderCount} pedido(s).</p><dl className="finance-sheet-data"><div><dt>Total comprado</dt><dd>{displayMoney(selectedCustomer.total)}</dd></div>{selectedCustomer.phone && <div><dt>Telefone</dt><dd>{selectedCustomer.phone}</dd></div>}</dl><button type="button" className="finance-sheet-primary" disabled={busy} onClick={() => void run(async () => { await onReceive(selectedCustomer); setSelected(null); })}><Check size={18}/>Registrar recebimento</button>{flowOrders && <ul className="flow-customer-orders">{flowOrders.filter(order => order.status !== "Orçamento" && customerNameKey(order.customer) === customerNameKey(selectedCustomer.name)).map(order => <li key={order.id}><div><b>{order.product}</b><small>{order.dueDate ? financeDate(order.dueDate) : "Sem prazo"}</small></div><div><small>Pago {displayMoney(order.paid)}</small><small>Pendente {displayMoney(order.receivable ?? 0)}</small></div></li>)}</ul>}</>)}
       {selectedExpense && <><div className="finance-sheet-amount">{displayMoney(selectedExpense.amount)}</div><StatusIndicator status={{ tone: "paid", label: "Pago" }}/><dl className="finance-sheet-data"><div><dt>Data</dt><dd>{financeDate(expenseDate(selectedExpense))}</dd></div><div><dt>Categoria</dt><dd>{selectedExpense.category || "Outros"}</dd></div></dl></>}
       {error && <p className="finance-sheet-error" role="alert">{error}</p>}
     </FinanceDetailSheet>}

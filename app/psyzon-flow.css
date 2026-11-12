@@ -1,0 +1,182 @@
+@media screen {
+  :root[data-ui-theme="psyzon-flow"] {
+    --bg: #f7f7fa; --card: #fff; --card-subtle: #f3eefb;
+    --text: #19171f; --muted: #625b6d; --faint: #706679; --border: #e8e1ef;
+    --blue: #7425d6; --blue-soft: #f3ebff; --green: #087754; --green-soft: #e2f7ef;
+    --red: #b52e49; --red-soft: #fbe9ee; --yellow: #86550b; --yellow-soft: #fdf0d8;
+    --flow-hero: linear-gradient(135deg, #45128a, #7425d6);
+    --shadow: 0 3px 16px #3213520b; --structure-radius: 20px; --structure-dialog-radius: 24px;
+    --brand-mark-filter: hue-rotate(42deg) saturate(.7);
+  }
+  :root[data-ui-theme="psyzon-flow"][data-theme="dark"] {
+    --bg: #15111b; --card: #211927; --card-subtle: #2d2237;
+    --text: #faf6ff; --muted: #c9bdd2; --faint: #ab9cb7; --border: #3d3048;
+    --blue: #c9a3ff; --blue-soft: #3d2557; --green: #73dbad; --green-soft: #253c35;
+    --red: #ff9aad; --red-soft: #452735; --yellow: #f5c67b; --yellow-soft: #463522;
+    --flow-hero: linear-gradient(135deg, #321453, #6524aa);
+    --shadow: 0 3px 18px #0002;
+  }
+  .appearance-preview[data-preview="psyzon-flow"] { background: #f3ebff; border-color: #e4d4f5; }
+  .appearance-preview[data-preview="psyzon-flow"] .preview-sidebar { width: 15%; background: #45128a; }
+  .appearance-preview[data-preview="psyzon-flow"] .preview-sidebar i { background: #dec8f8; }
+  .appearance-preview[data-preview="psyzon-flow"] .preview-heading { background: #7425d6 !important; }
+  .appearance-preview[data-preview="psyzon-flow"] .preview-metrics i:first-child { background: #7425d6; }
+
+  :root[data-ui-theme="psyzon-flow"] .app-shell :is(.sidebar,.topbar,.mobile-nav) { background: var(--card); backdrop-filter: none; }
+  :root[data-ui-theme="psyzon-flow"] .app-shell .notification-panel { background: var(--card); }
+  :root[data-ui-theme="psyzon-flow"] .sidebar nav button { border-radius: 14px; font-size: 13px; }
+  :root[data-ui-theme="psyzon-flow"] .sidebar nav button.active { background: var(--blue-soft); }
+  :root[data-ui-theme="psyzon-flow"] .nav-group > small { font-size: 9px; letter-spacing: .08em; }
+  :root[data-ui-theme="psyzon-flow"] :is(.primary,.an-primary) { background: #7425d6; color: #fff; border-color: transparent; box-shadow: none; border-radius: 999px; }
+  :root[data-ui-theme="psyzon-flow"] .secondary { border-radius: 999px; background: var(--card-subtle); }
+  :root[data-ui-theme="psyzon-flow"] :is(.panel,.customer-card,.dtf-pipeline,.materials-order,.production-delivered) { border-radius: 20px; box-shadow: var(--shadow); }
+  :root[data-ui-theme="psyzon-flow"] :is(.production-lane,.kanban-card-open,.dtf-order) { border-radius: 16px; }
+  :root[data-ui-theme="psyzon-flow"] .floating-new { display: none; }
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-view="financeiro"] .finance-workspace { margin-top: 26px; }
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-view="financeiro"] .finance-workspace .finance-premium-summary { display: none; }
+  :root[data-ui-theme="psyzon-flow"] .finance-list-card { border: 1px solid var(--border); }
+  :root[data-ui-theme="psyzon-flow"] .finance-row { min-height: 66px; padding-block: 10px; }
+  :root[data-ui-theme="psyzon-flow"] .finance-card-header { padding: 20px; }
+  :root[data-ui-theme="psyzon-flow"] .ai-workspace { min-height: min(740px, calc(100dvh - 100px)); border-radius: 20px; }
+  :root[data-ui-theme="psyzon-flow"] :is(.flow-dashboard,.flow-finance) { display: grid; gap: 20px; min-width: 0; }
+  .flow-hero { padding: clamp(18px,3vw,34px); border-radius: 24px; background: var(--flow-hero); color: #fff; }
+  .flow-hero header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 24px; }
+  .flow-hero header span { color: #f3ebff; font-size: 11px; letter-spacing: .12em; font-weight: 700; }
+  .flow-hero h1 { margin: 4px 0 0; font-size: clamp(24px,4vw,38px); font-weight: 750; letter-spacing: -.045em; overflow-wrap: anywhere; }
+  .flow-hero-actions { display: flex; flex-shrink: 0; gap: 6px; }
+  .flow-hero-actions button { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: #ffffff25; cursor: pointer; }
+  .flow-hero-actions button:hover { background: #ffffff40; }
+  .flow-hero-actions i { position: absolute; right: 10px; top: 8px; width: 7px; height: 7px; border-radius: 100%; background: #ffc5d0; }
+  .flow-cash-content { display: grid; gap: 13px; }
+  .flow-cash-content > div { display: grid; gap: 3px; }
+  .flow-cash-content > div > strong { font-size: clamp(27px,5vw,51px); font-weight: 750; letter-spacing: -.045em; overflow-wrap: anywhere; }
+  .flow-cash-content small,.flow-cash-content dt { color: #f0dcff; font-size: 12px; }
+  .flow-cash-content dl,.flow-forecast dl { margin: 0; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; }
+  .flow-cash-content dl { padding-block: 13px; border-block: 1px solid #ffffff44; }
+  .flow-cash-content dd,.flow-forecast dd { margin: 3px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+  .flow-actions { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 8px; }
+  .flow-actions button { display: grid; justify-items: center; align-content: start; gap: 8px; min-width: 0; font-size: 12px; font-weight: 650; cursor: pointer; }
+  .flow-actions button > span,.flow-row-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; color: var(--blue); background: var(--blue-soft); }
+  .flow-summary { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; }
+  .flow-card { min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 20px; background: var(--card); box-shadow: var(--shadow); }
+  .flow-summary button { display: grid; gap: 6px; text-align: left; cursor: pointer; }
+  .flow-summary small,.flow-row-icon + div small,.flow-chart-reading small,.flow-chart-axis,.flow-assistant-link small,.flow-priority small { color: var(--muted); }
+  .flow-summary strong { font-size: clamp(16px,2vw,24px); overflow-wrap: anywhere; }
+  .flow-summary svg { color: var(--blue); justify-self: end; }
+  .flow-dashboard-grid { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); gap: 16px; align-items: start; }
+  .flow-card > header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .flow-card > header > div { display: flex; align-items: center; gap: 8px; }
+  .flow-card > header svg { color: var(--blue); flex-shrink: 0; }
+  .flow-card h2 { margin: 0; font-weight: 700; font-size: 17px; }
+  .flow-card select,.flow-order-tools :is(input,select) { min-height: 44px; min-width: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--text); }
+  .flow-segments { display: flex; flex-wrap: wrap; gap: 4px; }
+  .flow-segments button,.flow-stage-tabs button { min-height: 44px; padding: 6px 11px; border-radius: 14px; font-weight: 650; font-size: 12px; cursor: pointer; }
+  :is(.flow-segments,.flow-stage-tabs) button[aria-pressed="true"] { background: var(--blue-soft); color: var(--blue); }
+  .flow-chart svg[viewBox="0 0 520 176"] { width: 100%; display: block; color: var(--blue); }
+  .flow-chart svg g { cursor: pointer; }
+  .flow-chart-grid { fill: none; stroke: var(--border); }
+  .flow-chart-line { fill: none; stroke: currentColor; stroke-width: 3; }
+  .flow-chart-reading { margin: 12px 0 2px; display: grid; gap: 3px; }
+  .flow-chart-reading strong { font-size: 23px; }
+  .flow-chart-axis { display: flex; justify-content: space-between; font-size: 11px; }
+  .flow-comparison { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+  .flow-comparison > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(55px,1fr) auto; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; overflow-wrap: anywhere; }
+  .flow-comparison meter { width: 100%; accent-color: var(--blue); }
+  .flow-empty { color: var(--muted); padding: 18px 0; margin: 0; }
+  :is(.flow-statement,.flow-priority) ul,.flow-order-list { padding: 0; margin: 0; list-style: none; }
+  .flow-statement li { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding: 10px 0; overflow-wrap: anywhere; }
+  .flow-statement li > button { grid-column: 2 / -1; justify-self: end; }
+  .flow-statement li > div,.flow-priority li,.flow-assistant-link span { display: grid; gap: 3px; min-width: 0; }
+  .flow-statement small { font-size: 11px; }
+  .flow-row-icon { width: 36px; height: 36px; }
+  .flow-statement [data-tone="income"] { color: var(--green); }
+  .flow-statement [data-tone="expense"] { color: var(--red); }
+  .flow-priority li { padding: 10px 0; border-top: 1px solid var(--border); }
+  .flow-assistant-link,.flow-text-button { display: flex; align-items: center; gap: 8px; color: var(--blue); text-align: left; cursor: pointer; }
+  .flow-assistant-link svg { flex-shrink: 0; }
+  .flow-text-button { min-height: 44px; font-weight: 700; }
+  .flow-finance-actions,.flow-order-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .flow-order-tools input { flex: 1 1 220px; }
+  .flow-order-list { display: grid; gap: 9px; }
+  .flow-order-list[data-cards="true"] { grid-template-columns: repeat(auto-fit,minmax(min(300px,100%),1fr)); }
+  .flow-order-row { width: 100%; display: grid; grid-template-columns: 44px minmax(0,1fr) auto 16px; align-items: center; gap: 10px; padding: 13px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); text-align: left; cursor: pointer; }
+  .flow-order-row[data-urgent="true"] { border-inline-start: 3px solid var(--red); }
+  .flow-order-row :is(img,.production-photo-empty) { width: 44px; height: 44px; object-fit: cover; border-radius: 10px; }
+  .flow-order-row span:not(.production-photo-empty) { display: grid; gap: 4px; overflow-wrap: anywhere; }
+  .flow-order-row span:nth-last-child(2) { max-width: 16ch; text-align: right; }
+  .flow-order-row small { color: var(--muted); font-size: 11px; }
+  .flow-stage-tabs { display: none; }
+  .flow-forecast dl { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .flow-forecast dt { color: var(--muted); font-size: 12px; }
+  :root[data-ui-theme="psyzon-flow"] :is(.flow-actions button > span,.flow-summary button,.flow-order-row,.flow-hero-actions button) { transition: transform .18s ease, background-color .18s ease; }
+  :root[data-ui-theme="psyzon-flow"] :is(.flow-actions button:active > span,.flow-summary button:active,.flow-order-row:active,.flow-hero-actions button:active) { transform: scale(.97); }
+  :root[data-ui-theme="psyzon-flow"] :is(.flow-summary button,.flow-order-row,.flow-assistant-link):hover { background: var(--card-subtle); }
+  :root[data-ui-theme="psyzon-flow"] :is(button,select,input,svg g):focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+  :root[data-ui-theme="psyzon-flow"] .flow-hero button:focus-visible { outline-color: white; }
+}
+@media screen and (max-width: 1050px) {
+  .flow-summary { grid-template-columns: repeat(3,minmax(0,1fr)); }
+}
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-layout="premium"] .mobile-nav { inset-inline: 0; inset-block-end: 0; height: calc(64px + env(safe-area-inset-bottom,0px)); border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom,0px); }
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-layout="premium"] .mobile-nav button { height: 54px; }
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-layout="premium"] .production-stage-jump { display: none; }
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-layout="premium"] .production-kanban { display: block; overflow: visible; }
+  :root[data-ui-theme="psyzon-flow"] .production-lane[data-mobile-current="false"] { display: none; }
+  .flow-stage-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; margin-bottom: 10px; }
+  .flow-stage-tabs button { display: flex; align-items: center; justify-content: space-between; gap: 3px; text-align: left; background: var(--card); }
+  .flow-stage-tabs small { color: var(--muted); }
+  .flow-dashboard-grid { grid-template-columns: minmax(0,1fr); }
+  .flow-card { padding: 14px; }
+  .flow-actions button { font-size: 10px; }
+  .flow-actions button > span { width: 44px; height: 44px; }
+  .flow-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .flow-cash-content dl { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .flow-hero header { flex-wrap: wrap; }
+  .flow-order-row { grid-template-columns: 36px minmax(0,1fr) minmax(58px,auto); gap: 7px; }
+  .flow-order-row > svg { display: none; }
+  .flow-order-row :is(img,.production-photo-empty) { width: 36px; height: 36px; }
+  .flow-order-row span:nth-last-child(2) { max-width: 12ch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-ui-theme="psyzon-flow"] :is(.flow-actions button > span,.flow-summary button,.flow-order-row,.flow-hero-actions button) { transition: none; }
+}
+:root[data-ui-theme="psyzon-flow"][data-glass-motion="reduced"] :is(.flow-actions button > span,.flow-summary button,.flow-order-row,.flow-hero-actions button) { transition: none; }
+@media screen {
+  :root[data-ui-theme="psyzon-flow"] .psyzon-ai-shell {
+    --ai-accent: var(--blue); --ai-accent-2: #7425d6;
+    height: min(720px, calc(100dvh - 125px)); min-height: 430px;
+    border: 1px solid var(--border); border-radius: 20px;
+  }
+  .flow-forecast-periods { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 13px 0; }
+  .flow-forecast-periods > div { display: grid; gap: 4px; padding: 10px; border-radius: 13px; background: var(--card-subtle); overflow-wrap: anywhere; }
+  .flow-forecast-periods small,.flow-forecast-note { color: var(--muted); }
+  .flow-customer-profile { padding: 16px 22px 24px; }
+  .flow-customer-profile h3 { margin: 15px 0 8px; }
+  .flow-customer-orders { list-style: none; margin: 12px 0 0; padding: 0; }
+  .flow-customer-orders li { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; }
+  .flow-customer-orders li > div { display: grid; gap: 4px; }
+  .flow-customer-orders small { color: var(--muted); }
+}
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="psyzon-flow"] .psyzon-ai-shell { height: max(380px, calc(100dvh - 156px)); min-height: 0; }
+}
+@media screen {
+  .flow-stage-progress { grid-column: 1 / -1; display: grid; gap: 4px; color: var(--muted); }
+  .flow-stage-progress progress { width: 100%; height: 5px; accent-color: var(--blue); }
+}
+@media screen and (min-width: 761px) {
+  .flow-hero { padding-block: 23px; }
+  .flow-hero header { margin-bottom: 16px; }
+  .flow-cash-content { gap: 9px; }
+  .flow-summary button { position: relative; padding-bottom: 16px; padding-right: 32px; }
+  .flow-summary svg { position: absolute; bottom: 15px; right: 14px; }
+}
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="psyzon-flow"] .app-shell[data-layout="premium"] .production-lane { min-height: 210px; }
+  :root[data-ui-theme="psyzon-flow"] .kanban-empty { min-height: 165px; }
+}
+@media screen {
+  .flow-movement-detail { min-height: 32px; padding: 0; text-align: left; font-weight: 700; cursor: pointer; overflow-wrap: anywhere; }
+  .flow-movement-detail:hover { color: var(--blue); }
+}

@@ -8,7 +8,7 @@ export type Customer = {
   archived?: boolean;
 };
 
-export type CustomerOrder = { id?: string; customer: string; phone?: string; total: number; paid: number };
+export type CustomerOrder = { id?: string; customer: string; phone?: string; total: number; paid: number; status?: string };
 export type CustomerBalance = Customer & { total: number; pending: number; orderCount: number; credit?: number };
 export type Bill = {
   id: string;
@@ -36,6 +36,7 @@ export function customerBalances(customers: Customer[], orders: CustomerOrder[])
     if (!previous || (previous.archived && !customer.archived)) map.set(key, { ...customer, total: customer.totalAdjustment ?? 0, pending: customer.pendingAdjustment ?? 0, orderCount: 0 });
   });
   orders.forEach((order) => {
+    if (order.status === "Orçamento") return;
     const key = customerNameKey(order.customer);
     const customer = map.get(key) ?? { id: `legacy-${encodeURIComponent(key)}`, name: order.customer, phone: order.phone ?? "", total: 0, pending: 0, orderCount: 0 };
     customer.total += order.total;
@@ -68,6 +69,7 @@ export function orderReceivables(customers: CustomerBalance[], orders: CustomerO
   const remaining = new Map(customers.map((customer) => [customerNameKey(customer.name), customer.archived ? 0 : customer.pending]));
   const result = new Map<string, number>();
   for (const order of orders) {
+    if (order.status === "Orçamento") continue;
     const key = customerNameKey(order.customer);
     const amount = roundMoney(Math.min(Math.max(0, remaining.get(key) ?? 0), Math.max(0, order.total - order.paid)));
     if (order.id) result.set(order.id, amount);
@@ -81,7 +83,7 @@ export function customerReceipt(customer: Customer, orders: CustomerOrder[]) {
   if (!balance || balance.archived || balance.pending <= 0) throw new Error("Este cliente não possui saldo a receber.");
   let remaining = balance.pending;
   const payments: Array<{ orderId: string; amount: number; paid: number }> = [];
-  const updated = orders.map((order) => {
+  const updated = orders.filter(order => order.status !== "Orçamento").map((order) => {
     if (!order.id) throw new Error("Pedido sem identificação.");
     const amount = roundMoney(Math.min(remaining, Math.max(0, order.total - order.paid)));
     remaining = roundMoney(remaining - amount);
@@ -98,9 +100,10 @@ export function billSettlementAfterEdit(bill: Bill, nextType: Bill["billingType"
 
 export function customerAdjustments(total: number, pending: number, orders: CustomerOrder[]) {
   if (![total, pending].every((value) => Number.isFinite(value) && value >= 0 && value <= 100000000) || pending > total) throw new Error("O saldo pendente deve estar entre zero e o total comprado.");
+  const confirmed = orders.filter(order => order.status !== "Orçamento");
   return {
-    totalAdjustment: Math.round((total - orders.reduce((sum, order) => sum + order.total, 0)) * 100) / 100,
-    pendingAdjustment: roundMoney(pending - orders.reduce((sum, order) => sum + order.total - order.paid, 0)),
+    totalAdjustment: Math.round((total - confirmed.reduce((sum, order) => sum + order.total, 0)) * 100) / 100,
+    pendingAdjustment: roundMoney(pending - confirmed.reduce((sum, order) => sum + order.total - order.paid, 0)),
   };
 }
 
@@ -108,7 +111,7 @@ export function customerRefund(credit: number, orders: CustomerOrder[]) {
   let remaining = roundMoney(credit);
   const updates: { id: string; paid: number; amount: number }[] = [];
   for (const order of orders) {
-    if (!order.id || remaining <= 0) continue;
+    if (!order.id || remaining <= 0 || order.status === "Orçamento") continue;
     const amount = roundMoney(Math.min(remaining, Math.max(0, order.paid - order.total)));
     if (amount <= 0) continue;
     remaining = roundMoney(remaining - amount);

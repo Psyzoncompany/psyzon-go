@@ -18,8 +18,6 @@ import "./notes/notes.css";
 
 type Props = {
   orders: Order[];
-  flowMode?: "orders" | "quotes" | "board";
-  sizeSummaries?: ReadonlyMap<string, string>;
   today: string;
   alerts: Map<string, OrderAlert[]>;
   openAlert: (alert: OrderAlert) => void;
@@ -35,19 +33,13 @@ type Props = {
   openChecklist: (order: Order) => void;
 };
 
-export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today, flowMode, sizeSummaries }: Props) {
+export default function ProductionBoard({ orders, displayMoney, updateStatus, onCreate, editOrder, deleteOrder, openChecklist, alerts, openAlert, orderTasks, taskConnection, toggleTask, openTasks, today }: Props) {
   const [working, setWorking] = useState<Set<string>>(() => new Set());
   const [alertId, setAlertId] = useState("");
   const alertOrder = orders.find(order => order.id === alertId);
   const currentAlerts = alerts.get(alertId) ?? [];
   const currentTasks = orderTasks.get(alertId) ?? [];
   const [selectedId, setSelectedId] = useState("");
-  const [query, setQuery] = useState("");
-  const [listStage, setListStage] = useState<OrderStatus | "">("");
-  const [mobileStage, setMobileStage] = useState<OrderStatus>("Aguardando material");
-  const [cardView, setCardView] = useState(false);
-  const listing = flowMode === "orders" || flowMode === "quotes";
-  const heading = flowMode === "orders" ? "Pedidos" : flowMode === "quotes" ? "Orçamentos" : "Produção";
   const [sort, setSort] = useState("deadline");
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
@@ -61,9 +53,6 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
   const selected = orders.find(order => order.id === selectedId);
   for (const order of orders) if (filter !== "late" || dueTone(order.dueDate, order.status) === "danger") grouped.get(order.status)?.push(order);
   for (const stage of productionStages) grouped.get(stage)?.sort((a, b) => sort === "customer" ? a.customer.localeCompare(b.customer, "pt-BR") : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
-  const listed = orderStatuses.flatMap(stage => grouped.get(stage) ?? []).filter(order =>
-    (!listStage || order.status === listStage) && `${order.customer} ${order.product} ${order.id}`.toLocaleLowerCase("pt-BR").includes(query.trim().toLocaleLowerCase("pt-BR"))
-  ).sort((a,b) => sort === "customer" ? a.customer.localeCompare(b.customer, "pt-BR") : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
   const delivered = grouped.get("Entregue") ?? [];
   const deliveredCount = orders.filter(order => order.status === "Entregue").length;
   async function run(order: Order, action: () => Promise<void>) {
@@ -95,22 +84,10 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
 
   return <section className="production-workspace" onPointerMove={drag.move} onPointerUp={drag.end} onPointerCancel={drag.end} onLostPointerCapture={drag.end}>
     <header className="production-heading">
-      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><TypedHeading>{heading}</TypedHeading><p>{orders.length - deliveredCount} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
-      <div className="kanban-tools"><label>Organizar<select aria-label="Organizar pedidos" value={sort} onChange={event => setSort(event.target.value)}><option value="deadline">Prazo</option><option value="customer">Cliente</option></select></label><label>Filtros<select aria-label="Filtrar pedidos" value={filter} onChange={event => setFilter(event.target.value)}><option value="all">Todos</option><option value="late">Atrasados</option></select></label><button className="primary" onClick={onCreate}><Plus size={17} /> {flowMode === "quotes" ? "Novo orçamento" : "Novo pedido"}</button></div>
+      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><TypedHeading>Produção</TypedHeading><p>{orders.length - deliveredCount} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
+      <div className="kanban-tools"><label>Organizar<select aria-label="Organizar pedidos" value={sort} onChange={event => setSort(event.target.value)}><option value="deadline">Prazo</option><option value="customer">Cliente</option></select></label><label>Filtros<select aria-label="Filtrar pedidos" value={filter} onChange={event => setFilter(event.target.value)}><option value="all">Todos</option><option value="late">Atrasados</option></select></label><button className="primary" onClick={onCreate}><Plus size={17} /> Novo pedido</button></div>
     </header>
     {error && <p className="form-error" role="alert">{error}</p>}
-    {listing ? <>
-      <div className="flow-order-tools">
-        <input type="search" aria-label="Buscar pedidos" placeholder="Cliente, produto ou pedido" value={query} onChange={event => setQuery(event.target.value)} />
-        {flowMode === "orders" && <select aria-label="Etapa do pedido" value={listStage} onChange={event => setListStage(event.target.value as OrderStatus | "")}><option value="">Todas as etapas</option>{orderStatuses.filter(stage => stage !== "Orçamento").map(stage => <option key={stage}>{stage}</option>)}</select>}
-        <button type="button" className="secondary" aria-pressed={cardView} onClick={() => setCardView(value => !value)}>{cardView ? "Ver em lista" : "Ver em cards"}</button>
-      </div>
-      {listed.length ? <ul className="flow-order-list" data-cards={cardView}>{listed.map(order => <li key={order.id}><button type="button" onClick={() => setSelectedId(order.id)} className="flow-order-row" data-urgent={urgentOrder(order,today)}>
-        <OrderPhoto order={order} /><span><b>{order.customer}</b><small>{order.product} · {order.quantity} peças</small>{sizeSummaries?.get(order.id) && <small>{sizeSummaries.get(order.id)}</small>}</span>
-        <span><b>{displayMoney(order.total)}</b><small>{order.status} · {dueLabel(order.dueDate, order.status, new Date(today+"T12:00:00"))}</small></span><ArrowRight size={16} />
-      </button></li>)}</ul> : <p className="flow-empty">Nenhum {flowMode === "quotes" ? "orçamento" : "pedido"} encontrado.</p>}
-    </> : <>
-    {flowMode === "board" && <div className="flow-stage-tabs" aria-label="Etapas de produção">{productionStages.map(stage => <button type="button" key={stage} aria-pressed={mobileStage === stage} onClick={() => setMobileStage(stage)}>{stage}<small>{grouped.get(stage)?.length ?? 0}</small></button>)}</div>}
     <label className="production-stage-jump">Ir para etapa
       <select value="" onChange={event => {
         if (!event.target.value) return;
@@ -124,9 +101,9 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
     <div ref={board} className="production-kanban" data-dragging={!!drag.dragged} role="region" aria-label="Quadro Kanban da produção">
       {productionStages.map((stage, index) => {
         const items = grouped.get(stage) ?? [];
-        return <section className="production-lane" data-stage={index} data-mobile-current={mobileStage === stage} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
+        return <section className="production-lane" data-stage={index} data-production-drop={stage} data-drop-active={drag.dragged?.stage === stage} aria-labelledby={`production-stage-${index}`} key={stage} ref={element => { columns.current[index] = element; }}>
           <header><span className="production-stage-dot" /><h2 id={`production-stage-${index}`}>{stage}</h2><span className="production-count"><CountUp value={items.length} /></span></header>
-          {items.length ? items.map(order => <OrderCard key={order.id} order={order} urgent={urgentOrder(order,today)} alertCount={(alerts.get(order.id)?.length ?? 0) + (orderTasks.get(order.id)?.filter(task => !task.completed).length ?? 0)} openAlerts={() => setAlertId(order.id)} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} sizeSummary={sizeSummaries?.get(order.id)} showProgress={flowMode === "board"} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
+          {items.length ? items.map(order => <OrderCard key={order.id} order={order} urgent={urgentOrder(order,today)} alertCount={(alerts.get(order.id)?.length ?? 0) + (orderTasks.get(order.id)?.filter(task => !task.completed).length ?? 0)} openAlerts={() => setAlertId(order.id)} busy={working.has(order.id)} open={() => setSelectedId(order.id)} openChecklist={() => openChecklist(order)} dragging={drag.dragged?.order.id === order.id} startDrag={event => drag.start(event, order)} />) : <div className="kanban-empty"><PackageOpen size={64} strokeWidth={1} /><b>Nenhum pedido nesta etapa</b><p>Os pedidos aparecerão aqui ao entrar nesta etapa.</p></div>}
         </section>;
       })}
     </div>
@@ -142,7 +119,6 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         </li>;
       })}</ul> : <p className="production-lane-empty">Nenhum pedido entregue.</p>}
     </details>
-    </>}
     {alertOrder && <NoteDialog title="Pendências do pedido" close={() => setAlertId("")}>
       <div className="order-alert-panel">
         <b>{alertOrder.customer} · {alertOrder.product}</b>
@@ -162,7 +138,7 @@ export default function ProductionBoard({ orders, displayMoney, updateStatus, on
         />}
       </div>
     </NoteDialog>}
-    {selected && createPortal(<OrderDetails {...actionsFor(selected)} sizeSummary={sizeSummaries?.get(selected.id)} flow={!!flowMode} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
+    {selected && createPortal(<OrderDetails {...actionsFor(selected)} error={error} displayMoney={displayMoney} close={() => setSelectedId("")} edit={() => { setSelectedId(""); editOrder(selected); }} openChecklist={() => { setSelectedId(""); openChecklist(selected); }} />, document.body)}
     {drag.dragged && createPortal(<div ref={drag.preview} className="production-drag-preview" aria-hidden="true">{drag.dragged.order.customer}</div>, document.body)}
   </section>;
 }
@@ -225,24 +201,23 @@ function OrderPhoto({ order }: { order: Order }) {
     : <span className="production-photo-empty" aria-hidden="true"><ImageIcon size={18} /></span>;
 }
 
-function OrderCard({ order, busy, open, openChecklist, dragging, startDrag, alertCount, openAlerts, urgent, sizeSummary, showProgress }: { order: Order; showProgress?: boolean; sizeSummary?: string; urgent: boolean; alertCount: number; openAlerts: () => void; busy: boolean; open: () => void; openChecklist: () => void; dragging: boolean; startDrag: (event: PointerEvent<HTMLElement>) => void }) {
+function OrderCard({ order, busy, open, openChecklist, dragging, startDrag, alertCount, openAlerts, urgent }: { order: Order; urgent: boolean; alertCount: number; openAlerts: () => void; busy: boolean; open: () => void; openChecklist: () => void; dragging: boolean; startDrag: (event: PointerEvent<HTMLElement>) => void }) {
   return <article className="production-order-card kanban-order-card" data-moving={dragging} data-urgent={urgent}>
     <button className="kanban-card-open" type="button" aria-label={`Abrir pedido de ${order.customer}`} aria-haspopup="dialog" onClick={open}>
       <span className="kanban-card-photo"><OrderPhoto order={order} /></span>
-      <span className="kanban-card-copy"><b>{order.customer}</b><small>{order.product}</small>{sizeSummary && <small>{sizeSummary}</small>}</span>
+      <span className="kanban-card-copy"><b>{order.customer}</b><small>{order.product}</small></span>
       <span className="kanban-card-meta"><span className={`due ${urgent ? "danger" : dueTone(order.dueDate, order.status)}`}><CalendarDays size={15} />{dueLabel(order.dueDate, order.status)}</span><span className="kanban-card-quantity"><Shirt size={17} />{order.quantity} un.</span></span>
-    {showProgress && <span className="flow-stage-progress"><progress max={orderStatuses.length - 1} value={orderStatuses.indexOf(order.status)} aria-label={`Etapa: ${order.status}`} />{alertCount > 0 && <small>{alertCount} {alertCount === 1 ? "pendência" : "pendências"}</small>}</span>}
     </button>
     <div className="kanban-card-actions"><button type="button" className="kanban-alert-button" data-pending={alertCount > 0} aria-label={`Pendências de ${order.customer} (${alertCount})`} aria-haspopup="dialog" title={`${alertCount} pendência(s)`} onClick={openAlerts}><AlertTriangle size={16} /></button><span className="kanban-drag" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={13} /></span><button className="production-open-list" type="button" aria-label={`Abrir lista de ${order.customer}`} title="Abrir lista" onClick={openChecklist}><ClipboardList size={16} /></button><button type="button" aria-label={`Opções do pedido de ${order.customer}`} title="Detalhes e ações" onClick={open}><MoreHorizontal size={17} /></button></div>
   </article>;
 }
 
-function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error, sizeSummary, flow }: OrderActionsProps & { flow?: boolean; sizeSummary?: string; move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string }) {
+function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayMoney, close, error }: OrderActionsProps & { move: (status: OrderStatus) => void; openChecklist: () => void; displayMoney: Props["displayMoney"]; close: () => void; error: string }) {
   const [copyStatus, setCopyStatus] = useState("");
   const next = nextOrderStatus(order.status);
   async function copyQuote() {
     try {
-      await navigator.clipboard.writeText([`Orçamento · PSYZON COMPANY`, order.customer, `${order.product} · ${order.quantity} peças`, sizeSummary, `Total: ${displayMoney(order.total)}`, order.notes].filter(Boolean).join("\n"));
+      await navigator.clipboard.writeText([`Orçamento · PSYZON COMPANY`, order.customer, `${order.product} · ${order.quantity} peças`, `Total: ${displayMoney(order.total)}`, order.notes].filter(Boolean).join("\n"));
       setCopyStatus("Orçamento copiado.");
     } catch { setCopyStatus("Não foi possível copiar o orçamento."); }
   }
@@ -251,9 +226,9 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
     <div className="kanban-order-dialog-body">
       <div className="kanban-order-dialog-photo"><OrderPhoto order={order} />{!order.photoData && <button className="secondary" onClick={edit}><Camera size={16} /> Adicionar foto</button>}</div>
       <section className="kanban-order-dialog-info">{error && <p className="form-error" role="alert">{error}</p>}<h3>{order.product}</h3><span className={`due ${dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
-        <dl><div><dt>Quantidade</dt><dd>{order.quantity} un.</dd></div>{sizeSummary && <div><dt>Tamanhos</dt><dd>{sizeSummary}</dd></div>}{order.unitPrice!==undefined&&<><div><dt>Camisa adulta</dt><dd>{displayMoney(order.unitPrice+poloExtra(order.shirtType,order.product))}</dd></div><div><dt>Infantil</dt><dd>{order.childQuantity||0} un. · {displayMoney(Math.max(0,order.unitPrice+poloExtra(order.shirtType,order.product)-5))} cada</dd></div></>}<div><dt>Entrega</dt><dd>{order.dueDate ? new Intl.DateTimeFormat("pt-BR").format(new Date(`${order.dueDate}T12:00:00`)) : "Sem prazo"}</dd></div><div><dt>Total</dt><dd>{displayMoney(order.total)}</dd></div><div><dt>Recebido</dt><dd>{displayMoney(order.paid)}</dd></div><div><dt>Pendente</dt><dd>{displayMoney(order.receivable ?? Math.max(0,order.total-order.paid))}</dd></div>{order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}{order.dtfStatus && <div><dt>DTF</dt><dd>{orderDtfStatus[order.dtfStatus]}</dd></div>}</dl>
+        <dl><div><dt>Quantidade</dt><dd>{order.quantity} un.</dd></div>{order.unitPrice!==undefined&&<><div><dt>Camisa adulta</dt><dd>{displayMoney(order.unitPrice+poloExtra(order.shirtType,order.product))}</dd></div><div><dt>Infantil</dt><dd>{order.childQuantity||0} un. · {displayMoney(Math.max(0,order.unitPrice+poloExtra(order.shirtType,order.product)-5))} cada</dd></div></>}<div><dt>Entrega</dt><dd>{order.dueDate ? new Intl.DateTimeFormat("pt-BR").format(new Date(`${order.dueDate}T12:00:00`)) : "Sem prazo"}</dd></div><div><dt>Total</dt><dd>{displayMoney(order.total)}</dd></div><div><dt>Recebido</dt><dd>{displayMoney(order.paid)}</dd></div><div><dt>Pendente</dt><dd>{displayMoney(order.receivable ?? Math.max(0,order.total-order.paid))}</dd></div>{order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}{order.dtfStatus && <div><dt>DTF</dt><dd>{orderDtfStatus[order.dtfStatus]}</dd></div>}</dl>
         {order.notes && <p className="kanban-order-notes">{order.notes}</p>}
-        <div className="kanban-order-dialog-actions"><button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button><button className="secondary" disabled={busy} onClick={edit}><Pencil size={16} /> Editar pedido</button>{next && <button className="primary" disabled={busy} onClick={() => move(next)}>{next === "Entregue" ? "Marcar como entregue" : order.status === "Orçamento" && flow ? "Confirmar pedido" : "Avançar etapa"}<ArrowRight size={16} /></button>}<button className="secondary" disabled={busy} onClick={remove}><Trash2 size={16} /> Excluir pedido</button>{flow && order.status === "Orçamento" && <button className="secondary" onClick={() => void copyQuote()}>Copiar orçamento</button>}</div>{copyStatus && <p role="status">{copyStatus}</p>}
+        <div className="kanban-order-dialog-actions"><button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button><button className="secondary" disabled={busy} onClick={edit}><Pencil size={16} /> Editar pedido</button>{next && <button className="primary" disabled={busy} onClick={() => move(next)}>{next === "Entregue" ? "Marcar como entregue" : order.status === "Orçamento" ? "Confirmar pedido" : "Avançar etapa"}<ArrowRight size={16} /></button>}<button className="secondary" disabled={busy} onClick={remove}><Trash2 size={16} /> Excluir pedido</button>{order.status === "Orçamento" && <button className="secondary" onClick={() => void copyQuote()}>Copiar orçamento</button>}</div>{copyStatus && <p role="status">{copyStatus}</p>}
         {order.status === "Pronto" && /^\d{8,15}$/.test(phone) && <a className="production-note-link" href={`https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar cliente</a>}
       </section>
     </div>

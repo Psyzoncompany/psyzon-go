@@ -1,5 +1,5 @@
 export type InterfaceAppearance = {
-  theme: "original" | "liquid-glass-card" | "ios-premium" | "studio-glass" | "psyzon-flow";
+  theme: "original" | "liquid-glass-card" | "ios-premium" | "studio-glass";
   palette: "ocean" | "amethyst" | "graphite";
   transparency: "balanced" | "reduced";
   motion: "full" | "reduced";
@@ -12,7 +12,7 @@ export function readAppearance(raw: string | null): InterfaceAppearance {
   try {
     const value = JSON.parse(raw || "{}") ?? {};
     return {
-      theme: ["liquid-glass-card", "ios-premium", "studio-glass", "psyzon-flow"].includes(value.theme) ? value.theme : "original",
+      theme: ["liquid-glass-card", "ios-premium", "studio-glass"].includes(value.theme) ? value.theme : "original",
       palette: ["ocean", "amethyst", "graphite"].includes(value.palette) ? value.palette : "ocean",
       transparency: value.transparency === "reduced" ? value.transparency : "balanced",
       motion: value.motion === "reduced" ? value.motion : "full",

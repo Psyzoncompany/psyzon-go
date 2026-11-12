@@ -1,18 +1,21 @@
-import type { AICashPlan, AIPermissionMode } from "../../ai/types";
+import type { AIFinanceEntry, AIPermissionMode } from "../../ai/types";
 import { synchronizedOrderQuantities } from "../../order-quantity-sync";
 import type { Order } from "../../order-model";
 import type { BusinessNote } from "../../notes-model";
-import { billDueDate, customerBalances, financialSummary, roundMoney, type Bill, type Customer } from "../../finance-model";
-import { dayOffset } from "../../flow-model";
+import { billDueDate, customerBalances, customerNameKey, financialSummary, roundMoney, type Bill, type Customer } from "../../finance-model";
+import { openFinanceReport } from "./ai-operations";
+import { materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOrders } from "../../notes/materials-model";
+import { notePhotoOrderId } from "../../order-photo-sync";
 import { orderStatuses, normalizeOrderStatus } from "../../order-model";
-import { restockTasks, restockBills } from "../../notes/restock-model";
-import { readSewing, sewingBills, sewingOrderBalances } from "../../sewing-model";
-import { readDocument, type NoteMaterial } from "../../notes-model";
+import { restockTasks, restockBills, restockPrefix } from "../../notes/restock-model";
+import { confirmedEntries, readSewing, sewingBalances, sewingBills, sewingNoteId, sewingOrderBalances } from "../../sewing-model";
+import { millis, readDocument, toDraft, type NoteMaterial } from "../../notes-model";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
   createUserDocument,
   deleteUserDocument,
   getUserDocument,
+  listAllUserCollection,
   listUserCollection,
   patchUserDocument,
   type FirebaseIdentity,
@@ -79,47 +82,28 @@ function finiteAmount(args: ToolArguments, key: string) {
   return Math.round(value * 100) / 100;
 }
 
-async function getBusinessData(identity: FirebaseIdentity) {
-  const [stored, transactions, customers, bills, notes] = await Promise.all([
-    listUserCollection(identity, "orders"),
-    listUserCollection(identity, "transactions", 500),
-    listUserCollection(identity, "customers"),
-    listUserCollection(identity, "bills"),
-    listUserCollection(identity, "notes",500),
+async function getProductionData(identity: FirebaseIdentity) {
+  const [stored, customers, notes] = await Promise.all([
+    listAllUserCollection(identity, "orders"),
+    listAllUserCollection(identity, "customers"),
+    listAllUserCollection(identity, "notes"),
   ]);
   const effective = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order=>[order.id,order]));
   const orders = stored.map((order): (typeof stored)[number]=>({...order,status:normalizeOrderStatus(order.status),quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total}));
-  return { orders, transactions, customers, bills, notes };
+  return { orders, customers, notes };
 }
 
-const getDashboardSummary: ToolDefinition = {
-  declaration: { type: "function", name: "get_dashboard_summary", description: "Obtém um resumo executivo real da empresa, incluindo caixa, pedidos, valores a receber e prioridades.", parameters: { type: "object", properties: {} } },
-  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
-  execute: async ({ identity }) => {
-    const { orders, transactions, customers, bills } = await getBusinessData(identity);
-    const month = monthKey();
-    const business = transactions.filter((item) => text(item.account) === "business");
-    const monthTransactions = business.filter((item) => inMonth(item, month));
-    const income = monthTransactions.filter((item) => text(item.type) === "income").reduce((sum, item) => sum + number(item.amount), 0);
-    const expenses = monthTransactions.filter((item) => text(item.type) === "expense").reduce((sum, item) => sum + number(item.amount), 0);
-    const allIncome = business.filter((item) => text(item.type) === "income").reduce((sum, item) => sum + number(item.amount), 0);
-    const allExpenses = business.filter((item) => text(item.type) === "expense").reduce((sum, item) => sum + number(item.amount), 0);
-    const transfers = transactions.filter((item) => text(item.type) === "transfer").reduce((sum, item) => sum + number(item.amount), 0);
-    const pending = customerBalances(customers as unknown as Customer[], orders as unknown as Order[]).filter(customer => !customer.archived).reduce((sum, customer) => sum + customer.pending, 0);
-    const overdue = orders.filter(isOverdue);
-    return {
-      asOf: new Date().toISOString(), month, revenue: income, expenses, result: income - expenses,
-      availableBalance: allIncome - allExpenses - transfers, receivable: pending,
-      activeOrders: orders.filter((item) => !["Entregue", "Orçamento"].includes(normalizeOrderStatus(item.status))).length,
-      overdueOrders: overdue.slice(0, 12).map((item) => ({ id: item.id, customer: text(item.customer), dueDate: item.dueDate, pending: Math.max(0, number(item.total) - number(item.paid)) })),
-      clients: customers.length, recurringBills: bills.length,
-      dataQuality: { ordersWithoutValue: orders.filter((item) => number(item.total) <= 0).length, transactionsWithoutCategory: transactions.filter((item) => !text(item.category)).length },
-    };
-  },
-};
+async function getBusinessData(identity: FirebaseIdentity, includeTransactions = true) {
+  const [production, bills, transactions] = await Promise.all([
+    getProductionData(identity),
+    listAllUserCollection(identity, "bills"),
+    includeTransactions ? listUserCollection(identity, "transactions", 500) : Promise.resolve([]),
+  ]);
+  return { ...production, bills, transactions };
+}
 
 const getFinancialSummary: ToolDefinition = {
-  declaration: { type: "function", name: "get_financial_summary", description: "Calcula entradas, saídas, resultado, saldo e despesas por categoria em um mês específico.", parameters: { type: "object", properties: { month: { type: "string", description: "Mês no formato AAAA-MM. Omitir para o mês atual." }, account: { type: "string", enum: ["business", "personal"], description: "Conta empresarial ou pessoal." } } } },
+  declaration: { type: "function", name: "get_financial_summary", description: "Consulta o histórico de entradas e saídas já registradas em um mês específico. Use apenas quando a pergunta for sobre movimentações realizadas.", parameters: { type: "object", properties: { month: { type: "string", description: "Mês no formato AAAA-MM. Omitir para o mês atual." }, account: { type: "string", enum: ["business", "personal"], description: "Conta empresarial ou pessoal." } } } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
     const month = /^\d{4}-\d{2}$/.test(text(args.month)) ? text(args.month) : monthKey();
@@ -217,66 +201,145 @@ function businessOpenBalances(data: Awaited<ReturnType<typeof getBusinessData>>)
   return financialSummary(customerBalances(data.customers as unknown as Customer[], orders), bills, monthKey());
 }
 
-const getCashPlan: ToolDefinition = {
-  declaration: { type: "function", name: "get_cash_plan", description: "Consulta contas a pagar e receber, saldo registrado e simula cenários de 7, 15 e 30 dias. Não altera dados. Use para priorizar pagamentos, estimar caixa e simular recebimento, atraso ou compra.", parameters: { type: "object", properties: {
-    payment: { type: "number", description: "Saída hipotética adicional imediata, ainda fora das contas previstas." },
-    extraReceipt: { type: "number", description: "Entrada hipotética adicional que ainda não está registrada como prevista." },
-    delayedReceipt: { type: "number", description: "Recebimento previsto que pode atrasar, caso esteja incluído no prazo analisado." },
-    reserve: { type: "number", description: "Reserva mínima hipotética, somente quando o usuário informar." }
-  } } },
+const matchesQuery = (value: string, query: string) => customerNameKey(value).includes(customerNameKey(query));
+const queryParameters = { type: "object", properties: { query: { type: "string", description: "Filtro opcional por nome, cliente ou descrição." } } };
+
+const getOpenFinance: ToolDefinition = {
+  declaration: { type: "function", name: "get_open_finance", description: "Consulta as mesmas contas abertas do Financeiro: a pagar, atrasadas e a receber. Inclui saldos de clientes, reposição e costura. Use para listar e priorizar vencimentos. Valores pendentes não representam dinheiro disponível.", parameters: queryParameters },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
-    const data = await getBusinessData(identity);
-    const { payable, receivable, debtors } = businessOpenBalances(data);
-    const date = today();
-    const recorded = data.transactions.filter(item => item.account === "business" && recordDate(item) <= date);
-    const balance = roundMoney(recorded.reduce((sum,item) => sum + (item.type === "income" ? number(item.amount) : item.type === "expense" ? -number(item.amount) : 0), 0));
-    const amount = (name: string) => args[name] === undefined || args[name] === 0 ? 0 : finiteAmount(args, name);
-    const payment = amount("payment"), extra = amount("extraReceipt"), delay = amount("delayedReceipt"), reserve = amount("reserve");
-    const due = (bill: Bill) => bill.dueDate || bill.dueDay ? billDueDate(bill, monthKey()) : "";
-    const summarize = (bill: Bill) => ({ id: bill.id, description: bill.description, category: bill.category, dueDate: due(bill) || null, amountFormatted: formatMoney(bill.amount), overdue: Boolean(due(bill) && due(bill) < date) });
-    const sorted = [...payable].sort((a, b) => (due(a) || "9999").localeCompare(due(b) || "9999"));
-    const priorityBills = sorted.slice(0, 25);
-    const limitations = [
-      "O caixa registrado considera as movimentações empresariais lançadas até a data da análise. O saldo bancário precisa ser conferido separadamente.",
-      "As projeções incluem contas em aberto com data cadastrada, inclusive as vencidas. Recebíveis de clientes sem data ficam fora da projeção.",
-      "Juros, multas e reserva mínima dependem dos dados informados. A data de entrega não confirma o pagamento.",
-    ];
-    if (!recorded.length) limitations.push("Ainda não há movimentações empresariais registradas para calcular um saldo de caixa.");
-    if (payment) limitations.push(`Saída adicional imediata simulada em todos os cenários: ${formatMoney(payment)}.`);
-    if (delay) limitations.push(`Até ${formatMoney(delay)} de recebimentos previstos foram descontados por possível atraso.`);
-    if (extra) limitations.push(`Entrada adicional de ${formatMoney(extra)} incluída no cenário otimista.`);
-    if (reserve) limitations.push(`A reserva de ${formatMoney(reserve)} é considerada na análise de disponibilidade e permanece no saldo projetado.`);
-    const projections: AICashPlan["projections"] = [7, 15, 30].map(days => {
-      const through = dayOffset(date, days);
-      const expenses = roundMoney(payable.filter(bill => due(bill) && due(bill) <= through).reduce((sum, bill) => sum + bill.amount, 0));
-      const receipts = roundMoney(receivable.filter(bill => due(bill) && due(bill) <= through).reduce((sum, bill) => sum + bill.amount, 0));
-      const conservative = roundMoney(balance - payment - expenses);
-      const likely = roundMoney(conservative + Math.max(0, receipts - delay));
-      return { days, through, expenses, receipts, conservative, likely, optimistic: roundMoney(likely + extra) };
-    });
-    const cashPlan: AICashPlan = {
-      asOf: date,
-      balance,
-      overdueTotal: roundMoney(sorted.filter(bill => due(bill) && due(bill) < date).reduce((sum, bill) => sum + bill.amount, 0)),
-      totalPayables: roundMoney(sorted.reduce((sum, bill) => sum + bill.amount, 0)),
-      payables: priorityBills.map(bill => ({ id: bill.id, description: bill.description, dueDate: due(bill) || null, amount: bill.amount })),
-      projections,
-      assumptions: limitations,
+    const data = await getBusinessData(identity, false);
+    const orders = data.orders as unknown as Order[];
+    const notes = data.notes as unknown as BusinessNote[];
+    const derived = [...restockBills(restockTasks(notes)), ...sewingBills(orders, readSewing(notes))];
+    const financeReport = openFinanceReport(orders, data.customers as unknown as Customer[], data.bills as unknown as Bill[], derived, today(), text(args.query));
+    const modelRows = (items: AIFinanceEntry[]) => items.map(({ amount, ...item }) => ({ ...item, amountFormatted: formatMoney(amount) }));
+    return {
+      financeReport,
+      asOf: financeReport.asOf,
+      payables: modelRows(financeReport.payables),
+      receivables: modelRows(financeReport.receivables),
+      payableCount: financeReport.payableCount,
+      receivableCount: financeReport.receivableCount,
+      totalPayablesFormatted: formatMoney(financeReport.totalPayables),
+      totalReceivablesFormatted: formatMoney(financeReport.totalReceivables),
+      overdueTotalFormatted: formatMoney(financeReport.overdueTotal),
+    };
+  },
+};
+
+const getSewingSummary: ToolDefinition = {
+  declaration: { type: "function", name: "get_sewing_summary", description: "Consulta o módulo Costureiras: serviços de costura, abatimentos de estampagem, pagamentos, saldo e pedidos por costureira. Opcionalmente filtre pelo nome da costureira.", parameters: queryParameters },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const data = await getProductionData(identity);
+    const orders = data.orders as unknown as Order[];
+    const ledger = readSewing(data.notes as unknown as BusinessNote[]);
+    const entries = confirmedEntries(orders, ledger);
+    return {
+      people: sewingBalances(orders, ledger).filter(row => matchesQuery(row.person, text(args.query))).map(row => ({
+        person: row.person,
+        costFormatted: formatMoney(row.total),
+        printsDiscountFormatted: formatMoney(row.prints),
+        paidFormatted: formatMoney(row.paid),
+        balanceFormatted: formatMoney(row.balance),
+        orders: sewingOrderBalances(orders, ledger, row.person).slice(0, 15).map(item => ({
+          customer: item.order.customer, product: item.order.product, pieces: item.order.quantity,
+          costFormatted: formatMoney(item.cost), pendingFormatted: formatMoney(item.remaining),
+        })),
+        recentEntries: entries.filter(item => item.person === row.person).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+          .map(item => ({ kind: item.kind, reference: item.name || null, date: item.date, amountFormatted: formatMoney(item.amount) })),
+      })),
+    };
+  },
+};
+
+const getMaterials: ToolDefinition = {
+  declaration: { type: "function", name: "get_materials", description: "Consulta a aba Materiais e a reposição. Mostra materiais planejados, comprados e adicionais necessários, com cliente, fornecedor, cor e quantidade.", parameters: queryParameters },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity, financialAnalysis }, args) => {
+    const data = await getProductionData(identity);
+    const notes = data.notes as unknown as BusinessNote[];
+    const materialNotes = notes.filter(note => note.materials?.length && note.id !== sewingNoteId && !note.id.startsWith(restockPrefix));
+    const orders = materialOrdersFromNotes(materialNotes.map(note => ({ id: note.id, draft: toDraft(note), purchasedIds: note.purchasedMaterialIds })), data.orders as unknown as Order[], (data.customers as unknown as Customer[]).filter(customer => !customer.archived));
+    const query = text(args.query);
+    const entries = (purchased: boolean) => {
+      const lines = splitMaterialOrders(orders, purchased).flatMap(materialLines)
+        .filter(line => matchesQuery(`${line.order} ${line.client} ${line.material} ${line.color} ${line.supplier}`, query));
+      const totals = materialTotals(lines);
+      return {
+        count: lines.length,
+        kg: totals.kg,
+        sets: totals.sets,
+        ...(financialAnalysis ? { costFormatted: formatMoney(totals.cost) } : {}),
+        lines: lines.slice(0, 20).map(({ price: _price, cost, ...line }) => ({ ...line, ...(financialAnalysis ? { costFormatted: formatMoney(cost) } : {}) })),
+      };
     };
     return {
-      cashPlan,
-      asOf: date, recordedBalanceFormatted: formatMoney(balance), knownBusinessMovements: recorded.length, afterImmediatePaymentFormatted: formatMoney(balance - payment),
-      payables: priorityBills.map(summarize),
-      receivableBills: receivable.slice(0,25).map(summarize),
-      customerReceivablesWithoutConfirmedDatesFormatted: formatMoney(debtors.reduce((sum, customer) => sum + customer.pending, 0)),
-      projections: projections.map(point => ({
-        days: point.days, through: point.through, scheduledExpensesFormatted: formatMoney(point.expenses), expectedReceiptsFormatted: formatMoney(point.receipts),
-        conservativeFormatted: formatMoney(point.conservative), likelyFormatted: formatMoney(point.likely), optimisticFormatted: formatMoney(point.optimistic),
-        likelyAfterReserveFormatted: formatMoney(point.likely - reserve),
-      })),
-      limitations,
+      pendingPurchase: entries(false),
+      purchased: entries(true),
+      additionalFabric: orders.filter(order => order.extraFabricKg && matchesQuery(`${order.title} ${order.client}`, query))
+        .slice(0, 12).map(({ title, client, extraFabricKg }) => ({ title, client, extraFabricKg })),
+      restock: restockTasks(notes).filter(item => matchesQuery(item.title, query)).slice(0, 15)
+        .map(item => ({ title: item.title, completed: item.completed, purchaseDate: item.purchaseDate, ...(financialAnalysis ? { amountFormatted: formatMoney(item.amount) } : {}) })),
     };
+  },
+};
+
+const getNotes: ToolDefinition = {
+  declaration: { type: "function", name: "get_notes", description: "Consulta o Bloco de notas por título ou texto. Retorna notas salvas e o andamento de checklists, incluindo notas de pedidos prontos. Exclui a lixeira e registros internos.", parameters: queryParameters },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const data = await getProductionData(identity);
+    const notes = data.notes as unknown as BusinessNote[];
+    const orders = data.orders as unknown as Order[];
+    const customers = (data.customers as unknown as Customer[]).filter(customer => !customer.archived);
+    const ready = new Set(orders.filter(order => order.status === "Pronto" || order.status === "Entregue").map(order => order.id));
+    const query = text(args.query);
+    const results = notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))
+      .sort((a, b) => millis(b.updatedAt) - millis(a.updatedAt))
+      .flatMap(note => {
+        const doc = readDocument(note.content, note.materials);
+        const noteText = doc.blocks.map(block => block.text).join("\n");
+        if (doc.status === "trash" || !matchesQuery(`${note.title} ${noteText}`, query)) return [];
+        const checks = doc.blocks.filter(block => block.type === "check");
+        const rows = doc.productionChecklist?.rows;
+        return [{
+          id: note.id, title: note.title, category: note.category, status: doc.status === "active" && ready.has(notePhotoOrderId(doc, orders, customers) ?? "") ? "ready" : doc.status, orderId: doc.orderId || null, customerId: doc.customerId || null,
+          excerpt: noteText.slice(0, 650),
+          checklist: checks.length ? { total: checks.length, done: checks.filter(block => block.done).length } : null,
+          productionChecklist: rows?.length ? { total: rows.length, done: rows.filter(row => row.done).length } : null,
+        }];
+      });
+    return { count: results.length, notes: results.slice(0, query ? 10 : 6) };
+  },
+};
+
+const getTasks: ToolDefinition = {
+  declaration: { type: "function", name: "get_tasks", description: "Consulta afazeres pendentes ou concluídos e os clientes vinculados. Por padrão retorna os pendentes.", parameters: { type: "object", properties: { ...queryParameters.properties, completed: { type: "boolean" } } } },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const [tasks, customers] = await Promise.all([listAllUserCollection(identity, "tasks"), listAllUserCollection(identity, "customers")]);
+    const names = new Map(customers.map(item => [item.id, text(item.name)]));
+    const rows = tasks.filter(item => Boolean(item.completed) === (args.completed === true))
+      .map(item => ({ id: item.id, title: text(item.title), completed: Boolean(item.completed), customer: names.get(text(item.customerId)) ?? null }))
+      .filter(item => matchesQuery(`${item.title} ${item.customer ?? ""}`, text(args.query)));
+    return { count: rows.length, tasks: rows.slice(0, 20) };
+  },
+};
+
+const getDtfOrders: ToolDefinition = {
+  declaration: { type: "function", name: "get_dtf_orders", description: "Consulta pedidos DTF por cliente, título, etapa e prazo. Mostra se a estampa está separada.", parameters: queryParameters },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const date = today();
+    const rows = (await listAllUserCollection(identity, "dtfOrders")).filter(item => matchesQuery(`${text(item.title)} ${text(item.customerName)} ${text(item.stage)}`, text(args.query)))
+      .map(item => ({
+        id: item.id, title: text(item.title), customer: text(item.customerName), stage: text(item.stage),
+        dueDate: text(item.dueDate) || null, quantity: number(item.quantity, 1), separated: item.separated === true,
+        overdue: Boolean(item.dueDate && text(item.dueDate) < date && !["Entregue", "Orçamento"].includes(text(item.stage))),
+      })).sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+    return { count: rows.length, orders: rows.slice(0, 20) };
   },
 };
 
@@ -287,7 +350,9 @@ const getPriorityActions: ToolDefinition = {
     const data = await getBusinessData(identity);
     const { orders, transactions } = data;
     const { payable } = businessOpenBalances(data);
-    const upcoming = payable.filter(bill => (bill.dueDate || bill.dueDay) && billDueDate(bill,monthKey()) <= dayOffset(today(), 3)).sort((a,b) => billDueDate(a,monthKey()).localeCompare(billDueDate(b,monthKey()))).map(bill => ({ priority: "urgent", type: "bill_due", entityId: bill.id, title: bill.description, dueDate: billDueDate(bill,monthKey()), impactFormatted: formatMoney(bill.amount) }));
+    const cutoff = new Date(today() + "T12:00:00Z");
+    cutoff.setUTCDate(cutoff.getUTCDate() + 3);
+    const upcoming = payable.filter(bill => (bill.dueDate || bill.dueDay) && billDueDate(bill,monthKey()) <= cutoff.toISOString().slice(0, 10)).sort((a,b) => billDueDate(a,monthKey()).localeCompare(billDueDate(b,monthKey()))).map(bill => ({ priority: "urgent", type: "bill_due", entityId: bill.id, title: bill.description, dueDate: billDueDate(bill,monthKey()), impactFormatted: formatMoney(bill.amount) }));
     const blocked = orders.filter(item => item.status === "Aguardando material").slice(0,8).map(item => ({ priority: "important", type: "waiting_material", entityId: item.id, title: text(item.customer), dueDate: text(item.dueDate), pieces: number(item.quantity) }));
     const overdue = orders.filter(isOverdue).map((item) => ({ priority: "urgent", type: "order_overdue", entityId: item.id, title: `Pedido de ${text(item.customer)} atrasado`, detail: `${text(item.customer)} · prazo ${text(item.dueDate)}`, impact: Math.max(0, number(item.total) - number(item.paid)) }));
     const receivables = orders.filter((item) => normalizeOrderStatus(item.status) !== "Orçamento" && number(item.total) > number(item.paid)).sort((a, b) => (number(b.total) - number(b.paid)) - (number(a.total) - number(a.paid))).slice(0, 8).map((item) => ({ priority: "important", type: "receivable", entityId: item.id, title: `Cobrar pedido de ${text(item.customer)}`, detail: text(item.customer), impact: number(item.total) - number(item.paid) }));
@@ -562,8 +627,8 @@ const getProductionPlan: ToolDefinition = {
   },
 };
 
-const operationalTools = new Set(["get_production_plan", "update_order_status"]);
-const tools = [getProductionPlan, getDashboardSummary, getFinancialSummary, getTransactions, getOrders, getClients, getMonthlyComparison, getCashPlan, getPriorityActions, getProfitAnalysis, getOrderCostEstimate, searchSystem, getMercadoPagoSummary, updateOrderStatus, updateTransactionCategory, createFinancialAdjustment, deleteTransaction];
+const operationalTools = new Set(["get_production_plan", "get_orders", "get_materials", "get_notes", "get_tasks", "get_dtf_orders", "update_order_status"]);
+const tools = [getProductionPlan, getFinancialSummary, getTransactions, getOrders, getClients, getMonthlyComparison, getOpenFinance, getSewingSummary, getMaterials, getNotes, getTasks, getDtfOrders, getPriorityActions, getProfitAnalysis, getOrderCostEstimate, searchSystem, getMercadoPagoSummary, updateOrderStatus, updateTransactionCategory, createFinancialAdjustment, deleteTransaction];
 const registry = new Map(tools.map((tool) => [tool.declaration.name, tool]));
 export const geminiToolDeclarations = tools.map((tool) => tool.declaration);
 export const availableAITools = (financialAnalysis: boolean) => geminiToolDeclarations.filter(tool => financialAnalysis || operationalTools.has(tool.name));

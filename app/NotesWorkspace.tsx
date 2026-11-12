@@ -4,7 +4,7 @@ import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, C
 import { getApps } from "firebase/app";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
 import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
-import { extraFabricKg, forecastMaterial } from "./material-forecast";
+import { forecastMaterial } from "./material-forecast";
 import { customerNameKey } from "./finance-model";
 import { useTypewriter } from "./Typewriter";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
@@ -15,6 +15,7 @@ import PdfDownloadButton from "./PdfDownloadButton";
 import MobileNotesControls from "./notes/MobileNotesControls";
 import MaterialCalculator from "./notes/MaterialCalculator";
 import MaterialsWorkspace from "./notes/MaterialsWorkspace";
+import { materialOrdersFromNotes } from "./notes/materials-model";
 import "./notes/notes.css";
 import ProductionChecklist from "./ProductionChecklist";
 import { notePhotoOrderId } from "./order-photo-sync";
@@ -251,14 +252,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
 
   if (materialsOpen) {
     const purchases = new Map(notes.map(note => [note.id, note.purchasedMaterialIds]));
-    const clientByOrder = new Map(orders.map(order => [order.id, order.customer]));
-    const clientById = new Map(customers.map(customer => [customer.id, customer.name]));
-    const materialOrders = allNotes.filter(note => note.draft.materials.length && note.draft.document.status !== "trash").map(({ id, draft: note }) => {
-      const quantity = orders.find(order => order.id === notePhotoOrderId(note.document,orders,customers))?.quantity;
-      return { extraFabricKg: note.materials.filter(material=>purchases.get(id)?.includes(material.id)).reduce((sum,material)=>sum+extraFabricKg(material,quantity),0),
-      id, title: note.title || "Anotação sem título", materials: note.materials.map(material => purchases.get(id)?.includes(material.id) ? material : forecastMaterial(material, quantity)), purchasedIds: purchases.get(id),
-      client: clientByOrder.get(note.document.orderId) || clientById.get(note.document.customerId) || "",
-    }; });
+    const materialOrders = materialOrdersFromNotes(allNotes.map(({ id, draft }) => ({ id, draft, purchasedIds: purchases.get(id) })), orders, customers);
     return <MaterialsWorkspace uid={uid} targets={allNotes.filter(note => note.draft.document.status !== "trash").map(({id,draft}) => ({ id,title:draft.title || "Sem título",orderId:draft.document.orderId,customerId:draft.document.customerId,materials:draft.materials }))} productionOrders={orders} customers={customers} saveMaterial={saveMaterial} orders={materialOrders} back={() => openNote()} openNote={openNote} complete={completeMaterials} />;
   }
 

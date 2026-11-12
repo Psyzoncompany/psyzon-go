@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList, FileText, PackagePlus, Sparkles, Spool, Boxes, ChevronRight, History, Home, Layers, ListChecks, MoreHorizontal, NotebookPen, Printer, Settings, UsersRound, WalletCards, X } from "lucide-react";
+import { Sparkles, Boxes, ChevronRight, History, Home, Layers, ListChecks, MoreHorizontal, NotebookPen, Printer, Settings, UsersRound, WalletCards, X } from "lucide-react";
 import type { View } from "./useViewHistory";
 
 const tabs = [
@@ -20,21 +20,10 @@ const destinations = [
   { id: "mais", label: "Configurações", detail: "Conta e preferências", icon: Settings },
 ] as const;
 
-const flowTabs = [tabs[0], { id: "pedidos", label: "Pedidos", icon: ClipboardList }, tabs[1], tabs[3]] as const;
-const flowDestinations = [
-  { id: "orcamentos", label: "Orçamentos", detail: "Propostas em aberto", icon: FileText },
-  { id: "notas", label: "Bloco de notas", detail: "Anotações e listas de produção", icon: NotebookPen },
-  { id: "reposicao", label: "Reposição de estoque", detail: "Compras e reposições", icon: PackagePlus },
-  { id: "costureiras", label: "Costureiras", detail: "Pedidos e saldos", icon: Spool },
-  ...destinations,
-] as const;
-
-export default function MobileNavigation({ view, navigate, flow = false }: { view: View; navigate: (view: View) => void; flow?: boolean }) {
-  const mainTabs = flow ? flowTabs : tabs;
-  const menuItems = flow ? flowDestinations : destinations;
+export default function MobileNavigation({ view, navigate }: { view: View; navigate: (view: View) => void }) {
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const menuActive = !mainTabs.some(item => item.id === view) && (flow || !["materiais", "afazeres", "reposicao", "costureiras"].includes(view));
+  const menuActive = !tabs.some(item => item.id === view) && !["materiais", "afazeres", "reposicao", "costureiras"].includes(view);
   useEffect(() => {
     if (open) dialog.current?.showModal();
     else dialog.current?.close();
@@ -48,17 +37,17 @@ export default function MobileNavigation({ view, navigate, flow = false }: { vie
   const go = (next: View) => { setOpen(false); navigate(next); };
   return <>
     <nav className="mobile-nav" aria-label="Navegação principal">
-      {mainTabs.map(({ id, label, icon: Icon }) => {
+      {tabs.map(({ id, label, icon: Icon }) => {
         const active = view === id || (id === "notas" && ["materiais", "afazeres", "reposicao", "costureiras"].includes(view));
         return <button key={id} className={active ? "active" : ""} aria-current={active ? "page" : undefined} onClick={() => go(id)}><Icon size={22} strokeWidth={1.8} /><span>{label}</span></button>;
       })}
-      <button className={menuActive || open ? "active" : ""} aria-label="Mais opções" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}><MoreHorizontal size={23} /><span>{flow ? "Menu" : "Mais"}</span></button>
+      <button className={menuActive || open ? "active" : ""} aria-label="Mais opções" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(true)}><MoreHorizontal size={23} /><span>Mais</span></button>
     </nav>
     <dialog ref={dialog} className="mobile-menu-dialog" aria-labelledby="mobile-menu-title" onClose={() => setOpen(false)} onClick={event => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section className="mobile-menu-surface">
         <div className="mobile-menu-handle" aria-hidden="true" />
         <header><div><small>PSYZON GO</small><h2 id="mobile-menu-title">Mais opções</h2></div><button autoFocus aria-label="Fechar menu" onClick={() => setOpen(false)}><X size={20} /></button></header>
-        <div className="mobile-menu-links">{menuItems.map(({ id, label, detail, icon: Icon }) => <button key={id} aria-current={view === id ? "page" : undefined} onClick={() => go(id)}><span className="mobile-menu-icon"><Icon size={21} strokeWidth={1.8} /></span><span><b>{label}</b><small>{detail}</small></span><ChevronRight size={17} /></button>)}</div>
+        <div className="mobile-menu-links">{destinations.map(({ id, label, detail, icon: Icon }) => <button key={id} aria-current={view === id ? "page" : undefined} onClick={() => go(id)}><span className="mobile-menu-icon"><Icon size={21} strokeWidth={1.8} /></span><span><b>{label}</b><small>{detail}</small></span><ChevronRight size={17} /></button>)}</div>
       </section>
     </dialog>
   </>;

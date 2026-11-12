@@ -10,7 +10,6 @@ import { synchronizedOrderQuantities } from "../app/order-quantity-sync";
 import { customerRefund } from "../app/finance-model";
 import { urgentOrder } from "../app/order-model";
 import { forecastMaterial, extraFabricKg } from "../app/material-forecast";
-import { cashTotals, flowSeries, type FlowMovement } from "../app/flow-model";
 import type { NoteMaterial } from "../app/notes-model";
 
 test("credit compensates new orders and refunds only unused funds", () => {
@@ -202,7 +201,8 @@ test("undoing a bill payment finds only its own expense and restores the previou
 });
 
 test("browser history restores available pages and ignores removed views", () => {
-  for (const view of ["inicio", "producao", "notas", "clientes", "financeiro", "mais", "ai", "pedidos", "orcamentos"]) assert.equal(viewFromHash(`#${view}`), view);
+  for (const view of ["inicio", "producao", "notas", "clientes", "financeiro", "mais", "ai"]) assert.equal(viewFromHash(`#${view}`), view);
+  for (const view of ["pedidos", "orcamentos"]) assert.equal(viewFromHash(`#${view}`), "producao");
   for (const view of ["pessoal", "unknown", ""]) assert.equal(viewFromHash(`#${view}`), "inicio");
 });
 
@@ -317,18 +317,4 @@ test("open quotes do not create receivables or receive customer payments until c
   assert.deepEqual([...orderReceivables(balances, orders)], [["order", 150]]);
   assert.deepEqual(customerReceipt(customer, orders).payments, [{ orderId: "order", amount: 150, paid: 200 }]);
   assert.equal(customerBalances([customer], [{ ...quote, status: "Aguardando material" }, order])[0].pending, 950);
-});
-
-test("Flow charts aggregate actual dated income and expenses, excluding future entries and transfers", () => {
-  const movement = (id: string, transactionDate: string, type: FlowMovement["type"], amount: number): FlowMovement =>
-    ({ id, description: id, account: "business", transactionDate, type, amount });
-  const data = [movement("old", "2026-11-05", "income", 200), movement("sale", "2026-11-06", "income", 30),
-    movement("cost", "2026-11-12", "expense", 12), movement("transfer", "2026-11-12", "transfer", 4),
-    movement("future", "2026-11-13", "income", 90)];
-  const recent = flowSeries(data, "2026-11-12", 7);
-  assert.equal(recent.points.length, 7);
-  assert.equal(recent.points[0].received, 30);
-  assert.equal(recent.points.at(-1)?.result, -12);
-  assert.deepEqual(cashTotals(recent.items), { received: 30, spent: 12, result: 18 });
-  assert.equal(flowSeries(data, "2026-11-12", 365).points.length, 12);
 });

@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "mais", "pedidos", "orcamentos", "ai"] as const;
+export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "mais", "ai"] as const;
 export type View = (typeof views)[number];
 
 export function viewFromHash(hash: string): View {
   const value = hash.replace(/^#/, "").split("?", 1)[0];
+  if (value === "pedidos" || value === "orcamentos") return "producao";
   return views.includes(value as View) ? value as View : "inicio";
 }
 

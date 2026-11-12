@@ -3,7 +3,7 @@ import { getAdminFirestore, verifyFirebaseIdToken, type FirebaseIdentity } from 
 export type { FirebaseIdentity } from "./firebase-admin";
 
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
-export type UserCollection = BusinessCollection | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState" | "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "financialCategories" | "financialRules";
+export type UserCollection = BusinessCollection | "tasks" | "dtfOrders" | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState" | "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "financialCategories" | "financialRules";
 
 export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {
   const authorization = request.headers.get("authorization") ?? "";
@@ -34,6 +34,11 @@ function decodeDocument(snapshot: FirebaseFirestore.DocumentSnapshot) {
 
 export async function listUserCollection(identity: FirebaseIdentity, collection: UserCollection, pageSize = 300) {
   const snapshot = await collectionReference(identity.uid, collection).limit(Math.min(500, Math.max(1, pageSize))).get();
+  return snapshot.docs.map(decodeDocument);
+}
+
+export async function listAllUserCollection(identity: FirebaseIdentity, collection: BusinessCollection | "tasks" | "dtfOrders") {
+  const snapshot = await collectionReference(identity.uid, collection).get();
   return snapshot.docs.map(decodeDocument);
 }
 

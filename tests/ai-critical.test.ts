@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { exportAIMessage, parseAIAnswer, readAIAnswer } from "../app/ai/answer-format.ts";
-import { cashQuestion, isCashQuestion } from "../app/ai/cash-question.ts";
+import { isOpenFinanceQuestion, openFinanceQuestion } from "../app/ai/open-finance-question.ts";
 import { evaluateAIToolAccess } from "../app/lib/server/ai-policy.ts";
 import { DeepSeekProvider } from "../app/lib/server/deepseek-provider.ts";
 import { GroqProvider } from "../app/lib/server/groq-provider.ts";
-import { cashAnswer, configuredAIProviders, getAIProviderSummary, orderedAIProviders, tryAIProviderCandidates, type ProviderCandidate } from "../app/lib/server/ai-agent.ts";
+import { openFinanceAnswer, configuredAIProviders, getAIProviderSummary, orderedAIProviders, tryAIProviderCandidates, type ProviderCandidate } from "../app/lib/server/ai-agent.ts";
+import { availableAITools } from "../app/lib/server/ai-tools.ts";
+import { openFinanceReport } from "../app/lib/server/ai-operations.ts";
+import type { Bill, Customer } from "../app/finance-model.ts";
+import type { Order } from "../app/order-model.ts";
 import { GeminiLimitError, GeminiProvider, normalizeGeminiError } from "../app/lib/server/gemini-provider.ts";
 import { readFile } from "node:fs/promises";
 import { mercadoPagoEventKey, signMercadoPagoManifest, verifyMercadoPagoSignature } from "../app/lib/server/mercado-pago-webhook.ts";
@@ -19,7 +23,7 @@ test("AI reads Gemini's fenced JSON and recovers saved answers without trusting 
     alerts: [{ title: "Contas vencidas", detail: "Duas contas.", severity: "critical" }],
     recommendations: ["Regularize as contas vencidas."],
     confirmation: { id: "model-generated" },
-    cashPlan: { balance: 999999 },
+    financeReport: { totalPayables: 999999 },
     actions: [{ type: "navigate", label: "Financeiro", target: "financeiro" }, { type: "navigate", label: "Inválida", target: "external" }],
   });
   const text = ["```json", json, "```"].join("\n");
@@ -28,7 +32,7 @@ test("AI reads Gemini's fenced JSON and recovers saved answers without trusting 
   assert.equal(answer.metrics[0].tone, "info");
   assert.equal(answer.actions.length, 1);
   assert.equal(answer.confirmation, undefined);
-  assert.equal(answer.cashPlan, undefined);
+  assert.equal(answer.financeReport, undefined);
   const legacy = { id: "answer", role: "assistant" as const, content: text, createdAt: 1, payload: { ...parseAIAnswer(""), summary: text } };
   assert.equal(readAIAnswer(legacy).alerts[0].title, "Contas vencidas");
   assert.match(exportAIMessage(legacy), /Indicadores[\s\S]+Próximos passos/);
@@ -353,16 +357,40 @@ test("Gemini standby only runs on quota and skips the primary while it is exhaus
   assert.deepEqual(attempts, ["primary", "primary", "standby", "standby"]);
 });
 
-test("cash shortcut is read-only and preserves the data for the structured report", () => {
-  assert.equal(isCashQuestion(cashQuestion), true);
-  assert.equal(isCashQuestion("Quais contas devo pagar primeiro?"), true);
-  assert.equal(isCashQuestion("Quais contas devo pagar primeiro se entrar R$ 300?"), false);
-  const plan = { asOf: "2026-11-12", balance: 100, overdueTotal: 200, totalPayables: 400, payables: [], projections: [], assumptions: [] };
-  const answer = cashAnswer(plan);
-  assert.equal(answer.cashPlan, plan);
-  assert.match(answer.summary, /-R\$\s*100,00/);
-  assert.match(answer.recommendations[0], /não cobre/);
-  assert.match(cashAnswer(plan, true).summary, /Gemini atingiu um limite/);
+test("AI open-finance report uses the same payable and receivable records as the workspace", () => {
+  assert.equal(isOpenFinanceQuestion(openFinanceQuestion), true);
+  assert.equal(isOpenFinanceQuestion("Quais contas devo pagar primeiro?"), true);
+  assert.equal(isOpenFinanceQuestion("Quais contas devo pagar primeiro se entrar R$ 300?"), false);
+  const bill = (id: string, values: Partial<Bill> = {}): Bill => ({ id, description: id, amount: 40, account: "business", category: "Material", billingType: "once", dueDay: 5, dueDate: "2026-11-05", ...values });
+  const orders = [
+    { id: "confirmed", customer: "João", total: 200, paid: 50, status: "Produção" },
+    { id: "quote", customer: "João", total: 450, paid: 0, status: "Orçamento" },
+  ] as Order[];
+  const customers: Customer[] = [{ id: "client", name: "João", phone: "" }];
+  const bills = [bill("fornecedor"), bill("settled", { settled: true }), bill("receivable", { direction: "receivable", amount: 30, dueDate: "2026-11-15" })];
+  const derived = [bill("Zefa", { category: "Costura", dueDate: undefined, amount: 60 })];
+  const report = openFinanceReport(orders, customers, bills, derived, "2026-11-12");
+  assert.equal(report.totalPayables, 100);
+  assert.equal(report.overdueTotal, 40);
+  assert.equal(report.totalReceivables, 180);
+  assert.deepEqual(report.payables.map(({ id, dueDate }) => [id, dueDate]), [["fornecedor", "2026-11-05"], ["Zefa", null]]);
+  assert.equal(report.receivables.find(item => item.id === "customer-client")?.dueDate, null);
+  assert.equal(openFinanceReport(orders, customers, bills, derived, "2026-11-12", "joao").totalReceivables, 150);
+  const answer = openFinanceAnswer(report);
+  assert.equal(answer.financeReport, report);
+  assert.match(answer.recommendations[0], /R\$\s*40,00/);
+  assert.match(openFinanceAnswer(report, true).summary, /Gemini atingiu um limite/);
+});
+
+test("AI lists the current read-only operational tools and respects financial analysis settings", () => {
+  const operational = availableAITools(false).map(tool => tool.name);
+  const full = availableAITools(true).map(tool => tool.name);
+  for (const name of ["get_materials", "get_notes", "get_tasks", "get_dtf_orders"]) assert.ok(operational.includes(name));
+  for (const name of ["get_open_finance", "get_sewing_summary"]) {
+    assert.ok(full.includes(name));
+    assert.ok(!operational.includes(name));
+  }
+  assert.ok(!full.includes("get_cash_plan"));
 });
 
 test("administrative mutations require confirmation and read-only accounts remain blocked", () => {

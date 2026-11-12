@@ -1,3 +1,4 @@
+import { aiViewTargets } from "../../ai/types";
 import type { AIProvider, ProviderFunctionResult, ProviderInteraction } from "./ai-provider";
 
 type DeepSeekToolCall = {
@@ -28,7 +29,7 @@ const responseSchema = {
     metrics: { type: "array", maxItems: 6, items: { type: "object", properties: { label: { type: "string" }, value: { type: "string" }, trend: { type: "string" }, tone: { type: "string", enum: ["positive", "negative", "neutral"] } }, required: ["label", "value"] } },
     alerts: { type: "array", maxItems: 8, items: { type: "object", properties: { title: { type: "string" }, detail: { type: "string" }, severity: { type: "string", enum: ["critical", "warning", "info", "success"] }, entityType: { type: "string", enum: ["order", "transaction", "client", "finance"] }, entityId: { type: "string" } }, required: ["title", "detail", "severity"] } },
     recommendations: { type: "array", maxItems: 8, items: { type: "string" } },
-    actions: { type: "array", maxItems: 6, items: { type: "object", properties: { label: { type: "string" }, type: { type: "string", enum: ["navigate", "prompt"] }, target: { type: "string", enum: ["inicio", "producao", "clientes", "financeiro", "pessoal", "ai"] }, prompt: { type: "string" } }, required: ["label", "type"] } },
+    actions: { type: "array", maxItems: 6, items: { type: "object", properties: { label: { type: "string" }, type: { type: "string", enum: ["navigate", "prompt"] }, target: { type: "string", enum: [...aiViewTargets] }, prompt: { type: "string" } }, required: ["label", "type"] } },
     confidence: { type: "string", enum: ["alta", "média", "baixa"] },
     sources: { type: "array", maxItems: 8, items: { type: "string" } },
   },

@@ -1,4 +1,6 @@
-import { currency, decimal, type NoteMaterial } from "../notes-model";
+import { currency, decimal, type NoteDraft, type NoteMaterial } from "../notes-model";
+import { extraFabricKg, forecastMaterial } from "../material-forecast";
+import { notePhotoOrderId } from "../order-photo-sync";
 
 export type MaterialOrder = {
   id: string;
@@ -21,6 +23,29 @@ export type MaterialLine = {
   price: number;
   cost: number;
 };
+
+type MaterialNote = { id: string; draft: NoteDraft; purchasedIds?: string[] };
+type LinkedOrder = { id: string; customer: string; quantity?: number };
+type LinkedCustomer = { id: string; name: string };
+
+export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrder[], customers: LinkedCustomer[]): MaterialOrder[] {
+  const ordersById = new Map(orders.map(order => [order.id, order]));
+  const customersById = new Map(customers.map(customer => [customer.id, customer.name]));
+  return notes.filter(({ draft }) => draft.materials.length && draft.document.status !== "trash").map(({ id, draft, purchasedIds }) => {
+    const { document, materials, title } = draft;
+    const linkedId = notePhotoOrderId(document, orders, customers);
+    const quantity = linkedId ? ordersById.get(linkedId)?.quantity : undefined;
+    const purchased = new Set(purchasedIds);
+    return {
+      id,
+      title: title || "Anotação sem título",
+      client: ordersById.get(document.orderId)?.customer || customersById.get(document.customerId) || "",
+      materials: materials.map(material => purchased.has(material.id) ? material : forecastMaterial(material, quantity)),
+      purchasedIds,
+      extraFabricKg: materials.filter(material => purchased.has(material.id)).reduce((sum, material) => sum + extraFabricKg(material, quantity), 0),
+    };
+  });
+}
 
 export function splitMaterialOrders(orders: MaterialOrder[], completed: boolean) {
   return orders.flatMap(order => {

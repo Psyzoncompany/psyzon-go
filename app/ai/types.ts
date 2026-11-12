@@ -26,10 +26,14 @@ export type AIAlert = {
   entityId?: string;
 };
 
+export type AIViewTarget = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "notas" | "materiais" | "reposicao" | "costureiras" | "afazeres" | "dtf" | "historico" | "ai";
+
+export const aiViewTargets: ReadonlySet<string> = new Set(["inicio", "producao", "clientes", "financeiro", "pessoal", "notas", "materiais", "reposicao", "costureiras", "afazeres", "dtf", "historico", "ai"]);
+
 export type AIAction = {
   label: string;
   type: "navigate" | "prompt";
-  target?: "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "ai";
+  target?: AIViewTarget;
   prompt?: string;
 };
 
@@ -43,22 +47,17 @@ export type AIConfirmation = {
   expiresAt: number;
 };
 
-export type AICashPlan = {
+export type AIFinanceEntry = { id: string; description: string; dueDate: string | null; amount: number; category: string };
+
+export type AIFinanceReport = {
   asOf: string;
-  balance: number;
   overdueTotal: number;
   totalPayables: number;
-  payables: Array<{ id: string; description: string; dueDate: string | null; amount: number }>;
-  projections: Array<{
-    days: number;
-    through: string;
-    expenses: number;
-    receipts: number;
-    conservative: number;
-    likely: number;
-    optimistic: number;
-  }>;
-  assumptions: string[];
+  totalReceivables: number;
+  payableCount: number;
+  receivableCount: number;
+  payables: AIFinanceEntry[];
+  receivables: AIFinanceEntry[];
 };
 
 export type AIResponsePayload = {
@@ -70,7 +69,7 @@ export type AIResponsePayload = {
   actions: AIAction[];
   confidence?: "alta" | "média" | "baixa";
   sources?: string[];
-  cashPlan?: AICashPlan;
+  financeReport?: AIFinanceReport;
   confirmation?: AIConfirmation;
 };
 

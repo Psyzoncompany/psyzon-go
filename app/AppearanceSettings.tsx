@@ -15,7 +15,6 @@ const themes = [
   { theme: "liquid-glass-card", name: "Liquid Glass Card", detail: "Transparência, luz e superfícies de vidro.", icon: Sparkles },
   { theme: "ios-premium", name: "iOS Premium", detail: "Roxo, superfícies claras e acabamento suave.", icon: WalletCards },
   { theme: "studio-glass", name: "Studio Glass", detail: "Vidro fumê e um cenário próprio em cada aba.", icon: Aperture },
-  { theme: "psyzon-flow", name: "PSYZON FLOW", detail: "Inspirado no Nubank", icon: WalletCards },
 ] as const;
 
 export default function AppearanceSettings({ appearance, changeAppearance, storageError }: {
@@ -40,7 +39,7 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
     </fieldset>
     <div className="appearance-customize">
       {glass && <fieldset className="appearance-palettes"><legend>Cor do ambiente</legend><div>{palettes.map(({ value, label, color }) => <label key={value} data-selected={appearance.palette === value}><input type="radio" name="glass-palette" checked={appearance.palette === value} onChange={() => changeAppearance({ palette: value })} /><span style={{ background: color }} aria-hidden="true" />{label}</label>)}</div></fieldset>}
-      {appearance.theme !== "original" && appearance.theme !== "psyzon-flow" && <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>}
+      {appearance.theme !== "original" && <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>}
       <div className="appearance-motion"><label htmlFor="glass-motion">Animações suaves</label><input id="glass-motion" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
 
     </div>

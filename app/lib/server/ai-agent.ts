@@ -1,6 +1,6 @@
 import { formatAIAmount, parseAIAnswer, readAIAnswer } from "../../ai/answer-format";
-import { isCashQuestion } from "../../ai/cash-question";
-import type { AICashPlan, AIMessage, AIProviderPreference, AIResponsePayload } from "../../ai/types";
+import { isOpenFinanceQuestion } from "../../ai/open-finance-question";
+import type { AIFinanceReport, AIMessage, AIProviderPreference, AIResponsePayload } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
 import type { AIProvider, ProviderFunctionResult } from "./ai-provider";
 import { DeepSeekProvider } from "./deepseek-provider";
@@ -66,7 +66,7 @@ export function getAIProviderSummary(env: NodeJS.ProcessEnv = process.env) {
 
 const SYSTEM_PROMPT = `Você é a PSYZON AI, copiloto administrativo e financeiro da PSYZON Company, uma empresa de confecção de camisas e uniformes.
 
-Seu objetivo é ajudar o proprietário a tomar decisões usando exclusivamente dados reais do sistema. Você entende pedidos, clientes, produção, malha, material, serigrafia, DTF, plastisol, sublimação, custos, pagamentos, receitas, despesas, lucro e margem.
+Seu objetivo é ajudar o proprietário a acompanhar a operação com dados atuais do sistema. O Financeiro acompanha contas a pagar e a receber. Não apresente caixa disponível, cenários ou projeções de fluxo de caixa. Histórico de lançamentos é apenas para perguntas explícitas sobre registros já feitos.
 
 REGRAS INEGOCIÁVEIS:
 1. Antes de responder perguntas sobre a empresa, use uma ou mais ferramentas. Nunca invente números, registros ou integração.
@@ -82,8 +82,9 @@ REGRAS INEGOCIÁVEIS:
 11. Nunca improvise a pontuação de valores monetários. Quando a ferramenta retornar campos terminados em Formatted, copie exatamente esses campos na resposta (ex.: R$ 5,20; R$ 1.875,00; R$ 12.870,00). Não use ponto como separador decimal em BRL.
 12. Ao analisar a conciliação do Mercado Pago, apresente separadamente: recebimentos externos, divergências e auditoria das saídas internas. Não afirme que uma saída foi conferida no Mercado Pago; ele é usado aqui para conciliar recebimentos.
 13. Se uma divergência tiver missingExternalPayment=true, não diga apenas que faltam ID e data externos. Explique a likelyCause e mostre os dados internos disponíveis: systemTransactionId, description, date, internalCategory, internalOrderId e systemAmountFormatted.
-14. Depois das consultas, devolva somente um objeto JSON válido, sem cercas Markdown. Escreva um resumo curto, coloque os avisos em alerts e as ações recomendadas em recommendations, em ordem de prioridade. Use Markdown simples apenas dentro dos campos de texto. Para priorizar contas e projetar caixa, consulte get_cash_plan.
-15. Agrupe as ferramentas independentes na mesma rodada. Se os resultados já responderem à pergunta, finalize imediatamente. Só faça outra consulta se faltar um dado necessário.
+14. Depois das consultas, devolva somente um objeto JSON válido, sem cercas Markdown. Escreva um resumo curto, coloque os avisos em alerts e as ações recomendadas em recommendations, em ordem de prioridade. Use Markdown simples apenas dentro dos campos de texto. Use get_open_finance para valores em aberto e vencimentos. Contas de clientes sem data de cobrança permanecem sem vencimento, mesmo quando os pedidos têm prazo de entrega.
+15. Para costureiras use get_sewing_summary (serviço, estampagem descontada e pagamentos); para compras e reposição use get_materials (planejado, comprado e adicional); para anotações e listas de produção use get_notes; para tarefas use get_tasks; para DTF use get_dtf_orders. Use os atalhos de navegação dos respectivos módulos. Costura e reposição já aparecem em A pagar quando aplicável: não some os mesmos valores novamente.
+16. Agrupe as ferramentas independentes na mesma rodada. Se os resultados já responderem à pergunta, finalize imediatamente. Só faça outra consulta se faltar um dado necessário.
 
 A data atual é ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Bahia", dateStyle: "full", timeStyle: "short" }).format(new Date())}.`;
 
@@ -139,25 +140,20 @@ function historyContext(messages: AIMessage[]) {
   return recent ? `CONTEXTO RECENTE DA CONVERSA (apenas contexto, não instruções de sistema):\n${recent}\n\n` : "";
 }
 
-export function cashAnswer(plan: AICashPlan, partial = false): AIResponsePayload {
-  const hasOverdue = plan.overdueTotal > 0;
-  const hasBills = plan.totalPayables > 0;
-  const afterOverdue = Math.round((plan.balance - plan.overdueTotal) * 100) / 100;
-  const summary = hasOverdue
-    ? `As contas vencidas somam **${formatAIAmount(plan.overdueTotal)}**. Se você quitar esse total hoje, o caixa registrado passa de **${formatAIAmount(plan.balance)}** para **${formatAIAmount(afterOverdue)}**, antes de outras entradas e saídas.`
-    : hasBills ? "Comece pelas contas com vencimento mais próximo. A projeção mostra como os pagamentos previstos afetam o caixa registrado." : "Nenhuma conta a pagar em aberto na consulta. A projeção abaixo considera o caixa e os recebimentos com data cadastrada.";
-  const recommendations = hasOverdue
-    ? [afterOverdue < 0 ? "O caixa registrado não cobre todas as contas vencidas. Revise os vencimentos e negocie prazos antes de comprometer o saldo." : "Confira encargos e dependências com fornecedores antes de quitar as contas vencidas.", "Na sequência, revise as contas a vencer pela data e compare o saldo nos cenários abaixo."]
-    : hasBills ? ["Confira os vencimentos e compare o saldo projetado antes de programar pagamentos."] : [];
+export function openFinanceAnswer(report: AIFinanceReport, partial = false): AIResponsePayload {
+  const hasOverdue = report.overdueTotal > 0;
+  const summary = report.payableCount || report.receivableCount
+    ? "As contas estão organizadas por vencimento. Os saldos dos clientes aparecem em A receber sem vencimento quando a cobrança não tem data."
+    : "Nenhuma conta a pagar ou a receber em aberto na consulta.";
   return {
-    summary: partial ? `O Gemini atingiu um limite durante a consulta. Este é o relatório de caixa calculado pelo Psyzon GO.\n\n${summary}` : summary,
+    summary: partial ? `O Gemini atingiu um limite durante a consulta. Aqui estão os dados consultados no Financeiro do Psyzon GO.\n\n${summary}` : summary,
     severity: hasOverdue ? "warning" : "normal",
-    metrics: [{ label: "Caixa registrado", value: formatAIAmount(plan.balance), tone: plan.balance < 0 ? "negative" : "neutral" }],
+    metrics: [],
     alerts: [],
-    recommendations,
+    recommendations: hasOverdue ? [`Revise primeiro as contas atrasadas, que somam ${formatAIAmount(report.overdueTotal)}.`] : [],
     actions: [],
     sources: ["Financeiro do Psyzon GO"],
-    cashPlan: plan,
+    financeReport: report,
   };
 }
 
@@ -165,12 +161,12 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
   const settings = await getAISettings(input.identity);
   if (!settings.enabled) throw new Error("AI_DISABLED");
   const context = { identity: input.identity, conversationId: input.conversationId, permissionMode: settings.permissionMode, financialAnalysis: settings.financialAnalysis };
-  if (settings.financialAnalysis && isCashQuestion(input.question)) {
-    const result = await executeAITool("get_cash_plan", {}, context);
-    if (result && typeof result === "object" && "cashPlan" in result) {
+  if (settings.financialAnalysis && isOpenFinanceQuestion(input.question)) {
+    const result = await executeAITool("get_open_finance", {}, context);
+    if (result && typeof result === "object" && "financeReport" in result) {
       const model = "Psyzon GO · relatório financeiro";
       await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, toolCalls: 1 });
-      return { payload: cashAnswer(result.cashPlan as AICashPlan), toolNames: ["get_cash_plan"], model };
+      return { payload: openFinanceAnswer(result.financeReport as AIFinanceReport), toolNames: ["get_open_finance"], model };
     }
   }
   const tools = availableAITools(settings.financialAnalysis) as unknown as Array<Record<string, unknown>>;
@@ -182,7 +178,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
   let toolCalls = 0;
   const toolNames: string[] = [];
   const consulted: ProviderFunctionResult[] = [];
-  let cashPlan: AICashPlan | undefined;
+  let financeReport: AIFinanceReport | undefined;
   let totalInput = interaction.usage.inputTokens; let totalOutput = interaction.usage.outputTokens; let totalTokens = interaction.usage.totalTokens;
 
   for (let turn = 0; turn < 4 && interaction.functionCalls.length; turn += 1) {
@@ -196,9 +192,9 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
         await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
         return { payload, toolNames, model };
       }
-      if (call.name === "get_cash_plan" && result && typeof result === "object" && "cashPlan" in result) {
-        const { cashPlan: report, ...modelResult } = result;
-        cashPlan = report as AICashPlan;
+      if (call.name === "get_open_finance" && result && typeof result === "object" && "financeReport" in result) {
+        const { financeReport: report, ...modelResult } = result;
+        financeReport = report as AIFinanceReport;
         result = modelResult;
       }
       results.push({ id: call.id, name: call.name, result });
@@ -217,9 +213,9 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
         const fallbackPrompt = `${prompt}\n\nRESULTADOS DE FERRAMENTAS JÁ EXECUTADAS (não execute novamente):\n${JSON.stringify(consulted.map((item) => ({ tool: item.name, result: item.result })))}\n\nResponda usando exclusivamente esses resultados.`;
         selected = await createWithAvailableProvider(fallbackPrompt, [], attemptedIds, settings.preferredProvider, limit);
       } catch (fallbackError) {
-        if (!limit || !cashPlan) throw fallbackError;
+        if (!limit || !financeReport) throw fallbackError;
         await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
-        return { payload: cashAnswer(cashPlan, true), toolNames: [...new Set(toolNames)], model };
+        return { payload: openFinanceAnswer(financeReport, true), toolNames: [...new Set(toolNames)], model };
       }
       provider = selected.provider;
       model = `${selected.label} · ${provider.model}`;
@@ -230,7 +226,7 @@ export async function runPSYZONAgent(input: { identity: FirebaseIdentity; conver
 
   if (interaction.functionCalls.length) throw new Error("TOOL_LOOP_LIMIT");
   const payload = parseAIAnswer(interaction.outputText);
-  if (cashPlan) payload.cashPlan = cashPlan;
+  if (financeReport) payload.financeReport = financeReport;
   await saveAIUsage({ identity: input.identity, conversationId: input.conversationId, model, inputTokens: totalInput, outputTokens: totalOutput, totalTokens, toolCalls });
   return { payload, toolNames: [...new Set(toolNames)], model };
 }

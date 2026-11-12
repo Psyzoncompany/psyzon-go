@@ -24,17 +24,16 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
-  TrendingUp,
+  Scissors,
+  Package,
   UserRound,
   X,
 } from "lucide-react";
 import { type ChangeEvent, type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { exportAIMessage, formatAIAmount, formatAIDate, readAIAnswer } from "./ai/answer-format";
-import { cashQuestion } from "./ai/cash-question";
+import { openFinanceQuestion } from "./ai/open-finance-question";
 import "./ai-answer.css";
-import type { AICashPlan, AIConversation, AIIntegrationStatus, AIMessage, AISettings } from "./ai/types";
-
-type AIViewTarget = "inicio" | "producao" | "clientes" | "financeiro" | "pessoal" | "ai";
+import type { AIFinanceReport, AIConversation, AIIntegrationStatus, AIMessage, AISettings, AIViewTarget } from "./ai/types";
 
 type Props = {
   getIdToken: () => Promise<string>;
@@ -62,12 +61,12 @@ type SpeechRecognitionInstance = {
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
 
 const quickPrompts = [
-  { icon: Landmark, label: "Como está meu financeiro?", prompt: "Como está meu financeiro neste mês? Compare entradas, saídas, resultado e valores a receber." },
-  { icon: AlertTriangle, label: "Quais contas pagar primeiro?", prompt: cashQuestion },
-  { icon: RefreshCw, label: "Conferir movimentações", prompt: "Confira a conciliação com o Mercado Pago e audite também todas as saídas empresariais. Mostre os valores usando exatamente a formatação brasileira retornada pelo sistema, as divergências, possíveis duplicidades e o que precisa ser revisado." },
+  { icon: Landmark, label: "A pagar e a receber", prompt: openFinanceQuestion },
+  { icon: Scissors, label: "Quanto devo às costureiras?", prompt: "Consulte os saldos das costureiras e detalhe os serviços, estampagens descontadas e pagamentos." },
+  { icon: Package, label: "O que falta comprar?", prompt: "Consulte materiais e reposição. Liste o que está pendente de compra e a malha adicional necessária por pedido." },
   { icon: Clock3, label: "Pedidos atrasados", prompt: "Quais pedidos estão atrasados e qual deve ser minha prioridade?" },
-  { icon: TrendingUp, label: "Quais pedidos têm melhor margem?", prompt: "Compare os pedidos com custos registrados e informe quais dados faltam para comparar as margens." },
-  { icon: FileText, label: "O que preciso fazer?", prompt: "O que preciso resolver hoje? Organize em urgente, importante e oportunidade." },
+  { icon: FileText, label: "Notas e checklists", prompt: "Consulte minhas notas recentes e mostre os checklists que têm itens pendentes." },
+  { icon: AlertTriangle, label: "Afazeres pendentes", prompt: "Liste meus afazeres pendentes e os clientes vinculados." },
 ];
 
 function apiErrorMessage(error: unknown) {
@@ -83,7 +82,7 @@ function initialAssistantMessage(): AIMessage {
   return {
     id: "welcome",
     role: "assistant",
-    content: "Olá! Eu sou a PSYZON AI. Posso analisar seu financeiro, pedidos, clientes, produção e prioridades usando os dados reais do sistema. Por onde começamos?",
+    content: "Olá! Eu sou a PSYZON AI. Posso consultar contas a pagar e a receber, costureiras, materiais, notas e produção. Por onde começamos?",
     payload: {
       summary: "Olá! Eu sou a PSYZON AI. Posso analisar seu financeiro, pedidos, clientes, produção e prioridades usando os dados reais do sistema. Por onde começamos?",
       severity: "info",
@@ -336,7 +335,7 @@ export default function PSYZONAIWorkspace({ getIdToken, mode = "page", onClose, 
       <header className="ai-topbar"><div>{mode === "page" && <button className="ai-mobile-back" onClick={() => onNavigate("inicio")} aria-label="Voltar ao início"><ChevronLeft size={20} /></button>}<button onClick={() => setSidebarOpen((current) => !current)} aria-label="Abrir histórico"><Menu size={19} /></button><span className="ai-avatar"><Sparkles size={18} /></span><span><b>{currentTitle}</b><small><i /> PSYZON AI · dados em tempo real</small></span></div><div><button className="ai-export-action" onClick={exportConversation} aria-label="Exportar conversa"><ArrowDownToLine size={17} /></button><button onClick={() => setSettingsOpen(true)} aria-label="Configurações da IA"><Settings2 size={17} /></button>{mode === "panel" && onOpenFull && <button className="ai-open-full" aria-label="Abrir página" onClick={onOpenFull}><ArrowRight size={16} /><span>Abrir página</span></button>}{mode === "panel" && onClose && <button onClick={onClose} aria-label="Fechar PSYZON AI"><X size={18} /></button>}</div></header>
 
       <div className="ai-chat-scroll">
-        {showWelcome && <div className="ai-welcome"><div className="ai-welcome-orb"><BrainCircuit size={31} /></div><span className="eyebrow">INTELIGÊNCIA PARA SUA OPERAÇÃO</span><h1>Psyzon AI</h1><p>Sua empresa, decisões mais inteligentes. Consulte o caixa registrado, as contas e as prioridades de produção.</p><div className="ai-quick-grid">{quickPrompts.map(({ icon: Icon, label, prompt }) => <button key={label} onClick={() => void sendMessage(prompt)}><span><Icon size={18} /></span><b>{label}</b><ArrowRight size={15} /></button>)}</div></div>}
+        {showWelcome && <div className="ai-welcome"><div className="ai-welcome-orb"><BrainCircuit size={31} /></div><span className="eyebrow">INTELIGÊNCIA PARA SUA OPERAÇÃO</span><h1>Psyzon AI</h1><p>Sua empresa, decisões mais inteligentes. Consulte contas, costureiras, materiais, notas e prioridades de produção.</p><div className="ai-quick-grid">{quickPrompts.map(({ icon: Icon, label, prompt }) => <button key={label} onClick={() => void sendMessage(prompt)}><span><Icon size={18} /></span><b>{label}</b><ArrowRight size={15} /></button>)}</div></div>}
         <div className="ai-messages">{messages.map((message) => message.role === "user" ? <article className="ai-message user" key={message.id}><div className="ai-message-avatar"><UserRound size={15} /></div><div><p>{message.content}</p></div></article> : <AIAnswer key={message.id} message={message} copied={copiedId === message.id} onCopy={() => void copyMessage(message)} onNavigate={onNavigate} onPrompt={(prompt) => void sendMessage(prompt)} onConfirm={(id) => void confirmAction(id)} onCancel={(id) => void cancelConfirmation(id)} />)}{loading && <article className="ai-message assistant loading"><div className="ai-message-avatar"><Sparkles size={16} /></div><div><span className="ai-thinking"><LoaderCircle size={15} />{loadingState}</span><div className="ai-typing"><i /><i /><i /></div></div></article>}<div ref={endRef} /></div>
       </div>
 
@@ -356,10 +355,10 @@ function IntegrationCard({ icon: Icon, name, configured, detail, action }: { ico
 }
 
 function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, onCancel }: { message: AIMessage; copied: boolean; onCopy: () => void; onNavigate: (target: AIViewTarget) => void; onPrompt: (prompt: string) => void; onConfirm: (id: string) => void; onCancel: (id: string) => void }) {
-  const { summary, metrics, alerts, recommendations, actions, cashPlan, confirmation, sources, confidence } = readAIAnswer(message);
+  const { summary, metrics, alerts, recommendations, actions, financeReport, confirmation, sources, confidence } = readAIAnswer(message);
   const orderedAlerts = [...alerts].sort((a, b) => alertPriority[a.severity] - alertPriority[b.severity]);
-  const canRefreshPlan = !cashPlan && message.toolNames?.includes("get_cash_plan");
-  const structured = metrics.length > 0 || alerts.length > 0 || recommendations.length > 0 || Boolean(cashPlan);
+  const canRefreshFinance = !financeReport && message.toolNames?.some(name => name === "get_cash_plan" || name === "get_open_finance");
+  const structured = metrics.length > 0 || alerts.length > 0 || recommendations.length > 0 || Boolean(financeReport);
 
   return (
     <article className="ai-message assistant">
@@ -392,7 +391,7 @@ function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, on
           </ul>
         </section>}
 
-        {cashPlan && <AICashReport plan={cashPlan} onOpenFinance={() => onNavigate("financeiro")} />}
+        {financeReport && <OpenFinanceReport report={financeReport} onOpenFinance={() => onNavigate("financeiro")} />}
 
         {recommendations.length > 0 && <section className="ai-answer-section">
           <h3 className="ai-answer-heading">Próximos passos</h3>
@@ -416,8 +415,8 @@ function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, on
           </footer>
         </div>}
 
-        {(actions.length > 0 || canRefreshPlan) && <div className="ai-response-actions">
-          {canRefreshPlan && <button onClick={() => onPrompt(cashQuestion)}><RefreshCw size={14} /> Atualizar projeção de caixa</button>}
+        {(actions.length > 0 || canRefreshFinance) && <div className="ai-response-actions">
+          {canRefreshFinance && <button onClick={() => onPrompt(openFinanceQuestion)}><RefreshCw size={14} /> Consultar contas em aberto</button>}
           {actions.map((action, index) => <button key={index} onClick={() => action.type === "prompt" && action.prompt ? onPrompt(action.prompt) : action.target && onNavigate(action.target)}>{action.label}<ArrowRight size={14} /></button>)}
         </div>}
 
@@ -433,94 +432,46 @@ function AIAnswer({ message, copied, onCopy, onNavigate, onPrompt, onConfirm, on
 
 const alertPriority = { critical: 0, warning: 1, info: 2, success: 3 };
 
-const cashScenarios = [
-  { key: "conservative", label: "Conservador", description: "Considera os pagamentos previstos no período." },
-  { key: "likely", label: "Provável", description: "Considera os pagamentos e os recebimentos com data prevista." },
-  { key: "optimistic", label: "Otimista", description: "Inclui uma entrada adicional quando informada na simulação." },
-] as const;
-
-function AICashReport({ plan, onOpenFinance }: { plan: AICashPlan; onOpenFinance: () => void }) {
-  const [scenario, setScenario] = useState<(typeof cashScenarios)[number]["key"]>("likely");
+function OpenFinanceReport({ report, onOpenFinance }: { report: AIFinanceReport; onOpenFinance: () => void }) {
+  const [direction, setDirection] = useState<"payable" | "receivable">("payable");
   const [expanded, setExpanded] = useState(false);
-  const active = cashScenarios.find((item) => item.key === scenario)!;
-  const allBalances = [plan.balance, ...plan.projections.flatMap((point) => cashScenarios.map(({ key }) => point[key]))];
-  const min = Math.min(0, ...allBalances);
-  const max = Math.max(0, ...allBalances);
-  const position = (amount: number) => 100 * (amount - min) / (max - min || 1);
-  const zero = position(0);
-  const points = [
-    { label: "Caixa registrado", date: plan.asOf, balance: plan.balance },
-    ...plan.projections.map((point) => ({ label: `Em ${point.days} dias`, date: point.through, balance: point[scenario] })),
-  ];
-  const priorityBills = expanded ? plan.payables : plan.payables.slice(0, 5);
+  const payable = direction === "payable";
+  const entries = payable ? report.payables : report.receivables;
+  const totalCount = payable ? report.payableCount : report.receivableCount;
+  const visibleEntries = expanded ? entries : entries.slice(0, 5);
+  const changeDirection = (value: typeof direction) => {
+    setDirection(value);
+    setExpanded(false);
+  };
 
-  return <>
-    <section className="ai-answer-section ai-cash-card">
-      <h3 className="ai-answer-heading">Contas por prioridade</h3>
-      <p className="ai-cash-caption">Por vencimento em {formatAIDate(plan.asOf)}</p>
-      <dl className="ai-cash-totals">
-        <div><dt>Total em aberto</dt><dd>{formatAIAmount(plan.totalPayables)}</dd></div>
-        <div><dt>Vencidas</dt><dd className={plan.overdueTotal > 0 ? "negative" : undefined}>{formatAIAmount(plan.overdueTotal)}</dd></div>
-      </dl>
-      {priorityBills.length ? <ol className="ai-cash-priorities">
-        {priorityBills.map((bill) => {
-          const overdue = bill.dueDate && bill.dueDate < plan.asOf;
-          const dueToday = bill.dueDate === plan.asOf;
-          return <li key={bill.id}>
-            <div className="ai-cash-bill">
-              <div>
-                <b>{bill.description}</b>
-                <small className={overdue ? "negative" : dueToday ? "due-today" : undefined}>
-                  {bill.dueDate ? `${overdue ? "Vencida · " : dueToday ? "Vence hoje · " : ""}${formatAIDate(bill.dueDate)}` : "Sem vencimento"}
-                </small>
-              </div>
-              <strong>{formatAIAmount(bill.amount)}</strong>
+  return <section className="ai-answer-section ai-finance-card">
+    <h3 className="ai-answer-heading">Contas em aberto</h3>
+    <p className="ai-finance-caption">Em {formatAIDate(report.asOf)} · {formatAIAmount(report.overdueTotal)} em pagamentos atrasados</p>
+    <div className="ai-finance-tabs" role="group" aria-label="Tipo de conta">
+      <button type="button" aria-pressed={payable} onClick={() => changeDirection("payable")}><span>A pagar</span><strong>{formatAIAmount(report.totalPayables)}</strong></button>
+      <button type="button" aria-pressed={!payable} onClick={() => changeDirection("receivable")}><span>A receber</span><strong>{formatAIAmount(report.totalReceivables)}</strong></button>
+    </div>
+    {visibleEntries.length ? <ol className="ai-finance-list" aria-label={payable ? "Contas a pagar" : "Contas a receber"}>
+      {visibleEntries.map((entry) => {
+        const overdue = entry.dueDate && entry.dueDate < report.asOf;
+        const dueToday = entry.dueDate === report.asOf;
+        return <li key={entry.id}>
+          <div className="ai-finance-entry">
+            <div>
+              <b>{entry.description}</b>
+              <small className={overdue ? "negative" : dueToday ? "due-today" : undefined}>
+                {entry.dueDate ? `${overdue ? "Vencida · " : dueToday ? "Vence hoje · " : ""}${formatAIDate(entry.dueDate)}` : "Sem vencimento"}{entry.category ? ` · ${entry.category}` : ""}
+              </small>
             </div>
-          </li>;
-        })}
-      </ol> : <p className="ai-cash-caption">Nenhuma conta em aberto.</p>}
-      <div className="ai-response-actions">
-        {plan.payables.length > 5 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Mostrar 5 primeiras" : "Mostrar mais contas"}</button>}
-        <button type="button" onClick={onOpenFinance}>Abrir Financeiro <ArrowRight size={14} /></button>
-      </div>
-    </section>
-
-    <section className="ai-answer-section ai-cash-card">
-      <h3 className="ai-answer-heading">Projeção de caixa</h3>
-      <div className="ai-cash-scenarios" role="group" aria-label="Cenários da projeção">
-        {cashScenarios.map(({ key, label }) => <button key={key} type="button" aria-pressed={scenario === key} onClick={() => setScenario(key)}>{label}</button>)}
-      </div>
-      <p className="ai-cash-caption">{active.description}</p>
-      <ul className="ai-cash-chart" aria-label={`Saldos projetados no cenário ${active.label.toLowerCase()}`} aria-live="polite">
-        {points.map(({ label, date, balance }, index) => {
-          const point = plan.projections[index - 1];
-          const delta = Math.round((balance - plan.balance) * 100) / 100;
-          return <li key={label}>
-            <div className="ai-cash-point-label"><span><b>{label}</b><small>{formatAIDate(date)}</small></span><strong className={balance < 0 ? "negative" : undefined}>{formatAIAmount(balance)}</strong></div>
-            <div className="ai-cash-track" aria-hidden="true">
-              <div className="ai-cash-zero" style={{ left: `${zero}%` }} />
-              <div className="ai-cash-bar" data-tone={balance < 0 ? "negative" : point ? "projected" : "recorded"} style={{ left: `${Math.min(position(balance), zero)}%`, width: `${Math.abs(position(balance) - zero)}%` }} />
-            </div>
-            {point && <small className="ai-cash-change">
-              {delta === 0 ? "Sem variação" : `${delta < 0 ? "Queda" : "Aumento"} de ${formatAIAmount(Math.abs(delta))}`} em relação ao caixa registrado
-            </small>}
-          </li>;
-        })}
-      </ul>
-      <details className="ai-cash-breakdown">
-        <summary>Ver entradas e saídas previstas</summary>
-        <dl>
-          {plan.projections.map(({ days, expenses, receipts }) => <div key={days}>
-            <dt>{days} dias</dt>
-            <dd>Saídas {formatAIAmount(expenses)} · Entradas {formatAIAmount(receipts)}</dd>
-          </div>)}
-        </dl>
-      </details>
-    </section>
-
-    <section className="ai-answer-section ai-cash-premises">
-      <h3 className="ai-answer-heading">Premissas</h3>
-      <ul>{plan.assumptions.map((item) => <li key={item}>{item}</li>)}</ul>
-    </section>
-  </>;
+            <strong>{formatAIAmount(entry.amount)}</strong>
+          </div>
+        </li>;
+      })}
+    </ol> : <p className="ai-finance-caption">{payable ? "Nenhuma conta a pagar em aberto." : "Nenhuma conta a receber em aberto."}</p>}
+    {totalCount > visibleEntries.length && <p className="ai-finance-caption">{visibleEntries.length} de {totalCount} registros</p>}
+    <div className="ai-response-actions">
+      {entries.length > 5 && <button type="button" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Mostrar 5 primeiros" : "Mostrar mais registros"}</button>}
+      <button type="button" onClick={onOpenFinance}>Abrir Financeiro <ArrowRight size={14} /></button>
+    </div>
+  </section>;
 }

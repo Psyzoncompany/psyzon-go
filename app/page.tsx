@@ -919,6 +919,7 @@ export default function HomePage() {
           pricingMode:
             form.get("pricingMode") === "quantity" ? "quantity" : "manual",
           childQuantity: Number(form.get("childQuantity")),
+          childUnitPrice: String(form.get("childUnitPrice") ?? "") === "" ? null : Number(form.get("childUnitPrice")),
           shirtType: form.get("shirtType") === "polo" ? "polo" : "standard",
           total: Number(form.get("total")),
           paid: Number(form.get("paid")),
@@ -936,11 +937,13 @@ export default function HomePage() {
           nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
           nextOrder.quantity,
           nextOrder.childQuantity!,
+          nextOrder.childUnitPrice,
         );
         nextOrder.total = shirtTotal(
           nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
           nextOrder.quantity,
           nextOrder.childQuantity!,
+          nextOrder.childUnitPrice,
         );
         if (
           !Number.isFinite(nextOrder.paid) ||
@@ -1218,6 +1221,7 @@ export default function HomePage() {
                 ? suggestedShirtPrice(Number(form.get("quantity")))
                 : Number(form.get("unitPrice")),
             childQuantity: Number(form.get("childQuantity")),
+          childUnitPrice: String(form.get("childUnitPrice") ?? "") === "" ? null : Number(form.get("childUnitPrice")),
             pricingMode:
               form.get("pricingMode") === "quantity"
                 ? ("quantity" as const)
@@ -1237,13 +1241,19 @@ export default function HomePage() {
         updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
         updatedOrder.quantity,
         updatedOrder.childQuantity || 0,
+        updatedOrder.childUnitPrice,
       );
       updatedOrder.total = shirtTotal(
         updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
         updatedOrder.quantity,
         updatedOrder.childQuantity || 0,
+        updatedOrder.childUnitPrice,
       );
     }
+    const partialPayment = Number(form.get("partialPayment") || 0);
+    const previousPaid = updatedOrder.paid;
+    updatedOrder.paid = roundMoney(previousPaid + partialPayment);
+    if (!Number.isFinite(partialPayment) || !Number.isFinite(previousPaid) || previousPaid < 0 || partialPayment < 0 || (partialPayment > 0 && (updatedOrder.status === "Orçamento" || editingOrder.status === "Orçamento" || updatedOrder.paid > updatedOrder.total))) throw new Error("Confira o valor do pagamento e o saldo do pedido.");
     if (updatedOrder.paid < 0 || (updatedOrder.paid > updatedOrder.total && updatedOrder.paid > editingOrder.paid))
       throw new Error("O recebido excede o total do pedido.");
     const db = getFirestore(getApps()[0]);
@@ -1276,6 +1286,8 @@ export default function HomePage() {
       ).find((order) => order.id === latestRaw.id)!;
       if (
         current.data().paid !== editingOrder.paid ||
+        (effective.childUnitPrice ?? null) !== (editingOrder.childUnitPrice ?? null) ||
+        (partialPayment > 0 && effective.status === "Orçamento") ||
         effective.total !== editingOrder.total ||
         effective.quantity !== editingOrder.quantity
       ) {
@@ -1311,7 +1323,7 @@ export default function HomePage() {
         { name: updatedOrder.customer, phone: updatedOrder.phone },
         { merge: true },
       );
-      if (updatedOrder.paid !== editingOrder.paid) {
+      if (previousPaid !== editingOrder.paid) {
         const manual = linkedPayments.filter(
           (item) => !item.source || item.source === "order_payment",
         );
@@ -1325,7 +1337,7 @@ export default function HomePage() {
             )
             .reduce((sum, item) => sum + item.amount, 0) - linkedPayments.filter(item => item.source === "customer_refund").reduce((sum,item)=>sum+item.amount,0),
         );
-        const amount = roundMoney(updatedOrder.paid - recorded);
+        const amount = roundMoney(previousPaid - recorded);
         if (amount < 0)
           throw new Error(
             "O valor é menor que os recebimentos já registrados para este pedido.",
@@ -1358,6 +1370,11 @@ export default function HomePage() {
             transaction.delete(userDocument(uid, "transactions", item.id)),
           );
       }
+      if (partialPayment > 0) transaction.set(doc(userCollection(uid, "transactions")), {
+        description: "Pagamento parcial · " + updatedOrder.customer,
+        amount: roundMoney(partialPayment), type: "income", account: "business", category: "Vendas",
+        orderId: editingOrder.id, source: "customer_receipt", transactionDate: localDateValue(), createdAt: serverTimestamp(),
+      });
     });
     setEditingOrder(null);
     showToast("Pedido e financeiro atualizados");
@@ -1841,5 +1858,6 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
 
 function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div><label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  const [addingPayment, setAddingPayment] = useState(false);
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label><OrderDtfField value={order.dtfStatus} /><OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
 }

@@ -11,6 +11,12 @@ import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import type { Order } from "../app/order-model";
 import { suggestedShirtPrice } from "../app/order-pricing";
 import { sewingBalances, readSewing } from "../app/sewing-model";
+test("custom child prices preserve the default discount and support free items", () => {
+  assert.equal(shirtTotal(45, 17, 3), 750);
+  assert.equal(shirtTotal(45, 17, 3, 35), 735);
+  assert.equal(shirtTotal(60, 17, 3, 0), 840);
+  assert.throws(() => validateShirtPrice(45, 17, 3, -1));
+});
 test("quantity brackets follow the price table and preserve manual overrides", () => {
   assert.deepEqual(
     [1, 2, 3, 5, 6, 20, 21].map(suggestedShirtPrice),

@@ -36,6 +36,7 @@ export default function OrderPricingFields({ order }: { order?: Order }) {
   const price = automatic
     ? String(suggestedShirtPrice(Number(quantity)))
     : manualPrice;
+  const [childPrice, setChildPrice] = useState(order?.childUnitPrice == null ? "" : String(order.childUnitPrice));
   const [manualTotal, setManualTotal] = useState(String(order?.total ?? 0));
   const total =
     price === ""
@@ -44,6 +45,7 @@ export default function OrderPricingFields({ order }: { order?: Order }) {
           Number(price) + poloExtra(shirtType),
           Number(quantity),
           Number(children),
+          childPrice === "" ? null : Number(childPrice),
         );
   return (
     <fieldset ref={field} className="order-pricing-fields">
@@ -139,18 +141,7 @@ export default function OrderPricingFields({ order }: { order?: Order }) {
           onChange={(e) => setManualTotal(e.target.value)}
         />
       </label>
-      <small>
-        Infantil:{" "}
-        {price === ""
-          ? "informe o preço por camisa"
-          : new Intl.NumberFormat("pt-BR", {
-              style: "currency",
-              currency: "BRL",
-            }).format(
-              Math.max(0, Number(price) + poloExtra(shirtType) - 5),
-            )}{" "}
-        por peça
-      </small>
+      <label>Preço por camisa infantil<input name="childUnitPrice" type="number" min="0" max="100000000" step="0.01" disabled={price === ""} value={childPrice} placeholder={price === "" ? "" : String(Math.max(0, Number(price) + poloExtra(shirtType) - 5))} onChange={event => setChildPrice(event.target.value)} /></label>
     </fieldset>
   );
 }

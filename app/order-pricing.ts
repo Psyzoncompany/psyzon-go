@@ -17,27 +17,30 @@ export function shirtTotal(
   unitPrice: number,
   quantity: number,
   children: number,
+  childUnitPrice?: number | null,
 ) {
   const cents = Math.round(unitPrice * 100);
   return (
-    ((quantity - children) * cents + children * Math.max(0, cents - 500)) / 100
+    ((quantity - children) * cents + children * (childUnitPrice == null ? Math.max(0, cents - 500) : Math.round(childUnitPrice * 100))) / 100
   );
 }
 export function validateShirtPrice(
   price: number,
   quantity: number,
   children: number,
+  childUnitPrice?: number | null,
 ) {
   if (
     !Number.isFinite(price) ||
     price < 0 ||
+    (childUnitPrice != null && (!Number.isFinite(childUnitPrice) || childUnitPrice < 0 || childUnitPrice > 100000000)) ||
     !Number.isInteger(quantity) ||
     quantity < 1 ||
     quantity > 1000000 ||
     !Number.isInteger(children) ||
     children < 0 ||
     children > quantity ||
-    shirtTotal(price, quantity, children) > 100000000
+    shirtTotal(price, quantity, children, childUnitPrice) > 100000000
   )
     throw new Error("Confira o preço por camisa e a quantidade infantil.");
 }

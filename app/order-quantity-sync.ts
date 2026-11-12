@@ -59,6 +59,7 @@ export function synchronizedOrderQuantities(
         unitPrice + poloExtra(effective.shirtType, effective.product),
         effective.quantity,
         Math.min(effective.childQuantity || 0, effective.quantity),
+        effective.childUnitPrice,
       ),
     };
   });

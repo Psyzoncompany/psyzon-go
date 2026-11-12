@@ -2,7 +2,11 @@ import type { AIPermissionMode } from "../../ai/types";
 import { synchronizedOrderQuantities } from "../../order-quantity-sync";
 import type { Order } from "../../order-model";
 import type { BusinessNote } from "../../notes-model";
-import type { Customer } from "../../finance-model";
+import { billDueDate, customerBalances, financialSummary, roundMoney, type Bill, type Customer } from "../../finance-model";
+import { dayOffset } from "../../flow-model";
+import { orderStatuses, normalizeOrderStatus } from "../../order-model";
+import { restockTasks, restockBills } from "../../notes/restock-model";
+import { readSewing, sewingBills, sewingOrderBalances } from "../../sewing-model";
 import { readDocument, type NoteMaterial } from "../../notes-model";
 import { evaluateAIToolAccess } from "./ai-policy";
 import {
@@ -23,6 +27,7 @@ export type AIToolContext = {
   conversationId?: string;
   permissionMode: AIPermissionMode;
   confirmed?: boolean;
+  financialAnalysis?: boolean;
 };
 
 type ToolArguments = Record<string, unknown>;
@@ -62,7 +67,7 @@ function recordDate(record: Record<string, unknown>) {
   return Number.isNaN(parsed.getTime()) ? today() : parsed.toISOString().slice(0, 10);
 }
 function inMonth(record: Record<string, unknown>, month: string) { return recordDate(record).startsWith(month); }
-function isOverdue(order: Record<string, unknown>) { return text(order.status) !== "Entregue" && text(order.dueDate) < today(); }
+function isOverdue(order: Record<string, unknown>) { const due = text(order.dueDate); return Boolean(due && !["Entregue", "Orçamento"].includes(normalizeOrderStatus(order.status)) && due < today()); }
 function requiredString(args: ToolArguments, key: string) {
   const value = text(args[key]);
   if (!value) throw new Error(`${key} é obrigatório.`);
@@ -83,8 +88,8 @@ async function getBusinessData(identity: FirebaseIdentity) {
     listUserCollection(identity, "notes",500),
   ]);
   const effective = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order=>[order.id,order]));
-  const orders = stored.map((order): (typeof stored)[number]=>({...order,quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total}));
-  return { orders, transactions, customers, bills };
+  const orders = stored.map((order): (typeof stored)[number]=>({...order,status:normalizeOrderStatus(order.status),quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total}));
+  return { orders, transactions, customers, bills, notes };
 }
 
 const getDashboardSummary: ToolDefinition = {
@@ -100,12 +105,12 @@ const getDashboardSummary: ToolDefinition = {
     const allIncome = business.filter((item) => text(item.type) === "income").reduce((sum, item) => sum + number(item.amount), 0);
     const allExpenses = business.filter((item) => text(item.type) === "expense").reduce((sum, item) => sum + number(item.amount), 0);
     const transfers = transactions.filter((item) => text(item.type) === "transfer").reduce((sum, item) => sum + number(item.amount), 0);
-    const pending = orders.reduce((sum, order) => sum + Math.max(0, number(order.total) - number(order.paid)), 0);
+    const pending = customerBalances(customers as unknown as Customer[], orders as unknown as Order[]).filter(customer => !customer.archived).reduce((sum, customer) => sum + customer.pending, 0);
     const overdue = orders.filter(isOverdue);
     return {
       asOf: new Date().toISOString(), month, revenue: income, expenses, result: income - expenses,
       availableBalance: allIncome - allExpenses - transfers, receivable: pending,
-      activeOrders: orders.filter((item) => text(item.status) !== "Entregue").length,
+      activeOrders: orders.filter((item) => !["Entregue", "Orçamento"].includes(normalizeOrderStatus(item.status))).length,
       overdueOrders: overdue.slice(0, 12).map((item) => ({ id: item.id, customer: text(item.customer), dueDate: item.dueDate, pending: Math.max(0, number(item.total) - number(item.paid)) })),
       clients: customers.length, recurringBills: bills.length,
       dataQuality: { ordersWithoutValue: orders.filter((item) => number(item.total) <= 0).length, transactionsWithoutCategory: transactions.filter((item) => !text(item.category)).length },
@@ -189,7 +194,7 @@ const getMonthlyComparison: ToolDefinition = {
     const { orders, transactions } = await getBusinessData(identity);
     const calculate = (month: string) => {
       const monthTransactions = transactions.filter((item) => text(item.account) === "business" && inMonth(item, month));
-      const monthOrders = orders.filter((item) => recordDate(item).startsWith(month));
+      const monthOrders = orders.filter((item) => normalizeOrderStatus(item.status) !== "Orçamento" && recordDate(item).startsWith(month));
       const income = monthTransactions.filter((item) => text(item.type) === "income").reduce((sum, item) => sum + number(item.amount), 0);
       const expenses = monthTransactions.filter((item) => text(item.type) === "expense").reduce((sum, item) => sum + number(item.amount), 0);
       const sales = monthOrders.reduce((sum, item) => sum + number(item.total), 0);
@@ -201,17 +206,70 @@ const getMonthlyComparison: ToolDefinition = {
   },
 };
 
+function businessOpenBalances(data: Awaited<ReturnType<typeof getBusinessData>>) {
+  const orders = data.orders as unknown as Order[];
+  const notes = data.notes as unknown as BusinessNote[];
+  const bills = [
+    ...data.bills as unknown as Bill[],
+    ...restockBills(restockTasks(notes)),
+    ...sewingBills(orders, readSewing(notes)),
+  ].filter(bill => bill.account === "business");
+  return financialSummary(customerBalances(data.customers as unknown as Customer[], orders), bills, monthKey());
+}
+
+const getCashPlan: ToolDefinition = {
+  declaration: { type: "function", name: "get_cash_plan", description: "Consulta contas a pagar e receber, saldo registrado e simula cenários de 7, 15 e 30 dias. Não altera dados. Use para priorizar pagamentos, estimar caixa e simular recebimento, atraso ou compra.", parameters: { type: "object", properties: {
+    payment: { type: "number", description: "Saída hipotética adicional imediata, ainda fora das contas previstas." },
+    extraReceipt: { type: "number", description: "Entrada hipotética adicional que ainda não está registrada como prevista." },
+    delayedReceipt: { type: "number", description: "Recebimento previsto que pode atrasar, caso esteja incluído no prazo analisado." },
+    reserve: { type: "number", description: "Reserva mínima hipotética, somente quando o usuário informar." }
+  } } },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const data = await getBusinessData(identity);
+    const { payable, receivable, debtors } = businessOpenBalances(data);
+    const date = today();
+    const recorded = data.transactions.filter(item => item.account === "business" && recordDate(item) <= date);
+    const balance = roundMoney(recorded.reduce((sum,item) => sum + (item.type === "income" ? number(item.amount) : item.type === "expense" ? -number(item.amount) : 0), 0));
+    const amount = (name: string) => args[name] === undefined || args[name] === 0 ? 0 : finiteAmount(args, name);
+    const payment = amount("payment"), extra = amount("extraReceipt"), delay = amount("delayedReceipt"), reserve = amount("reserve");
+    const due = (bill: Bill) => bill.dueDate || bill.dueDay ? billDueDate(bill, monthKey()) : "";
+    const summarize = (bill: Bill) => ({ id: bill.id, description: bill.description, category: bill.category, dueDate: due(bill) || null, amountFormatted: formatMoney(bill.amount), overdue: Boolean(due(bill) && due(bill) < date) });
+    return {
+      asOf: date, recordedBalanceFormatted: formatMoney(balance), knownBusinessMovements: recorded.length, afterImmediatePaymentFormatted: formatMoney(balance - payment),
+      payables: [...payable].sort((a,b) => (due(a) || "9999").localeCompare(due(b) || "9999")).slice(0,25).map(summarize),
+      receivableBills: receivable.slice(0,25).map(summarize),
+      customerReceivablesWithoutConfirmedDatesFormatted: formatMoney(debtors.reduce((sum, customer) => sum + customer.pending, 0)),
+      projections: [7,15,30].map(days => {
+        const end = dayOffset(date,days);
+        const out = payable.filter(bill => due(bill) && due(bill) <= end).reduce((sum,bill) => sum + bill.amount,0);
+        const expected = receivable.filter(bill => due(bill) && due(bill) <= end).reduce((sum,bill) => sum + bill.amount,0);
+        const conservative = balance - payment - out;
+        const likely = conservative + Math.max(0, expected - delay);
+        return { days, through: end, scheduledExpensesFormatted: formatMoney(out), expectedReceiptsFormatted: formatMoney(expected),
+          conservativeFormatted: formatMoney(conservative), likelyFormatted: formatMoney(likely), optimisticFormatted: formatMoney(likely + extra),
+          likelyAfterReserveFormatted: formatMoney(likely - reserve) };
+      }),
+      limitations: ["Saldo calculado sobre movimentações empresariais registradas; não confirma saldo bancário.", "Projeções incluem apenas contas em aberto deste ciclo com datas cadastradas. Saldos de clientes não possuem data confirmada de recebimento.", "Juros, multas e reserva mínima dependem de dados informados. A data de entrega não garante o pagamento."],
+    };
+  },
+};
+
 const getPriorityActions: ToolDefinition = {
   declaration: { type: "function", name: "get_priority_actions", description: "Analisa dados reais e retorna o que precisa ser resolvido hoje, priorizando dinheiro, clientes e prazos.", parameters: { type: "object", properties: {} } },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }) => {
-    const { orders, transactions } = await getBusinessData(identity);
+    const data = await getBusinessData(identity);
+    const { orders, transactions } = data;
+    const { payable } = businessOpenBalances(data);
+    const upcoming = payable.filter(bill => (bill.dueDate || bill.dueDay) && billDueDate(bill,monthKey()) <= dayOffset(today(), 3)).sort((a,b) => billDueDate(a,monthKey()).localeCompare(billDueDate(b,monthKey()))).map(bill => ({ priority: "urgent", type: "bill_due", entityId: bill.id, title: bill.description, dueDate: billDueDate(bill,monthKey()), impactFormatted: formatMoney(bill.amount) }));
+    const blocked = orders.filter(item => item.status === "Aguardando material").slice(0,8).map(item => ({ priority: "important", type: "waiting_material", entityId: item.id, title: text(item.customer), dueDate: text(item.dueDate), pieces: number(item.quantity) }));
     const overdue = orders.filter(isOverdue).map((item) => ({ priority: "urgent", type: "order_overdue", entityId: item.id, title: `Pedido de ${text(item.customer)} atrasado`, detail: `${text(item.customer)} · prazo ${text(item.dueDate)}`, impact: Math.max(0, number(item.total) - number(item.paid)) }));
-    const receivables = orders.filter((item) => number(item.total) > number(item.paid)).sort((a, b) => (number(b.total) - number(b.paid)) - (number(a.total) - number(a.paid))).slice(0, 8).map((item) => ({ priority: "important", type: "receivable", entityId: item.id, title: `Cobrar pedido de ${text(item.customer)}`, detail: text(item.customer), impact: number(item.total) - number(item.paid) }));
+    const receivables = orders.filter((item) => normalizeOrderStatus(item.status) !== "Orçamento" && number(item.total) > number(item.paid)).sort((a, b) => (number(b.total) - number(b.paid)) - (number(a.total) - number(a.paid))).slice(0, 8).map((item) => ({ priority: "important", type: "receivable", entityId: item.id, title: `Cobrar pedido de ${text(item.customer)}`, detail: text(item.customer), impact: number(item.total) - number(item.paid) }));
     const duplicates = new Map<string, Record<string, unknown>[]>();
     transactions.forEach((item) => { const key = `${recordDate(item)}|${number(item.amount).toFixed(2)}|${text(item.description).toLocaleLowerCase("pt-BR")}`; duplicates.set(key, [...(duplicates.get(key) ?? []), item]); });
     const possibleDuplicates = [...duplicates.values()].filter((items) => items.length > 1).map((items) => ({ priority: "urgent", type: "possible_duplicate", entityId: items[0].id, title: "Possível movimentação duplicada", detail: `${text(items[0].description)} · ${money.format(number(items[0].amount))}`, impact: number(items[0].amount) }));
-    return { asOf: new Date().toISOString(), items: [...possibleDuplicates, ...overdue, ...receivables].slice(0, 20), totals: { overdueOrders: overdue.length, receivable: receivables.reduce((sum, item) => sum + item.impact, 0), possibleDuplicates: possibleDuplicates.length } };
+    return { asOf: new Date().toISOString(), items: [...upcoming, ...overdue, ...blocked, ...possibleDuplicates, ...receivables].slice(0, 20), totals: { overdueOrders: overdue.length, receivable: receivables.reduce((sum, item) => sum + item.impact, 0), possibleDuplicates: possibleDuplicates.length } };
   },
 };
 
@@ -221,13 +279,49 @@ const getProfitAnalysis: ToolDefinition = {
   execute: async ({ identity }, args) => {
     const month = /^\d{4}-\d{2}$/.test(text(args.month)) ? text(args.month) : monthKey();
     const { orders, transactions, bills } = await getBusinessData(identity);
-    const monthOrders = orders.filter((item) => recordDate(item).startsWith(month));
+    const monthOrders = orders.filter((item) => normalizeOrderStatus(item.status) !== "Orçamento" && recordDate(item).startsWith(month));
     const sales = monthOrders.reduce((sum, item) => sum + number(item.total), 0);
     const received = transactions.filter((item) => text(item.account) === "business" && text(item.type) === "income" && inMonth(item, month)).reduce((sum, item) => sum + number(item.amount), 0);
     const costs = transactions.filter((item) => text(item.account) === "business" && text(item.type) === "expense" && inMonth(item, month)).reduce((sum, item) => sum + number(item.amount), 0);
     const missingCostOrders = monthOrders.filter((item) => !item.notes || !/custo/i.test(text(item.notes))).length;
     const estimatedProfit = sales - costs;
     return { month, sales, received, registeredCosts: costs, estimatedProfit, estimatedMarginPercent: sales ? (estimatedProfit / sales) * 100 : null, orders: monthOrders.length, recurringBillsRegistered: bills.length, dataCompleteness: missingCostOrders ? "partial" : "good", limitations: missingCostOrders ? [`${missingCostOrders} pedido(s) não possuem custo detalhado identificável; o lucro é uma estimativa global.`] : [] };
+  },
+};
+
+const getOrderCostEstimate: ToolDefinition = {
+  declaration: { type: "function", name: "get_order_cost_estimate", description: "Compara preço, saldo e custo parcial planejado por pedido. Mostra a margem estimada quando há material vinculado. Não presume custos de acabamento, frete, tributos ou estoque disponível.", parameters: { type: "object", properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 20 } } } },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }, args) => {
+    const data = await getBusinessData(identity);
+    const orders = data.orders as unknown as Order[];
+    const notes = data.notes as unknown as BusinessNote[];
+    const ledger = readSewing(notes);
+    const sewingCosts = new Map(ledger.people.flatMap(person => sewingOrderBalances(orders, ledger, person).map(row => [row.order.id, row.cost] as const)));
+    const materialCosts = new Map<string, number>();
+    for (const note of notes) {
+      const doc = readDocument(note.content);
+      if (doc.status === "trash" || !doc.orderId || !note.materials?.length) continue;
+      materialCosts.set(doc.orderId, (materialCosts.get(doc.orderId) ?? 0) + note.materials.reduce((sum, item) => sum + number(item.totalCost), 0));
+    }
+    const query = text(args.query).toLocaleLowerCase("pt-BR");
+    const limit = Math.max(1, Math.min(20, Math.floor(number(args.limit, 10))));
+    return {
+      items: orders.filter(order => order.status !== "Orçamento" && `${order.id} ${order.customer} ${order.product}`.toLocaleLowerCase("pt-BR").includes(query))
+        .sort((a,b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, limit).map(order => {
+          const material = materialCosts.get(order.id);
+          const sewing = sewingCosts.get(order.id);
+          const partial = roundMoney((material ?? 0) + (sewing ?? 0));
+          return {
+            id: order.id, customer: order.customer, product: order.product, pieces: order.quantity, status: order.status, deadline: order.dueDate,
+            saleFormatted: formatMoney(order.total), receivedFormatted: formatMoney(order.paid), remainingFormatted: formatMoney(Math.max(0, order.total - order.paid)),
+            materialPlanFormatted: material === undefined ? null : formatMoney(material), sewingFormatted: sewing === undefined ? null : formatMoney(sewing),
+            partialCostPerPieceFormatted: material === undefined || order.quantity <= 0 ? null : formatMoney(partial / order.quantity),
+            grossPartialMargin: material !== undefined && order.total > 0 ? roundMoney((order.total - partial) / order.total * 100) : null,
+          };
+        }),
+      limitations: ["Custos de material são previsões vinculadas, não comprovantes de pagamento.", "Margem parcial não inclui custos ausentes. Material disponível, juros, capacidade e tempo de conclusão dependem de registros adicionais."],
+    };
   },
 };
 
@@ -361,10 +455,19 @@ const getMercadoPagoSummary: ToolDefinition = {
 };
 
 const updateOrderStatus: ToolDefinition = {
-  declaration: { type: "function", name: "update_order_status", description: "Atualiza o status de um pedido. É uma alteração administrativa auditada.", parameters: { type: "object", properties: { orderId: { type: "string" }, status: { type: "string", enum: ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"] }, reason: { type: "string" } }, required: ["orderId", "status", "reason"] } },
-  riskLevel: 2, requiredPermission: "administrative", requiresConfirmation: false,
+  declaration: { type: "function", name: "update_order_status", description: "Atualiza o status de um pedido. É uma alteração administrativa auditada.", parameters: { type: "object", properties: { orderId: { type: "string" }, status: { type: "string", enum: [...orderStatuses] }, reason: { type: "string" } }, required: ["orderId", "status", "reason"] } },
+  riskLevel: 2, requiredPermission: "administrative", requiresConfirmation: true,
+  preview: async (context, args) => {
+    const id = requiredString(args, "orderId");
+    const status = requiredString(args, "status");
+    if (!orderStatuses.some(stage => stage === status)) throw new Error("Etapa inválida.");
+    const order = await getUserDocument(context.identity, "orders", id);
+    if (!order) throw new Error("Pedido não encontrado.");
+    return { action: "Alterar etapa do pedido", currentValue: text(order.status), newValue: status, reason: text(args.reason), impact: text(order.customer) };
+  },
   execute: async (context, args) => {
     const orderId = requiredString(args, "orderId"); const status = requiredString(args, "status");
+    if (!orderStatuses.some(stage => stage === status)) throw new Error("Etapa inválida.");
     const previous = await getUserDocument(context.identity, "orders", orderId);
     if (!previous) throw new Error("Pedido não encontrado.");
     const updated = await patchUserDocument(context.identity, "orders", orderId, { status });
@@ -375,7 +478,12 @@ const updateOrderStatus: ToolDefinition = {
 
 const updateTransactionCategory: ToolDefinition = {
   declaration: { type: "function", name: "update_transaction_category", description: "Corrige somente a categoria de uma movimentação, com auditoria.", parameters: { type: "object", properties: { transactionId: { type: "string" }, category: { type: "string" }, reason: { type: "string" } }, required: ["transactionId", "category", "reason"] } },
-  riskLevel: 2, requiredPermission: "administrative", requiresConfirmation: false,
+  riskLevel: 2, requiredPermission: "administrative", requiresConfirmation: true,
+  preview: async (context, args) => {
+    const item = await getUserDocument(context.identity, "transactions", requiredString(args, "transactionId"));
+    if (!item) throw new Error("Movimentação não encontrada.");
+    return { action: "Alterar categoria", currentValue: text(item.category), newValue: requiredString(args, "category").slice(0, 80), reason: text(args.reason), impact: text(item.description) };
+  },
   execute: async (context, args) => {
     const transactionId = requiredString(args, "transactionId"); const category = requiredString(args, "category").slice(0, 80);
     const previous = await getUserDocument(context.identity, "transactions", transactionId);
@@ -417,17 +525,32 @@ const deleteTransaction: ToolDefinition = {
   },
 };
 
-const tools = [getDashboardSummary, getFinancialSummary, getTransactions, getOrders, getClients, getMonthlyComparison, getPriorityActions, getProfitAnalysis, searchSystem, getMercadoPagoSummary, updateOrderStatus, updateTransactionCategory, createFinancialAdjustment, deleteTransaction];
+const getProductionPlan: ToolDefinition = {
+  declaration: { type: "function", name: "get_production_plan", description: "Consulta a produção em andamento por prazo e indica pedidos aguardando material.", parameters: { type: "object", properties: {} } },
+  riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
+  execute: async ({ identity }) => {
+    const rows = await listUserCollection(identity, "orders");
+    const items = rows.map(order => ({ id: order.id, customer: text(order.customer), product: text(order.product), dueDate: text(order.dueDate), status: normalizeOrderStatus(order.status), quantity: number(order.quantity), overdue: isOverdue(order) }))
+      .filter(order => order.status !== "Entregue" && order.status !== "Orçamento")
+      .sort((a,b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0,25);
+    return { items, limitations: ["Aguardando material representa a etapa cadastrada. Estoque físico, capacidade e duração dependem de registros adicionais."] };
+  },
+};
+
+const operationalTools = new Set(["get_production_plan", "update_order_status"]);
+const tools = [getProductionPlan, getDashboardSummary, getFinancialSummary, getTransactions, getOrders, getClients, getMonthlyComparison, getCashPlan, getPriorityActions, getProfitAnalysis, getOrderCostEstimate, searchSystem, getMercadoPagoSummary, updateOrderStatus, updateTransactionCategory, createFinancialAdjustment, deleteTransaction];
 const registry = new Map(tools.map((tool) => [tool.declaration.name, tool]));
 export const geminiToolDeclarations = tools.map((tool) => tool.declaration);
+export const availableAITools = (financialAnalysis: boolean) => geminiToolDeclarations.filter(tool => financialAnalysis || operationalTools.has(tool.name));
 
 export async function executeAITool(name: string, args: ToolArguments, context: AIToolContext) {
   const tool = registry.get(name);
   if (!tool) throw new Error("Ferramenta não autorizada.");
+  if (context.financialAnalysis === false && !operationalTools.has(name)) return { blocked: true, reason: "Análise financeira desativada." };
   const access = evaluateAIToolAccess(tool, context.permissionMode, context.confirmed);
   if (!access.allowed && !access.confirmationRequired) return { blocked: true, reason: access.reason };
   if (access.confirmationRequired) {
-    const preview = await tool.preview?.(context, args) ?? { action: name, reason: text(args.reason), impact: "Alteração financeira importante." };
+    const preview = await tool.preview?.(context, args) ?? { action: name, reason: text(args.reason), impact: "Alteração de dados do Psyzon GO." };
     const confirmation = await createConfirmation({ identity: context.identity, conversationId: context.conversationId, tool: name, arguments: args, preview });
     await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: name, action: "confirmation_requested", arguments: args, status: "pending", riskLevel: tool.riskLevel, requiresConfirmation: true });
     return { confirmationRequired: true, confirmation: { id: confirmation.id, ...preview, expiresAt: confirmation.expiresAt } };
@@ -442,6 +565,6 @@ export async function executeAITool(name: string, args: ToolArguments, context: 
 
 export async function executeConfirmedTool(name: string, args: ToolArguments, context: AIToolContext) {
   const tool = registry.get(name);
-  if (!tool || !tool.requiresConfirmation) throw new Error("Confirmação inválida.");
+  if (!tool || !tool.requiresConfirmation || (context.financialAnalysis === false && !operationalTools.has(name)) || !evaluateAIToolAccess(tool, context.permissionMode, true).allowed) throw new Error("Confirmação inválida ou sem permissão.");
   return tool.execute({ ...context, confirmed: true }, args);
 }

@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type Content, type FunctionDeclaration, type Part } from "@google/genai";
 import type { AIProvider, ProviderFunctionResult, ProviderInteraction } from "./ai-provider";
 
 const responseSchema = {
@@ -16,22 +16,6 @@ const responseSchema = {
   required: ["summary", "severity", "metrics", "alerts", "recommendations", "actions"],
 };
 
-function normalizeInteraction(interaction: Awaited<ReturnType<GoogleGenAI["interactions"]["create"]>>): ProviderInteraction {
-  if (Symbol.asyncIterator in Object(interaction)) throw new Error("Resposta streaming inesperada.");
-  const result = interaction as Exclude<typeof interaction, AsyncIterable<unknown>>;
-  const calls = (result.steps ?? []).filter((step) => step.type === "function_call").map((step) => {
-    const call = step as { id: string; name: string; arguments: Record<string, unknown> };
-    return { id: call.id, name: call.name, arguments: call.arguments ?? {} };
-  });
-  return {
-    id: result.id ?? "",
-    status: result.status ?? "completed",
-    outputText: result.output_text ?? "",
-    functionCalls: calls,
-    usage: { inputTokens: result.usage?.total_input_tokens ?? 0, outputTokens: result.usage?.total_output_tokens ?? 0, totalTokens: result.usage?.total_tokens ?? 0 },
-  };
-}
-
 function normalizeGeminiError(error: unknown) {
   if (error instanceof Error && error.message.startsWith("GEMINI_")) return error;
   const details = error && typeof error === "object" ? error as Record<string, unknown> : {};
@@ -48,45 +32,54 @@ function normalizeGeminiError(error: unknown) {
 export class GeminiProvider implements AIProvider {
   readonly model: string;
   private client: GoogleGenAI;
+  private contents: Content[] = [];
+  private lastResponseId = "";
 
   constructor(apiKey: string, model = "gemini-3.6-flash", private readonly outputSchema: Record<string, unknown> = responseSchema) {
     this.model = model;
-    this.client = new GoogleGenAI({ apiKey, apiVersion: "v1" });
+    this.client = new GoogleGenAI({ apiKey, httpOptions: { timeout: 45000 } });
   }
 
-  private common(systemInstruction: string, tools: Array<Record<string, unknown>>) {
-    return {
-      model: this.model,
-      store: false,
-      system_instruction: systemInstruction,
-      tools,
-      response_format: { type: "text", mime_type: "application/json", schema: this.outputSchema },
-      generation_config: { max_output_tokens: 2600, thinking_level: "medium" as const, thinking_summaries: "none" as const, tool_choice: "auto" as const },
-    };
+  private async generate(systemInstruction: string, tools: Array<Record<string, unknown>>): Promise<ProviderInteraction> {
+    try {
+      const declarations = tools.map(({ name, description, parameters }) => ({ name, description, parametersJsonSchema: parameters })) as FunctionDeclaration[];
+      const response = await this.client.models.generateContent({
+        model: this.model,
+        contents: this.contents,
+        config: {
+          systemInstruction: systemInstruction + "\nNa resposta final, devolva somente JSON neste formato: " + JSON.stringify(this.outputSchema),
+          maxOutputTokens: 4200,
+          ...(declarations.length ? { tools: [{ functionDeclarations: declarations }] } : { responseMimeType: "application/json", responseJsonSchema: this.outputSchema }),
+        },
+      });
+      const content = response.candidates?.[0]?.content;
+      const outputText = response.text ?? "";
+      const functionCalls = (response.functionCalls ?? []).flatMap((call, index) => call.name
+        ? [{ id: call.id ?? String(index), name: call.name, arguments: call.args ?? {} }] : []);
+      if (!content || (!outputText.trim() && !functionCalls.length)) throw new Error("GEMINI_EMPTY_RESPONSE");
+      this.contents.push(content);
+      this.lastResponseId = response.responseId || crypto.randomUUID();
+      const usage = response.usageMetadata;
+      return {
+        id: this.lastResponseId, status: "completed", outputText, functionCalls,
+        usage: { inputTokens: usage?.promptTokenCount ?? 0, outputTokens: usage?.candidatesTokenCount ?? 0, totalTokens: usage?.totalTokenCount ?? 0 },
+      };
+    } catch (error) { throw normalizeGeminiError(error); }
   }
 
   async create(input: string, systemInstruction: string, tools: Array<Record<string, unknown>>) {
-    const params = { ...this.common(systemInstruction, tools), input } as unknown as Parameters<typeof this.client.interactions.create>[0];
-    try {
-      const interaction = await this.client.interactions.create(params);
-      const normalized = normalizeInteraction(interaction);
-      if (!normalized.outputText.trim() && !normalized.functionCalls.length) throw new Error("GEMINI_EMPTY_RESPONSE");
-      return normalized;
-    } catch (error) {
-      throw normalizeGeminiError(error);
-    }
+    this.contents = [{ role: "user", parts: [{ text: input }] }];
+    return this.generate(systemInstruction, tools);
   }
 
   async continue(previousInteractionId: string, results: ProviderFunctionResult[], systemInstruction: string, tools: Array<Record<string, unknown>>) {
-    const input = results.map((item) => ({ type: "function_result" as const, name: item.name, call_id: item.id, result: [{ type: "text" as const, text: JSON.stringify(item.result) }] }));
-    const params = { ...this.common(systemInstruction, tools), previous_interaction_id: previousInteractionId, input } as unknown as Parameters<typeof this.client.interactions.create>[0];
-    try {
-      const interaction = await this.client.interactions.create(params);
-      const normalized = normalizeInteraction(interaction);
-      if (!normalized.outputText.trim() && !normalized.functionCalls.length) throw new Error("GEMINI_EMPTY_RESPONSE");
-      return normalized;
-    } catch (error) {
-      throw normalizeGeminiError(error);
-    }
+    if (previousInteractionId !== this.lastResponseId) throw new Error("GEMINI_REQUEST_INVALID");
+    const calls = this.contents.at(-1)?.parts?.flatMap(part => part.functionCall ? [part.functionCall] : []) ?? [];
+    const parts: Part[] = results.map(item => {
+      const call = calls.find((candidate, index) => (candidate.id ?? String(index)) === item.id);
+      return { functionResponse: { ...(call?.id ? { id: call.id } : {}), name: item.name, response: { result: item.result } } };
+    });
+    this.contents.push({ role: "user", parts });
+    return this.generate(systemInstruction, tools);
   }
 }

@@ -11,6 +11,7 @@ const tabs = [
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
 ] as const;
 const destinations = [
+  { id: "ai", label: "Assistente IA", detail: "PSYZON AI", icon: Sparkles },
   { id: "dtf", label: "Pedidos DTF", detail: "Estampas e impressão", icon: Printer },
   { id: "clientes", label: "Clientes", detail: "Cadastros e saldos", icon: UsersRound },
   { id: "historico", label: "Histórico", detail: "Movimentações da empresa", icon: History },
@@ -22,7 +23,6 @@ const destinations = [
 const flowTabs = [tabs[0], { id: "pedidos", label: "Pedidos", icon: ClipboardList }, tabs[1], tabs[3]] as const;
 const flowDestinations = [
   { id: "orcamentos", label: "Orçamentos", detail: "Propostas em aberto", icon: FileText },
-  { id: "ai", label: "Assistente IA", detail: "PSYZON AI", icon: Sparkles },
   { id: "notas", label: "Bloco de notas", detail: "Anotações e listas de produção", icon: NotebookPen },
   { id: "reposicao", label: "Reposição de estoque", detail: "Compras e reposições", icon: PackagePlus },
   { id: "costureiras", label: "Costureiras", detail: "Pedidos e saldos", icon: Spool },

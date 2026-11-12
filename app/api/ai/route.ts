@@ -1,4 +1,4 @@
-import type { AIResponsePayload, AISettings } from "../../ai/types";
+import type { AIMessage, AIResponsePayload, AISettings } from "../../ai/types";
 import { getAIProviderSummary, runPSYZONAgent } from "../../lib/server/ai-agent";
 import {
   checkRateLimit,
@@ -7,7 +7,7 @@ import {
   getAISettings,
   getConversationMessages,
   getIntegrationStatus,
-  getPendingConfirmation,
+  claimPendingConfirmation,
   listConversations,
   resolveConfirmation,
   saveAISettings,
@@ -23,9 +23,10 @@ async function errorResponse(error: unknown) {
     const message = await error.text().catch(() => "Não foi possível validar sua sessão.");
     return Response.json({ error: message || "Não foi possível validar sua sessão." }, { status: error.status });
   }
-  const code = error instanceof Error ? error.message : "UNKNOWN";
+  const reason = error instanceof Error ? error.message : "";
+  const code = /^[A-Z][A-Z0-9_]{2,80}$/.test(reason) ? reason : "UNKNOWN";
   const messages: Record<string, [string, number]> = {
-    AI_PROVIDER_NOT_CONFIGURED: ["Configure DEEPSEEK_API_KEY para ativar a PSYZON AI (Groq e Gemini podem ser usados como fallback).", 503],
+    AI_PROVIDER_NOT_CONFIGURED: ["Configure um provedor de IA no servidor para ativar a PSYZON AI.", 503],
     AI_PROVIDERS_UNAVAILABLE: ["Todos os provedores de IA estão temporariamente indisponíveis. Tente novamente em um minuto.", 503],
     DEEPSEEK_KEY_INVALID: ["A chave DEEPSEEK_API_KEY foi recusada. Confira a chave no DeepSeek Platform.", 503],
     DEEPSEEK_QUOTA_EXCEEDED: ["O saldo ou o limite da DeepSeek foi atingido. Confira a conta no DeepSeek Platform.", 429],
@@ -46,7 +47,7 @@ async function errorResponse(error: unknown) {
     GROQ_EMPTY_RESPONSE: ["A Groq não retornou uma resposta utilizável. Tente novamente.", 502],
     GROQ_STATE_LOST: ["A consulta perdeu o contexto durante o processamento. Envie a pergunta novamente.", 502],
     GEMINI_NOT_CONFIGURED: ["A PSYZON AI está pronta, mas a chave GEMINI_API_KEY ainda precisa ser configurada.", 503],
-    GEMINI_KEY_INVALID: ["A chave GEMINI_API_KEY foi recusada pelo Google. Confira a chave configurada na Vercel.", 503],
+    GEMINI_KEY_INVALID: ["A credencial do Gemini foi recusada pelo Google. Confira o segredo configurado na Vercel.", 503],
     GEMINI_QUOTA_EXCEEDED: ["A cota da API Gemini foi atingida. Confira faturamento e limites no Google AI Studio.", 429],
     GEMINI_MODEL_NOT_FOUND: ["O modelo definido em GEMINI_MODEL não está disponível para essa chave.", 503],
     GEMINI_REQUEST_INVALID: ["A API Gemini recusou a configuração da solicitação. Confira o modelo e a versão da integração.", 502],
@@ -104,10 +105,16 @@ export async function POST(request: Request) {
 
     if (action === "confirm") {
       const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
-      const pending = await getPendingConfirmation(identity, confirmationId);
+      if (settings.permissionMode === "read_only") return Response.json({ error: "A permissão atual autoriza apenas consultas." }, { status: 403 });
+      const pending = await claimPendingConfirmation(identity, confirmationId, "processing");
       if (!pending) return Response.json({ error: "Esta confirmação expirou ou já foi resolvida." }, { status: 409 });
-      if (settings.permissionMode !== "financial_confirm") return Response.json({ error: "A permissão atual não autoriza alterações financeiras." }, { status: 403 });
-      const result = await executeConfirmedTool(pending.tool, pending.arguments, { identity, conversationId: pending.conversationId ?? undefined, permissionMode: settings.permissionMode, confirmed: true });
+      let result;
+      try {
+        result = await executeConfirmedTool(pending.tool, pending.arguments, { identity, conversationId: pending.conversationId ?? undefined, permissionMode: settings.permissionMode, financialAnalysis: settings.financialAnalysis, confirmed: true });
+      } catch (error) {
+        await resolveConfirmation(identity, confirmationId, "failed");
+        throw error;
+      }
       await resolveConfirmation(identity, confirmationId, "confirmed");
       const payload: AIResponsePayload = { summary: "Alteração confirmada e concluída com sucesso.", severity: "info", metrics: [], alerts: [], recommendations: [], actions: [{ label: "Abrir financeiro", type: "navigate", target: "financeiro" }], confidence: "alta", sources: ["Ação autorizada pelo usuário", "Registro de auditoria da PSYZON AI"] };
       const message = pending.conversationId && settings.saveHistory ? await saveMessage(identity, pending.conversationId, "assistant", payload.summary, payload, [pending.tool]) : { id: crypto.randomUUID(), role: "assistant" as const, content: payload.summary, payload, toolNames: [pending.tool], createdAt: Math.floor(Date.now() / 1000) };
@@ -116,7 +123,7 @@ export async function POST(request: Request) {
 
     if (action === "cancel_confirmation") {
       const confirmationId = typeof body.confirmationId === "string" ? body.confirmationId : "";
-      await resolveConfirmation(identity, confirmationId, "cancelled");
+      await claimPendingConfirmation(identity, confirmationId, "cancelled");
       return Response.json({ cancelled: true });
     }
 
@@ -126,7 +133,11 @@ export async function POST(request: Request) {
     const conversation = settings.saveHistory
       ? await ensureConversation(identity, requestedConversationId, "Nova conversa")
       : { id: requestedConversationId || crypto.randomUUID(), title: "Conversa privada", createdAt: Math.floor(Date.now() / 1000), updatedAt: Math.floor(Date.now() / 1000) };
-    const history = settings.saveHistory ? await getConversationMessages(identity, conversation.id) : [];
+    const history = settings.saveHistory ? await getConversationMessages(identity, conversation.id) :
+      (Array.isArray(body.sessionHistory) ? body.sessionHistory.slice(-10) : []).flatMap((item, index): AIMessage[] => {
+        if (!item || typeof item !== "object" || (item.role !== "user" && item.role !== "assistant") || typeof item.content !== "string") return [];
+        return [{ id: `session-${index}`, role: item.role, content: item.content.slice(0,900), createdAt: 0 }];
+      });
     const userMessage = settings.saveHistory ? await saveMessage(identity, conversation.id, "user", question) : { id: crypto.randomUUID(), role: "user" as const, content: question, createdAt: Math.floor(Date.now() / 1000) };
     if (settings.saveHistory && conversation.title === "Nova conversa") await titleConversation(identity, conversation.id, question.replace(/[?.!]+$/g, "").slice(0, 64));
     const result = await runPSYZONAgent({ identity, conversationId: conversation.id, question, history });

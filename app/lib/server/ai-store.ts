@@ -1,3 +1,4 @@
+import { getAdminFirestore } from "./firebase-admin";
 import type { AIConversation, AIMessage, AIResponsePayload, AISettings } from "../../ai/types";
 import type { FirebaseIdentity } from "./firebase-rest";
 import { deleteUserDocument, getUserDocument, listUserCollection, patchUserDocument, setUserDocument } from "./firebase-rest";
@@ -119,23 +120,26 @@ export async function createConfirmation(input: { identity: FirebaseIdentity; co
   return { id, expiresAt, preview: input.preview };
 }
 
-export async function getPendingConfirmation(identity: FirebaseIdentity, id: string) {
-  const row = await getUserDocument(identity, "aiConfirmations", id);
-  const now = Math.floor(Date.now() / 1000);
-  if (!row || row.status !== "pending" || numberValue(row.expiresAt) < now) return null;
-  return {
-    id: row.id,
-    conversationId: typeof row.conversationId === "string" ? row.conversationId : null,
-    tool: String(row.tool ?? ""),
-    arguments: row.arguments && typeof row.arguments === "object" ? row.arguments as Record<string, unknown> : {},
-    preview: row.preview && typeof row.preview === "object" ? row.preview as Record<string, unknown> : {},
-    expiresAt: numberValue(row.expiresAt),
-  };
+export async function claimPendingConfirmation(identity: FirebaseIdentity, id: string, status: "processing" | "cancelled") {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const db = getAdminFirestore();
+  const ref = db.collection("users").doc(identity.uid).collection("aiConfirmations").doc(id);
+  return db.runTransaction(async transaction => {
+    const row = (await transaction.get(ref)).data();
+    const now = Math.floor(Date.now() / 1000);
+    if (!row || row.status !== "pending" || numberValue(row.expiresAt) <= now) return null;
+    transaction.update(ref, { status });
+    return {
+      id,
+      conversationId: typeof row.conversationId === "string" ? row.conversationId : null,
+      tool: String(row.tool ?? ""),
+      arguments: row.arguments && typeof row.arguments === "object" ? row.arguments as Record<string, unknown> : {},
+    };
+  });
 }
 
-export async function resolveConfirmation(identity: FirebaseIdentity, id: string, status: "confirmed" | "cancelled") {
-  const row = await getUserDocument(identity, "aiConfirmations", id);
-  if (row?.status === "pending") await patchUserDocument(identity, "aiConfirmations", id, { status });
+export async function resolveConfirmation(identity: FirebaseIdentity, id: string, status: "confirmed" | "failed") {
+  await patchUserDocument(identity, "aiConfirmations", id, { status });
 }
 
 export async function logAIAudit(input: {

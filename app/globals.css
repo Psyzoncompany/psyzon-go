@@ -1528,3 +1528,26 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 .loading-track span { display: block; width: 45%; height: 100%; border-radius: inherit; background: var(--blue); animation: loading-track-sweep 1050ms ease-in-out infinite; }
 @keyframes loading-brand-in { from { opacity: 0; translate: 0 6px; } }
 @keyframes loading-track-sweep { from { translate: -100% 0; } to { translate: 225% 0; } }
+
+@media screen {
+  .psyzon-ai-launch { bottom: 24px; border-radius: 999px; background: linear-gradient(135deg,#3a55c5,#7425d6); }
+  .psyzon-ai-launch b { font-size: 12px; }
+  dialog.psyzon-ai-dock { inset: auto 20px 20px auto; margin: 0; padding: 0; width: min(470px, calc(100vw - 40px)); height: min(720px, calc(100dvh - 40px)); max-width: none; max-height: none; border: 1px solid var(--border); border-radius: 22px; background: var(--card); color: var(--text); overflow: hidden; }
+  dialog.psyzon-ai-dock::backdrop { background: #1610203b; backdrop-filter: blur(3px); }
+  dialog.psyzon-ai-dock .psyzon-ai-shell.panel { height: 100%; min-height: 0; border: 0; border-radius: inherit; box-shadow: none; }
+  dialog.psyzon-ai-dock .ai-main { min-height: 0; height: 100%; }
+  dialog.psyzon-ai-dock .ai-composer-zone { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+}
+@media screen and (max-width: 760px) {
+  .psyzon-ai-launch { bottom: calc(var(--mobile-nav, 88px) + 4px); border-radius: 50%; }
+  :root:has(.psyzon-ai-launch) .app-shell > .main > .content:not(.notes-content) { padding-bottom: calc(170px + env(safe-area-inset-bottom, 0px)); }
+  dialog.psyzon-ai-dock { inset: auto 0 0; width: 100%; height: min(88dvh, 760px); border-radius: 24px 24px 0 0; }
+  dialog.psyzon-ai-dock .ai-topbar { padding-top: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .psyzon-ai-launch, dialog.psyzon-ai-dock { animation: none; transition: none; }
+}
+@media print { .psyzon-ai-launch, dialog.psyzon-ai-dock { display: none !important; } }
+@media screen and (max-width: 760px) {
+  .app-shell:has(.an-mobile-editor) .psyzon-ai-launch { display: none; }
+}

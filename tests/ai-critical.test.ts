@@ -271,3 +271,16 @@ test("Mercado Pago synchronization backfills one year and paginates payment sear
   assert.match(source, /offset: String\(offset\)/);
   assert.match(source, /fullBackfillCompletedAt/);
 });
+
+test("the production Gemini secret selects Gemini exclusively even with a legacy provider preference", () => {
+  const env = { PSYZON_GEMINI_API_KEY: "dedicated-test", DEEPSEEK_API_KEY: "other-test", GEMINI_API_KEY: "legacy-test" };
+  assert.deepEqual(orderedAIProviders(env, "deepseek").map(({ family, provider }) => [family, provider.model]), [["gemini", "gemini-2.5-flash"]]);
+  assert.equal(getAIProviderSummary(env).options.find(item => item.id === "deepseek")?.configured, false);
+});
+
+test("administrative mutations require confirmation and read-only accounts remain blocked", () => {
+  const policy = { requiredPermission: "administrative", riskLevel: 2, requiresConfirmation: true } as const;
+  assert.equal(evaluateAIToolAccess(policy, "administrative").confirmationRequired, true);
+  assert.equal(evaluateAIToolAccess(policy, "administrative", true).allowed, true);
+  assert.equal(evaluateAIToolAccess(policy, "read_only", true).allowed, false);
+});

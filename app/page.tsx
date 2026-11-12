@@ -104,7 +104,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type CreateKind = "pedido" | "cliente" | "orcamento";
 type UISize = "compact" | "comfortable" | "large" | "extra-large";
@@ -285,6 +285,17 @@ export default function HomePage() {
   const [productionList, setProductionList] = useState<{ order: Order; noteId: string } | null>(null);
   useEffect(() => { setProductionList(null); }, [uid, view]);
   const [search, setSearch] = useState("");
+  const getAiToken = useCallback(async () => {
+    if (!user) throw new Error("Entre para acessar a Psyzon AI.");
+    return user.getIdToken();
+  }, [user]);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const aiPanelRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = aiPanelRef.current;
+    if (aiPanelOpen && dialog && !dialog.open) dialog.showModal();
+    if (!aiPanelOpen && dialog?.open) dialog.close();
+  }, [aiPanelOpen]);
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
   const [floatingHost, setFloatingHost] = useState<Window | null>(null);
@@ -1706,7 +1717,7 @@ export default function HomePage() {
           {view === "clientes" && <CustomersWorkspace flowOrders={flow ? productionOrders : undefined} customers={visibleCustomers} displayMoney={flow ? displayTotal : displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
-          {view === "ai" && <FlowAI getIdToken={() => user.getIdToken()} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
+          {view === "ai" && <FlowAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
           {flowAccounts && view === "financeiro" && <FlowFinance transactions={flowCash} today={calendarDate} hidden={privateValues} money={displayTotal} payable={flowAccounts.toPay} receivable={flowAccounts.pending} record={type => setMovementDraft({ type })} forecast={view === "financeiro" ? [7, 30, 90].map(days => {
             const until = dayOffset(calendarDate, days);
             const scheduled = (bill: Bill) => (bill.dueDate || bill.dueDay) && billDueDate(bill,calendarDate.slice(0,7)) <= until;
@@ -1731,7 +1742,10 @@ export default function HomePage() {
         </section>
       </main>
 
-      {view !== "notas" && view !== "historico" && view !== "afazeres" && view !== "reposicao" && <button className="floating-new" onClick={() => setModal("pedido")}><Plus size={21} /> <span>Novo</span></button>}
+      {view !== "ai" && <button type="button" className="ai-floating-button psyzon-ai-launch" aria-label="Abrir Psyzon AI" aria-haspopup="dialog" onClick={() => setAiPanelOpen(true)}><span><Sparkles size={20} /></span><span><b>Psyzon AI</b></span></button>}
+      <dialog ref={aiPanelRef} className="ai-floating-panel psyzon-ai-dock" aria-label="Psyzon AI" onClose={() => setAiPanelOpen(false)} onClick={event => { if (event.target === event.currentTarget) setAiPanelOpen(false); }}>
+        {aiPanelOpen && <FlowAI getIdToken={getAiToken} mode="panel" onClose={() => setAiPanelOpen(false)} onOpenFull={() => { setAiPanelOpen(false); setView("ai"); }} onNavigate={target => { setAiPanelOpen(false); setView(target === "pessoal" ? "financeiro" : target); }} />}
+      </dialog>
 
 
       <MobileNavigation flow={flow} view={view} navigate={setView} /><SiteTypewriter page={view} />

@@ -19,6 +19,8 @@ import { orderResult } from "./order-result";
 import { monthlyClosing, type MonthlyClosingReport } from "./monthly-closing";
 import MonthlyClosingWorkspace from "./MonthlyClosingWorkspace";
 import CollectionAgenda from "./CollectionAgenda";
+import CompanyBalance from "./CompanyBalance";
+import type { BalanceEntry } from "./company-balance";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
 import { preparePaymentSound, paymentSucceeded } from "./payment-feedback";
 import { operationCosts } from "./operations-data";
@@ -166,7 +168,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
+const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes", "balanceEntries"] as const;
 type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks" | "monthlyClosings";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -300,6 +302,7 @@ export default function HomePage() {
   }, [aiPanelOpen]);
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
+  const [balanceEntries, setBalanceEntries] = useState<BalanceEntry[]>([]);
   const [floatingHost, setFloatingHost] = useState<Window | null>(null);
   const [standardSidebarCollapsed, setStandardSidebarCollapsed] = useState(false);
   const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
@@ -356,6 +359,7 @@ export default function HomePage() {
       setHistoryEntries([]);
       setHistoryConnection("connecting");
       setTasks([]);
+      setBalanceEntries([]);
       setTaskConnection("connecting");
 
       if (!nextUser) {
@@ -384,6 +388,7 @@ export default function HomePage() {
 
       setFirebaseState("connecting");
       unsubscribers = [
+        onSnapshot(collection(db, "users", nextUser.uid, "balanceEntries"), snapshot => { setBalanceEntries(toList<BalanceEntry>(snapshot)); markReady("balanceEntries"); }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "orders"), (snapshot) => {
           setOrders(toList<Order>(snapshot)
             .map(order => ({ ...order, status: normalizeOrderStatus(order.status) }))
@@ -558,6 +563,7 @@ export default function HomePage() {
     try {
       const closings = await getDocs(userCollection(uid, "monthlyClosings"));
       const records = [
+        ...balanceEntries.map(item => ["balanceEntries", item.id] as const),
         ...closings.docs.map(item => ["monthlyClosings", item.id] as const),
         ...orders.map((item) => ["orders", item.id] as const),
         ...dtfOrders.map((item) => ["dtfOrders", item.id] as const),
@@ -760,6 +766,7 @@ export default function HomePage() {
         if (ledger.entries.some((item) => item.id === entry.id)) return;
         ledger.entries.push(entry);
         if (entry.kind === "payment") {
+          transaction.set(userDocument(uid,"balanceEntries","sewing-payment-"+entry.id), { amount: -entry.amount, description: "Costura · "+entry.person, date: entry.date, createdAt: serverTimestamp() });
           paymentInfo = { description: "Costura · " + entry.person, amount: entry.amount };
           transaction.set(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
@@ -791,6 +798,7 @@ export default function HomePage() {
           if ((balance?.printCredit ?? 0) < candidate.amount) throw new Error("Desfaça o acerto que utilizou este crédito antes de remover a estampagem.");
         }
         const entry = ledger.entries.find((item) => item.id === operation.id);
+        if (entry?.kind === "payment") transaction.delete(userDocument(uid,"balanceEntries","sewing-payment-"+entry.id));
         if (entry?.kind === "payment")
           transaction.delete(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
@@ -938,6 +946,11 @@ export default function HomePage() {
 
   const displayMoney = (value: number) => money.format(value);
   const displayTotal = (value: number) => privateValues ? "R$ ••••••" : displayMoney(value);
+  const balanceMovement = (amount: number, description: string) => ({ amount: roundMoney(amount), description: description.slice(0,240), date: localDateValue(), createdAt: serverTimestamp() });
+  const initializeBalance = async (amount: number) => {
+    if (firebaseState !== "live") throw new Error("Aguarde a sincronização.");
+    await runTransaction(getFirestore(getApps()[0]),async transaction=>{const ref=userDocument(uid,"balanceEntries","opening");const existing=await transaction.get(ref);if(existing.exists())throw new Error("O saldo inicial já foi registrado.");transaction.set(ref,balanceMovement(amount,"Saldo inicial"));});
+  };
 
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1028,6 +1041,7 @@ export default function HomePage() {
           { merge: true },
         );
         if (nextOrder.paid > 0) {
+          if(window.confirm("Adicionar "+displayMoney(nextOrder.paid)+" ao saldo da empresa?")) batch.set(doc(userCollection(uid,"balanceEntries")),balanceMovement(nextOrder.paid,"Recebimento · "+nextOrder.customer));
           batch.set(doc(userCollection(uid, "transactions")), {
             description: `Entrada · ${nextOrder.customer}`,
             amount: nextOrder.paid,
@@ -1115,13 +1129,19 @@ export default function HomePage() {
     const original = previous && { ...previous, quantity: previous.quantity ?? 0, referencePhotos: previous.referencePhotos ?? "" };
     const changes = original ? Object.fromEntries(Object.entries(input).filter(([field, value]) => original[field as keyof DtfInput] !== value)) : input;
     const data = { ...changes, updatedAt: serverTimestamp() };
+    const balanceDelta = (input.paidCents - (previous?.paidCents ?? 0))/100;
+    const includeBalance = balanceDelta !== 0 && window.confirm("Atualizar o saldo da empresa em "+displayMoney(balanceDelta)+" pelo pagamento de DTF?");
+    const reference=previous?userDocument(uid,"dtfOrders",previous.id):doc(userCollection(uid,"dtfOrders"));
+    const balanceReference=doc(userCollection(uid,"balanceEntries"));
     try {
-      const batch = writeBatch(getFirestore(getApps()[0]));
-      if (previous) batch.update(userDocument(uid, "dtfOrders", previous.id), data);
-      else batch.set(doc(userCollection(uid, "dtfOrders")), { ...data, createdAt: serverTimestamp() });
+      await runTransaction(getFirestore(getApps()[0]),async batch=>{
+      if(previous){const current=await batch.get(reference);if(!current.exists()||current.data().paidCents!==previous.paidCents)throw new Error("O pagamento DTF mudou. Reabra o pedido.");}
+      if(includeBalance) batch.set(balanceReference,balanceMovement(balanceDelta,"Pagamento DTF · "+(input.customerName||input.title||"Avulso")));
+      if (previous) batch.update(reference, data);
+      else batch.set(reference, { ...data, createdAt: serverTimestamp() });
       const linked = indexDtfCustomerLinks(visibleCustomers, orders, notes).get(input.customerId);
       if (linked?.orderId && (previous ? input.photoData !== previous.photoData : !!input.photoData)) batch.update(userDocument(uid, "orders", linked.orderId), { photoData: input.photoData });
-      await batch.commit();
+      });
       showToast(previous ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
     } catch { throw new Error("Não foi possível salvar o pedido DTF. Confira a conexão e tente novamente."); }
   };
@@ -1401,6 +1421,9 @@ export default function HomePage() {
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "") || editingOrder.id;
+    const balanceDelta = roundMoney(updatedOrder.paid - editingOrder.paid);
+    const includeBalance = balanceDelta !== 0 && window.confirm("Atualizar o saldo da empresa em "+displayMoney(balanceDelta)+" pelo pagamento de "+updatedOrder.customer+"?");
+    const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(db, async (transaction) => {
       const orderRef = userDocument(uid, "orders", editingOrder.id);
       const current = await transaction.get(orderRef);
@@ -1438,6 +1461,7 @@ export default function HomePage() {
       const linkedPayments = transactions.filter(
         (item) => item.orderId === editingOrder.id,
       );
+      if(includeBalance) transaction.set(balanceRef,balanceMovement(balanceDelta,"Pagamento · "+updatedOrder.customer));
       transaction.update(orderRef, {
         ...updatedOrder,
         deliveredAt: updatedOrder.status === "Entregue" ? (latestRaw.deliveredAt ?? (latestRaw.status === "Entregue" ? null : calendarDate)) : null,
@@ -1610,6 +1634,8 @@ export default function HomePage() {
     );
     if (related.length > 180)
       throw new Error("Receba os pedidos em lotes menores.");
+    const includeBalance=refund || window.confirm("Adicionar "+displayMoney(amount)+" ao saldo da empresa?");
+    const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const customerRef = userDocument(uid, "customers", customer.id);
       const customerSnapshot = await transaction.get(customerRef);
@@ -1645,6 +1671,7 @@ export default function HomePage() {
       const current = customerSnapshot.exists()
         ? ({ ...customerSnapshot.data(), id: customerSnapshot.id } as Customer)
         : customer;
+      if(includeBalance) transaction.set(balanceRef,balanceMovement(refund?-amount:amount,(refund?"Devolução · ":"Recebimento · ")+customer.name));
       if (refund) {
         const credit = customerBalances([current], currentOrders)[0]?.credit ?? 0;
         if (current.archived || credit !== amount) throw new Error("O crédito mudou. Confira o saldo atualizado.");
@@ -1752,6 +1779,7 @@ export default function HomePage() {
     if (!receiving) preparePaymentSound(uid);
     if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return false;
     const paymentDate = localDateValue();
+    const includeBalance = bill.account === "business" && (!receiving || window.confirm("Adicionar "+displayMoney(bill.amount)+" ao saldo da empresa?"));
     const month = paymentDate.slice(0, 7);
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const reference = userDocument(uid, "bills", bill.id);
@@ -1759,10 +1787,11 @@ export default function HomePage() {
       if (!snapshot.exists()) throw new Error("Esta conta foi excluída. Atualize a página.");
       const current = { ...snapshot.data(), id: snapshot.id } as Bill;
       if (billIsSettled(current, month)) throw new Error("Esta conta já foi concluída.");
-      if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType) {
+      if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType || current.account !== bill.account) {
         throw new Error("A conta mudou. Confira os dados atualizados antes de confirmar.");
       }
       transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
+      if(includeBalance) transaction.set(userDocument(uid,"balanceEntries",billPaymentId(bill.id,current.billingType === "once"?"once":month)),balanceMovement(receiving?current.amount:-current.amount,current.description));
       transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
     });
     if (receiving) showToast("Recebimento registrado");
@@ -1788,7 +1817,7 @@ export default function HomePage() {
       if (recorded?.id !== expected?.id || millis(recorded?.createdAt) !== millis(expected?.createdAt)) {
         throw new Error("O pagamento mudou. Confira os dados atualizados antes de desfazer.");
       }
-      if (recorded) transaction.delete(userDocument(uid, "transactions", recorded.id));
+      if (recorded) { transaction.delete(userDocument(uid, "transactions", recorded.id)); transaction.delete(userDocument(uid,"balanceEntries",recorded.id)); }
       const reversal = billReversal(current, transactions);
       transaction.update(reference, { ...reversal, lastPaidMonth: reversal.lastPaidMonth ?? deleteField() });
     });
@@ -1851,6 +1880,7 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
+          {(view === "inicio" || view === "financeiro") && <CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />}
           {view === "inicio" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}
           {nextPayables && <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}

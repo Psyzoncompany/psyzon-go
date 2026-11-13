@@ -246,6 +246,18 @@ service cloud.firestore {
       allow update: if owns(uid) && validDtfOrder(request.resource.data) && unchanged("createdAt");
     }
 
+    match /users/{uid}/balanceEntries/{entryId} {
+      allow get, list, delete: if owns(uid);
+      allow create: if owns(uid)
+        && request.resource.data.keys().hasOnly(["amount", "description", "date", "createdAt"])
+        && request.resource.data.amount is number
+        && request.resource.data.amount == request.resource.data.amount
+        && request.resource.data.amount >= -100000000 && request.resource.data.amount <= 100000000
+        && text(request.resource.data.description, 1, 240)
+        && calendarDate(request.resource.data.date)
+        && request.resource.data.createdAt == request.time;
+    }
+
     match /users/{uid}/transactions/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validTransaction(request.resource.data);

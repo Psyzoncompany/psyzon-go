@@ -2,7 +2,7 @@ import { getAdminFirestore, verifyFirebaseIdToken, type FirebaseIdentity } from 
 
 export type { FirebaseIdentity } from "./firebase-admin";
 
-export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
+export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes" | "balanceEntries";
 export type UserCollection = BusinessCollection | "tasks" | "dtfOrders" | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState" | "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "financialCategories" | "financialRules";
 
 export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {

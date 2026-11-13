@@ -323,6 +323,16 @@ test("monthly closing snapshots are owner-only and cannot be overwritten", async
   await assertSucceeds(deleteDoc(ref));
 });
 
+test("company balance ledger is private, immutable and supports signed movements", async () => {
+  const db=environment.authenticatedContext("balance-owner").firestore();
+  const ref=doc(db,"users/balance-owner/balanceEntries/payment");
+  await assertSucceeds(setDoc(ref,{amount:-80,description:"Conta paga",date:"2026-11-12",createdAt:serverTimestamp()}));
+  await assertFails(getDoc(doc(environment.authenticatedContext("other").firestore(),"users/balance-owner/balanceEntries/payment")));
+  await assertFails(updateDoc(ref,{amount:900}));
+  await assertFails(setDoc(doc(db,"users/balance-owner/balanceEntries/invalid"),{amount:"80",description:"Conta",date:"2026-11-12",createdAt:serverTimestamp()}));
+  await assertSucceeds(deleteDoc(ref));
+});
+
 test("order review and collection dates accept empty legacy values and validate new values", async () => {
   const db = environment.authenticatedContext("review-owner").firestore();
   const ref = doc(db, "users/review-owner/orders/a");

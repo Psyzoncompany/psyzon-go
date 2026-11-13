@@ -396,6 +396,16 @@ test("monthly closing excludes unreviewed profit and counts receipts, sewing and
   assert.equal(earlier.totals.delivered, 0);
 });
 
+test("company balance counts only explicit ledger movements and reverses removed payments", async () => {
+  const { companyBalance }=await import("../app/company-balance");
+  const item=(id:string,amount:number)=>({id,amount,description:id,date:"2026-11-12"});
+  const entries=[item("opening",500),item("receipt",100),item("bill",-80),item("sewing",-40)];
+  assert.equal(companyBalance(entries),480);
+  assert.equal(companyBalance(entries.filter(item=>item.id!=="bill")),560);
+  assert.equal(companyBalance([]),0);
+  assert.equal(companyBalance([item("a",.1),item("b",.2)]),.3);
+});
+
 test("material purchase deadline stays seven days before delivery across months and years", async () => {
   const { materialPurchaseDeadline } = await import("../app/notes/materials-model");
   assert.equal(materialPurchaseDeadline("2026-11-21"), "2026-11-14");

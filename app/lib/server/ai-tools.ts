@@ -219,6 +219,7 @@ const getOpenFinance: ToolDefinition = {
     const modelRows = (items: AIFinanceEntry[]) => items.map(({ amount, ...item }) => ({ ...item, amountFormatted: formatMoney(amount) }));
     return {
       financeReport,
+      registeredCompanyBalanceFormatted: formatMoney((await listAllUserCollection(identity,"balanceEntries")).reduce((sum,item)=>sum+number(item.amount),0)),
       asOf: financeReport.asOf,
       payables: modelRows(financeReport.payables),
       receivables: modelRows(financeReport.receivables),

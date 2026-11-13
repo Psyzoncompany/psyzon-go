@@ -96,10 +96,10 @@ function animateTyping(
   }
   if (!items.length) return;
   const total = items.reduce((sum, item) => sum + item.weight, 0);
-  const duration = Math.min(1350, Math.max(340, total * 29));
+  const duration = Math.min(680, Math.max(180, total * 18));
   const start =
     performance.now() +
-    (document.documentElement.dataset.pageTransition ? 160 : 35);
+    (document.documentElement.dataset.pageTransition ? 70 : 20);
   items.forEach(({ element }) => {
     element.dataset.typing = "";
   });

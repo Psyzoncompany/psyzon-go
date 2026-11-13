@@ -1,7 +1,12 @@
 import { customerNameKey, type Customer } from "../finance-model";
 import type { Order } from "../order-model";
+import { millis } from "../notes-model";
 
 export type Task = { id: string; title: string; completed: boolean; customerId?: string; createdAt?: unknown; completedAt?: unknown };
+export function taskCompletionMonth(task: Task) {
+  const time=millis(task.completedAt);
+  return task.completed&&time?new Intl.DateTimeFormat("en-CA",{timeZone:"America/Bahia",year:"numeric",month:"2-digit"}).format(new Date(time)):"";
+}
 
 const nameWords = (value: string) => customerNameKey(value).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 

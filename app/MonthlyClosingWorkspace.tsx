@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { useEffect, useState } from "react";
 import { getApps } from "firebase/app";
 import { collection, getFirestore, onSnapshot } from "firebase/firestore";
@@ -54,13 +55,13 @@ export default function MonthlyClosingWorkspace({ uid, today, data, save, money 
       {report.delivered.map(item => <li key={item.id}><span><b>{item.customer} · {item.product}</b><small>{item.date.split("-").reverse().join("/")} · Venda {money(item.sale)} · Custos {money(item.costs)}</small></span><strong>{item.confirmed ? money(item.result) : "Custo pendente"}</strong></li>)}
     </ul></details>
     <details><summary>Recebimentos ({report.receipts.length})</summary><ul className="operations-list">
-      {report.receipts.map(item => <li key={item.id}><span><b>{item.description}</b><small>{item.date.split("-").reverse().join("/")}</small></span><strong>{money(item.amount)}</strong></li>)}
+      {report.receipts.map(item => <li key={item.id}><span><b>{item.description}</b><small>{item.date.split("-").reverse().join("/")}</small></span><strong><MoneyText>{money(item.amount)}</MoneyText></strong></li>)}
     </ul></details>
     <details><summary>Compras conferidas ({report.purchases.length})</summary><ul className="operations-list">
-      {report.purchases.map(item => <li key={item.id}><span><b>{item.title}</b><small>{item.supplier} · {item.date.split("-").reverse().join("/")}</small></span><strong>{money(item.amount)}</strong></li>)}
+      {report.purchases.map(item => <li key={item.id}><span><b>{item.title}</b><small>{item.supplier} · {item.date.split("-").reverse().join("/")}</small></span><strong><MoneyText>{money(item.amount)}</MoneyText></strong></li>)}
     </ul></details>
     <details><summary>Pagamentos e acertos de costura ({report.sewingPayments.length})</summary><ul className="operations-list">
-      {report.sewingPayments.map(item => <li key={item.id}><span><b>{item.person}</b><small>{item.date.split("-").reverse().join("/")} · {item.kind === "offset" ? "Crédito utilizado" : "Pagamento"}</small></span><strong>{money(item.amount)}</strong></li>)}
+      {report.sewingPayments.map(item => <li key={item.id}><span><b>{item.person}</b><small>{item.date.split("-").reverse().join("/")} · {item.kind === "offset" ? "Crédito utilizado" : "Pagamento"}</small></span><strong><MoneyText>{money(item.amount)}</MoneyText></strong></li>)}
     </ul></details>
     <details open={report.pending.length > 0}><summary>Pendências da revisão ({report.pending.length})</summary><ul className="operations-list">
       {report.pending.map((item,index) => <li key={index}><span><b>{item.title}</b><small>{item.detail}</small></span></li>)}

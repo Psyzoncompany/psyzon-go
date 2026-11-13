@@ -97,3 +97,6 @@
   .tasks-print-check { display: inline-grid; width: 4.4mm; height: 4.4mm; place-items: center; border: .3mm solid #274f83; border-radius: .7mm; }
   .tasks-print-root footer { display: flex; justify-content: space-between; gap: 5mm; margin-top: 4mm; padding-top: 2mm; border-top: .25mm solid #cbd7e8; font-size: 8pt; color: #526580; break-inside: avoid; }
 }
+.tasks-history-heading { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
+.tasks-history-heading select { color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:9px;min-height:42px;padding:6px 10px; }
+.tasks-history-empty { color:var(--muted);font-size:12px; }

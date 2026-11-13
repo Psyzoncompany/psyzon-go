@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { useState } from "react";
 import type { Order } from "./order-model";
 import "./operational-controls.css";
@@ -16,7 +17,7 @@ export default function CollectionAgenda({ orders, today, money, charged, edit }
     {rows.length ? <ul className="operations-list">{rows.map(order => <li key={order.id}>
       <span><b>{order.customer}</b><small>{order.product} · {order.paymentDueDate ? order.paymentDueDate.split("-").reverse().join("/") : "Sem data combinada"}</small>
       {order.lastChargedAt && <small>Última cobrança {order.lastChargedAt.split("-").reverse().join("/")}</small>}</span>
-      <strong>{money(order.receivable ?? Math.max(0, order.total - order.paid))}</strong>
+      <strong><MoneyText>{money(order.receivable ?? Math.max(0, order.total - order.paid))}</MoneyText></strong>
       <div className="operations-actions"><button className="secondary" onClick={() => edit(order)}>Combinar data</button><button className="secondary" disabled={!!busy || order.lastChargedAt === today} onClick={async () => {
         setBusy(order.id); setError("");
         try { await charged(order); } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao registrar cobrança."); }

@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { useRef, useState, type FormEvent } from "react";
 import { Ellipsis, Printer, Trash2 } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -380,7 +381,7 @@ export default function SewingWorkspace({
               </div>
               <div className="sewing-linked-value">
                 {excluded ? <small>Sem cobrança</small> : <>
-                  <strong>{money(remaining || cost)}</strong>
+                  <strong><MoneyText>{money(remaining || cost)}</MoneyText></strong>
                   <small>{remaining > 0 ? `A pagar · ${status}` : status}</small>
                 </>}
               </div>
@@ -435,10 +436,10 @@ export default function SewingWorkspace({
           </div>
         </header>
         <dl className="sewing-period-totals">
-          <div><dt>Pago no período</dt><dd>{money(periodTotals.paid)}</dd></div>
-          <div><dt>Crédito líquido de estampagens no período</dt><dd>{money(periodTotals.printCredit)}</dd></div>
-          <div><dt>Crédito utilizado no período</dt><dd>{money(periodTotals.offsets)}</dd></div>
-          {allPaidInPeriod !== null && <div><dt>Pago a todas no período</dt><dd>{money(allPaidInPeriod)}</dd></div>}
+          <div><dt>Pago no período</dt><dd><MoneyText>{money(periodTotals.paid)}</MoneyText></dd></div>
+          <div><dt>Crédito líquido de estampagens no período</dt><dd><MoneyText>{money(periodTotals.printCredit)}</MoneyText></dd></div>
+          <div><dt>Crédito utilizado no período</dt><dd><MoneyText>{money(periodTotals.offsets)}</MoneyText></dd></div>
+          {allPaidInPeriod !== null && <div><dt>Pago a todas no período</dt><dd><MoneyText>{money(allPaidInPeriod)}</MoneyText></dd></div>}
         </dl>
         {!periodEntries.length && <p className="sewing-empty">Nenhum lançamento no período.</p>}
         {periodEntries.map((entry) => (
@@ -492,7 +493,7 @@ export default function SewingWorkspace({
                   </button>
                 </form>
               )}
-              <strong>{money(entry.amount)}</strong>
+              <strong><MoneyText>{money(entry.amount)}</MoneyText></strong>
               <button
                 className="secondary"
                 disabled={busy}

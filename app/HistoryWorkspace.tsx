@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { CountUp } from "./MotionValue";
 
 import { ArrowUpRight, Boxes, CalendarDays, Check, History, Layers, Pencil, Plus, Trash2, WalletCards, X } from "lucide-react";
@@ -88,7 +89,7 @@ export default function HistoryWorkspace({ today, connection, rows, pendingKg, u
       <article className="panel"><span className="history-icon"><Boxes size={18} /></span><div><h2>Pedidos cadastrados</h2><strong><CountUp value={totals.orders} format={number.format} /></strong><small>Por data de cadastro</small></div></article>
       <article className="panel"><span className="history-icon history-icon-payable"><WalletCards size={18} /></span><div><h2>A pagar</h2><strong><CountUp value={totals.payable} format={displayTotal} /></strong><small>{totals.payableCount === 1 ? "1 conta pendente" : `${totals.payableCount} contas pendentes`}</small></div></article>
       <article className="panel"><span className="history-icon history-icon-paid"><Check size={18} /></span><div><h2>Contas pagas</h2><strong><CountUp value={totals.paid} format={displayMoney} /></strong><small>Por data de pagamento</small></div></article>
-      <article className="panel"><span className="history-icon"><Layers size={18} /></span><div><h2>Malha comprada</h2><strong><CountUp value={totals.fabric} format={weight} /></strong><small>{displayMoney(totals.fabricAmount)} em compras</small></div></article>
+      <article className="panel"><span className="history-icon"><Layers size={18} /></span><div><h2>Malha comprada</h2><strong><CountUp value={totals.fabric} format={weight} /></strong><small><MoneyText>{displayMoney(totals.fabricAmount)}</MoneyText> em compras</small></div></article>
     </section>
 
     {!month && <section className="history-panel panel">
@@ -98,7 +99,7 @@ export default function HistoryWorkspace({ today, connection, rows, pendingKg, u
         <tbody>{months.map((name, index) => {
           const key = monthKey(index);
           const monthTotals = historyTotals(yearRows.filter(row => row.date.slice(5, 7) === key));
-          return <tr key={name}><th scope="row"><button type="button" onClick={() => setMonth(key)}>{name}<ArrowUpRight size={13} /></button></th><td>{number.format(monthTotals.orders)}</td><td>{displayTotal(monthTotals.payable)}</td><td>{displayMoney(monthTotals.paid)}</td><td>{weight(monthTotals.fabric)}</td><td>{displayMoney(monthTotals.fabricAmount)}</td></tr>;
+          return <tr key={name}><th scope="row"><button type="button" onClick={() => setMonth(key)}>{name}<ArrowUpRight size={13} /></button></th><td>{number.format(monthTotals.orders)}</td><td><MoneyText>{displayTotal(monthTotals.payable)}</MoneyText></td><td><MoneyText>{displayMoney(monthTotals.paid)}</MoneyText></td><td>{weight(monthTotals.fabric)}</td><td><MoneyText>{displayMoney(monthTotals.fabricAmount)}</MoneyText></td></tr>;
         })}</tbody>
       </table></div>
     </section>}
@@ -124,7 +125,7 @@ export default function HistoryWorkspace({ today, connection, rows, pendingKg, u
         </div>
         <div className="history-record-value">
           <strong>{row.kind === "orders" ? `${number.format(row.quantity)} ${row.quantity === 1 ? "pedido" : "pedidos"}` : row.kind === "fabric" ? weight(row.quantity) : displayMoney(row.amount)}</strong>
-          {row.kind === "fabric" && <small>{displayMoney(row.amount)}</small>}
+          {row.kind === "fabric" && <small><MoneyText>{displayMoney(row.amount)}</MoneyText></small>}
         </div>
         {row.source === "manual" && <div className="history-row-actions">
           <button type="button" title="Editar registro" aria-label={`Editar ${row.title}`} disabled={!ready || !!removing} onClick={() => setEditor({ kind: row.kind, row })}><Pencil size={16} /></button>

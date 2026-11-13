@@ -396,6 +396,18 @@ test("monthly closing excludes unreviewed profit and counts receipts, sewing and
   assert.equal(earlier.totals.delivered, 0);
 });
 
+test("payables exclude future months and carry only open earlier bills across month and year boundaries", () => {
+  const make=(id:string,dueDate:string,settled=false)=>bill({id,billingType:"once",dueDate,amount:100,settled});
+  const bills=[make("old","2026-10-20"),make("current","2026-11-20"),make("future","2026-12-20"),make("paid-old","2026-10-10",true),make("next-year","2027-01-02")];
+  assert.deepEqual(financialSummary([],bills,"2026-11").payable.map(item=>item.id),["old","current"]);
+  assert.equal(financialSummary([],bills,"2026-11").toPay,200);
+  assert.deepEqual(financialSummary([],bills,"2026-12").payable.map(item=>item.id),["old","current","future"]);
+  const paid=bills.map(item=>({...item,settled:true}));
+  assert.equal(financialSummary([],paid,"2027-01").toPay,0);
+  assert.equal(financialSummary([], [bill({id:"monthly",billingType:"fixed",amount:80,lastPaidMonth:"2026-11"})], "2026-11").toPay,0);
+  assert.equal(financialSummary([], [bill({id:"monthly",billingType:"fixed",amount:80,lastPaidMonth:"2026-11"})], "2026-12").toPay,80);
+});
+
 test("legacy bill payments resolve by exact bill link and timestamp without touching unrelated expenses", () => {
   const old=bill({id:"internet",billingType:"fixed",lastPaidMonth:"2026-08"});
   const expenses=[{id:"random-old",billId:"internet",source:"bill",type:"expense",createdAt:{seconds:Date.parse("2026-08-12T15:00:00Z")/1000}}, {id:"prior",billId:"internet",source:"bill",type:"expense",transactionDate:"2026-07-12"}, {id:"other",billId:"different",source:"bill",type:"expense",transactionDate:"2026-08-12"}];

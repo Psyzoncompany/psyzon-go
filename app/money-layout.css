@@ -1,0 +1,15 @@
+:root[data-ui-theme] :is(.money-fit,.motion-number[data-money="true"]), :root[data-ui-theme] :is(.money-fit,.motion-number[data-money="true"]) > span { white-space: nowrap; overflow-wrap: normal; word-break: normal; font-variant-numeric: tabular-nums; }
+.money-fit { display: inline-block; max-width: 100%; min-width: 0; vertical-align: bottom; }
+.money-fit > span { font: inherit; }
+.motion-number[data-money="true"] { max-width: 100%; min-width: 0; }
+@media(max-width:760px) {
+  .finance-row { grid-template-columns: minmax(0,1fr) minmax(0,42%) 16px; }
+  .finance-row-value { min-width: 0; width: 100%; }
+  :root[data-ui-theme] .app-shell :is(.metric-card,.finance-premium-summary article,.history-metrics article,.dtf-metrics article) > strong:has([data-money="true"]) { white-space: nowrap; overflow-wrap: normal; }
+  :root[data-ui-theme] .app-shell .metric-grid:has([data-money-long="true"]), :root[data-ui-theme] .app-shell[data-layout] .metric-grid.sewing-metrics.company-metrics:has([data-money-long="true"]), .finance-premium-summary:has([data-money-long="true"]) { grid-template-columns: minmax(0,1fr); }
+  .order-details-content .order-details-money:has([data-money-long="true"]) { grid-template-columns: minmax(0,1fr); }
+  .order-details-money:has([data-money-long="true"]) > div { display:flex;align-items:center;justify-content:space-between;gap:12px; }
+  :root[data-ui-theme] .app-shell[data-layout] .company-metrics > .company-balance-card:has([data-money-long="true"]) { display:flex;align-items:stretch; }
+  .finance-card-header:has([data-money-long="true"]) { grid-template-columns:44px minmax(0,1fr); }
+  .finance-card-header:has([data-money-long="true"]) .finance-card-total { grid-column:1/-1; }
+}

@@ -2,6 +2,7 @@
 
 import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
 import type { PurchaseCostInput, LinkedExpense } from "./notes/PurchaseCostReview";
 import { materialBinding, type MaterialSaveInput } from "./notes/material-binding";
@@ -12,6 +13,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEv
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import { checklistCompletion } from "./completion-feedback";
+import { changedFields } from "./changed-fields";
+import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import { activitySucceeded, preparePaymentSound } from "./payment-feedback";
 import NoteDialog from "./notes/NoteDialog";
 import PdfDownloadButton from "./PdfDownloadButton";
@@ -83,7 +86,8 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
       created.queue = new NoteSaveQueue<StoredNote>(
         async (id, value) => {
           const before=created.completionBase?.get(id) ?? created.beforeWrite?.(id);
-          await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...value, updatedAt: serverTimestamp() });
+          const patch=changedFields(before??{},value);
+          if(Object.keys(patch).length)await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...patch, updatedAt: serverTimestamp() });
           created.completionBase?.set(id,value);
           const progress=checklistCompletion(before?readDocument(before.content,before.materials):undefined,readDocument(value.content,value.materials));
           if(progress)activitySucceeded({uid,title:progress.complete?"Checklist concluído":"Item conferido",description:value.title+" · "+progress.done+" de "+progress.total,kind:progress.complete?"milestone":"tick",progress:progress.progress,previousProgress:progress.previousProgress});
@@ -91,6 +95,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
         (id, value) => created.recover?.(id, value),
         (id, status) => created.report?.(id, status),
       );
+      window.addEventListener(prepareReloadEvent,event=>{if(getAuth(getApps()[0]).currentUser?.uid===uid)(event as CustomEvent<PrepareReload>).detail.waitUntil(created.queue.flushAll().then(()=>Object.values(created.queue.getStatuses()).every(status=>status==="saved")));});
       entry = created; queues.set(uid, entry);
     }
     entry.recover = (id, value) => {
@@ -174,11 +179,12 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     const existing = overlaysRef.current[id]?.draft || (propsRef.current.find(n => n.id === id) ? draftFor(propsRef.current.find(n => n.id === id)!) : undefined);
     if (!existing) return;
     const next = mutate(existing);
-    if(checklistCompletion(existing.document,next.document))preparePaymentSound(uid);
+    const completed=checklistCompletion(existing.document,next.document);
+    if(completed)preparePaymentSound(uid);
     const h = history.current[id] ||= { undo: [], redo: [], typingAt: 0 };
     if (!typing || Date.now() - h.typingAt > 700) { h.undo.push(existing); if (h.undo.length > 40) h.undo.shift(); }
     h.redo = []; h.typingAt = typing ? Date.now() : 0;
-    stage(id, next); refreshHistory(v => v + 1);
+    stage(id, next); if(completed)void queueRef.current?.flush(id); refreshHistory(v => v + 1);
   };
   const undo = (redo = false) => {
     if (!draft || locked) return;

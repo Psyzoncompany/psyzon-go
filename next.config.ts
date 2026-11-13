@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  env: { NEXT_PUBLIC_PSYZON_BUILD: process.env.VERCEL_GIT_COMMIT_SHA || process.env.NEXT_PUBLIC_PSYZON_BUILD || (process.env.NODE_ENV==="production"?new Date().toISOString():"development") },
   poweredByHeader: false,
   typescript: {
     tsconfigPath: "tsconfig.vercel.json",

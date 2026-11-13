@@ -58,7 +58,7 @@ export function customerNameKey(name: string) {
 export function financialSummary(customers: CustomerBalance[], bills: Bill[], month = localDateValue().slice(0, 7)) {
   const debtors = customers.filter((customer) => !customer.archived && customer.pending > 0);
   const open = bills.filter((bill) => !billIsSettled(bill, month));
-  const payable = open.filter((bill) => bill.direction !== "receivable");
+  const payable = open.filter((bill) => bill.direction !== "receivable" && (bill.billingType !== "once" || !bill.dueDate || bill.dueDate.slice(0,7) <= month));
   const receivable = open.filter((bill) => bill.direction === "receivable");
   return { debtors, payable, receivable, pending: roundMoney(debtors.reduce((sum, customer) => sum + customer.pending, 0) + receivable.reduce((sum, bill) => sum + bill.amount, 0)), toPay: roundMoney(payable.reduce((sum, bill) => sum + bill.amount, 0)) };
 }

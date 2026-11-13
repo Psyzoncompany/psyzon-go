@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { useState } from "react";
 import { WalletCards, ArrowUpRight, Plus } from "lucide-react";
 import { CountUp } from "./MotionValue";
@@ -13,6 +14,6 @@ export default function CompanyBalance({ entries, money, initialize }: { entries
     <div className="company-balance-actions"><button className="company-balance-history" onClick={()=>setHistoryOpen(true)}>Ver histórico <ArrowUpRight size={14} aria-hidden="true" /></button>
     {!entries.some(item=>item.id==="opening") && <button className="company-balance-initialize" disabled={busy} onClick={async()=>{const input=window.prompt("Qual é o saldo inicial da empresa? (R$)","0");if(input===null)return;const amount=Number(input.replace(",","."));if(!Number.isFinite(amount)||amount<0||amount>100000000){setError("Informe um saldo inicial válido.");return;}setBusy(true);setError("");try{await initialize(amount);}catch(cause){setError(cause instanceof Error?cause.message:"Não foi possível salvar.");}finally{setBusy(false);}}} aria-label="Registrar saldo inicial"><Plus size={14} aria-hidden="true" />{busy?"Salvando…":"Saldo inicial"}</button>}</div>
     {error&&<p role="alert" className="form-error">{error}</p>}
-    {historyOpen && <NoteDialog title="Histórico do saldo" close={()=>setHistoryOpen(false)}><div className="company-balance-history-content"><ul className="operations-list">{entries.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id)).map(item=><li key={item.id}><span><b>{item.description}</b><small>{item.date.split("-").reverse().join("/")}</small></span><strong>{money(item.amount)}</strong></li>)}</ul>{!entries.length && <p className="operations-muted">Nenhuma movimentação registrada.</p>}</div></NoteDialog>}
+    {historyOpen && <NoteDialog title="Histórico do saldo" close={()=>setHistoryOpen(false)}><div className="company-balance-history-content"><ul className="operations-list">{entries.slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id)).map(item=><li key={item.id}><span><b>{item.description}</b><small>{item.date.split("-").reverse().join("/")}</small></span><strong><MoneyText>{money(item.amount)}</MoneyText></strong></li>)}</ul>{!entries.length && <p className="operations-muted">Nenhuma movimentação registrada.</p>}</div></NoteDialog>}
   </section>;
 }

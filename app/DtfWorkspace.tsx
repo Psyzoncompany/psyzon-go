@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
@@ -127,7 +128,7 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
             </div>
             <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}<label className="dtf-separated dtf-order-separated"><input type="checkbox" checked={order.separated === true} disabled={!live || !!workingId} aria-label={`Separada: ${title}`} onChange={event => { const checked = event.target.checked; void run(order.id, () => onSeparate(order.id, checked)); }} />Separada</label></div>
             <div className="dtf-order-deadline" data-late={overdue}><CalendarDays size={15} /><span>{overdue ? `Atrasado · ${due}` : due}{linkedDeadlines.get(order.id) && <small>Prazo DTF vinculado</small>}</span></div>
-            <div className="dtf-order-money"><b>{displayMoney(dtfTotal(order))}</b><span>{dtfPending(order) > 0 ? `${displayMoney(dtfPending(order))} pendente` : dtfTotal(order) ? "Quitado" : "Sem cobrança"}</span></div>
+            <div className="dtf-order-money"><b><MoneyText>{displayMoney(dtfTotal(order))}</MoneyText></b><span>{dtfPending(order) > 0 ? `${displayMoney(dtfPending(order))} pendente` : dtfTotal(order) ? "Quitado" : "Sem cobrança"}</span></div>
             <div className="dtf-order-actions">
               <button className="dtf-open-ticket" type="button" aria-label={`Abrir ficha de ${title}`} onClick={() => setTicketId(order.id)}><Clipboard size={15} /> Ficha</button>
               {next && <button className="dtf-advance" type="button" disabled={!live || !!workingId} onClick={() => void run(order.id, () => onMove(order.id, next))}>{next === "Entregue" ? "Entregar" : "Avançar"} <ArrowRight size={14} /></button>}
@@ -215,7 +216,7 @@ function DtfEditor({ order, customers, links, customer, displayMoney, onSave, on
         <div className="form-row"><label>Etapa<select name="stage" defaultValue={order.stage}>{dtfStages.map(value => <option key={value}>{value}</option>)}</select></label><label>Prazo manual<input name="dueDate" type="date" max="9999-12-31" defaultValue={order.dueDate} /></label></div>
         <div className="form-row"><label>Metragem (m)<input type="number" min="0" max="10000" step="0.01" value={meters} onChange={event => setMeters(event.target.value)} /></label><label>Largura (cm)<input name="widthCm" type="number" min="0" max="300" step="0.01" defaultValue={order.widthCm || ""} /></label></div>
         <div className="form-row"><label>Preço por metro (R$)<input type="number" min="0" max="10000" step="0.01" value={price} onChange={event => setPrice(event.target.value)} /></label><label>Valor recebido (R$)<input type="number" min="0" max="100000000" step="0.01" value={paid} onChange={event => setPaid(event.target.value)} /></label></div>
-        <div className="dtf-estimate" aria-live="polite"><div><span>Total do pedido</span><strong>{displayMoney(total)}</strong></div><div><span>Pendente</span><strong>{displayMoney(Math.max(0, total - paidCents / 100))}</strong></div></div>
+        <div className="dtf-estimate" aria-live="polite"><div><span>Total do pedido</span><strong><MoneyText>{displayMoney(total)}</MoneyText></strong></div><div><span>Pendente</span><strong><MoneyText>{displayMoney(Math.max(0, total - paidCents / 100))}</MoneyText></strong></div></div>
         <label>Link do arquivo<input name="artworkUrl" type="url" maxLength={2000} placeholder="https://…" defaultValue={order.artworkUrl} /></label>
       </fieldset></details>}
       {error && <p className="form-error" role="alert">{error}</p>}

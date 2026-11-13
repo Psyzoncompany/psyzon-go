@@ -8,6 +8,24 @@ import { parseProductionOrder, sampleProductionOrder } from "../app/production-c
 import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
 import { indexOrderTasks } from "../app/notes/task-model";
 import { checklistCompletion } from "../app/completion-feedback";
+import { changedFields } from "../app/changed-fields";
+import { taskCompletionMonth } from "../app/notes/task-model";
+
+test("small edits do not resend unchanged photos or materials and explicit photo removal is preserved",()=>{
+  const previous={title:"Ana",content:"Antes",materials:[{id:"m",amount:50}],productionPhotoData:"data:image/jpeg;base64,"+"a".repeat(800000)};
+  const patch=changedFields(previous,{...previous,content:"Depois",materials:[{id:"m",amount:50}]});
+  assert.deepEqual(patch,{content:"Depois"});assert.ok(JSON.stringify(patch).length<100);
+  assert.deepEqual(changedFields(previous,{productionPhotoData:""}),{productionPhotoData:""});
+  assert.deepEqual(changedFields(previous,previous),{});
+});
+
+test("completed tasks stay in their completion month in Bahia and undated records are not invented",()=>{
+  const task={id:"a",title:"Conferir",completed:true};
+  assert.equal(taskCompletionMonth({...task,completedAt:"2026-12-01T01:00:00Z"}),"2026-11");
+  assert.equal(taskCompletionMonth({...task,completedAt:"2026-12-01T03:00:00Z"}),"2026-12");
+  assert.equal(taskCompletionMonth({...task,completed:false,completedAt:"2026-12-01T03:00:00Z"}),"");
+  assert.equal(taskCompletionMonth(task),"");
+});
 
 test("completion feedback follows real checks and ignores typing, imports and undo", () => {
   const before=newDraft().document;
@@ -194,17 +212,19 @@ test("stock values feed payables once, follow edits and completion, and dates tr
   const second = { id: restockPrefix + "b", ...newRestockNote({ text: "Malha PV", amount: 50.20, purchaseDate: "2026-12-01" }) };
   const legacy = { id: restockPrefix + "old", ...newRestockNote("Papel sem preço cadastrado") };
   const read = () => restockTasks([first, second, legacy]);
-  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 150.30);
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 100.10);
+  assert.equal(financialSummary([], restockBills(read()), "2026-12").toPay, 150.30);
   assert.equal(nextMonthPayables(restockBills(read()), "2026-11").total, 50.20);
   assert.equal(restockAlerts(read(), "2026-11-07").length, 0);
   assert.equal(restockAlerts(read(), "2026-11-08")[0].view, "reposicao");
   assert.equal(restockAlerts(read(), "2026-11-09")[0].tone, "danger");
   first = { ...first, ...changeRestockNote(first, { type: "edit", text: "Fotolito", amount: 0, purchaseDate: "" }) };
-  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 50.20);
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 0);
   assert.equal(restockAlerts(read(), "2026-11-09").length, 0);
   first = { ...first, ...changeRestockNote(first, { type: "edit", text: "Fotolito", amount: 20, purchaseDate: "2026-11-08" }) };
   first = { ...first, ...changeRestockNote(first, { type: "toggle", completed: true }) };
-  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 50.20);
+  assert.equal(financialSummary([], restockBills(read()), "2026-11").toPay, 0);
+  assert.equal(financialSummary([], restockBills(read()), "2026-12").toPay, 50.20);
   assert.equal(restockTasks([JSON.parse(JSON.stringify(first))])[0].amount, 20);
   assert.throws(() => newRestockNote({ text: "Item", amount: -1, purchaseDate: "" }));
   assert.throws(() => newRestockNote({ text: "Item", amount: NaN, purchaseDate: "" }));

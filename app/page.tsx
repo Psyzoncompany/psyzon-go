@@ -4,21 +4,19 @@ import { CountUp, ProgressBar } from "./MotionValue";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
-import OrderPhotoField from "./OrderPhotoField";
 import OrderPricingFields from "./OrderPricingFields";
 import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
-import CustomersWorkspace from "./CustomersWorkspace";
-import FinanceWorkspace, { type BillInput } from "./FinanceWorkspace";
-import ProductionBoard from "./ProductionBoard";
+import type { BillInput } from "./FinanceWorkspace";
 import { forecastMaterial } from "./material-forecast";
 import { urgentOrder } from "./order-model";
 import { orderAlerts, type OrderAlert } from "./order-alerts";
 import { indexOrderPayments, nextOrderAction } from "./order-follow-up";
 import { orderResult } from "./order-result";
 import { monthlyClosing, type MonthlyClosingReport } from "./monthly-closing";
-import MonthlyClosingWorkspace from "./MonthlyClosingWorkspace";
 import CollectionAgenda from "./CollectionAgenda";
+import { changedFields } from "./changed-fields";
+import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import CompanyBalance from "./CompanyBalance";
 import type { BalanceEntry } from "./company-balance";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
@@ -26,7 +24,7 @@ import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./paym
 import { operationCosts } from "./operations-data";
 import type { PurchaseCostInput } from "./notes/PurchaseCostReview";
 import { toDraft, type NoteMaterial } from "./notes-model";
-import SewingWorkspace, { type SewingChange } from "./SewingWorkspace";
+import type { SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBalances, validateSewingMovement, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
@@ -38,13 +36,12 @@ import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlement
 import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { updatePurchasedMaterials } from "./notes/materials-model";
-import { indexOrderTasks, type Task } from "./notes/task-model";
+import { indexOrderTasks, taskCompletionMonth, type Task } from "./notes/task-model";
 import FloatingTasks from "./notes/FloatingTasks";
 import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
 import NotesNavigation, { noteViews } from "./NotesNavigation";
-import AppearanceSettings from "./AppearanceSettings";
 import useInterfaceAppearance from "./useInterfaceAppearance";
 import useInterfaceMotion from "./useInterfaceMotion";
 import { TypedHeading, SiteTypewriter } from "./Typewriter";
@@ -71,6 +68,12 @@ import {
   deleteField,
   doc,
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  clearIndexedDbPersistence,
+  terminate,
+  waitForPendingWrites,
   getDocs,
   onSnapshot,
   runTransaction,
@@ -154,6 +157,13 @@ type AppNotification = {
   orderId?: string;
 };
 
+const CustomersWorkspace = dynamic(() => import("./CustomersWorkspace"), { ssr: false });
+const FinanceWorkspace = dynamic(() => import("./FinanceWorkspace"), { ssr: false });
+const ProductionBoard = dynamic(() => import("./ProductionBoard"), { ssr: false });
+const SewingWorkspace = dynamic(() => import("./SewingWorkspace"), { ssr: false });
+const MonthlyClosingWorkspace = dynamic(() => import("./MonthlyClosingWorkspace"), { ssr: false });
+const AppearanceSettings = dynamic(() => import("./AppearanceSettings"), { ssr: false });
+const OrderPhotoField = dynamic(() => import("./OrderPhotoField"), { ssr: false });
 const PSYZONAI = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
@@ -286,6 +296,8 @@ export default function HomePage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [savingOrder,setSavingOrder]=useState(false);
+  const savingOrderRef=useRef(false);
   const [productionList, setProductionList] = useState<{ order: Order; noteId: string } | null>(null);
   useEffect(() => { setProductionList(null); }, [uid, view]);
   const [search, setSearch] = useState("");
@@ -320,6 +332,13 @@ export default function HomePage() {
     floatingWindowRef.current = null;
   }, [uid]);
 
+  useEffect(()=>{
+    if(!uid)return;
+    const prepare=(event:Event)=>(event as CustomEvent<PrepareReload>).detail.waitUntil(waitForPendingWrites(getFirestore(getApps()[0])).then(()=>true,()=>false));
+    window.addEventListener(prepareReloadEvent,prepare);
+    return()=>window.removeEventListener(prepareReloadEvent,prepare);
+  },[uid]);
+
 
 
   useEffect(() => {
@@ -340,7 +359,8 @@ export default function HomePage() {
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     ensureAppCheck(app);
     const auth = clientAuth(app);
-    const db = getFirestore(app);
+    let db;
+    try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});}catch{db=getFirestore(app);}
     const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: () => unknown }> }) =>
       snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<T, "id">) } as T));
     let unsubscribers: Array<() => void> = [];
@@ -373,12 +393,18 @@ export default function HomePage() {
       }
 
       const initialized = new Set<string>();
-      const markReady = (name: string) => {
-        initialized.add(name);
+      const serverReady=new Set<string>();
+      const cacheKey="psy-data-cache-ready-v1:"+nextUser.uid;
+      let knownCounts:Record<string,number>={};try{const value=JSON.parse(localStorage.getItem(cacheKey)||"null");if(value&&typeof value==="object")knownCounts=value;}catch{}
+      const serverCounts:Record<string,number>={};
+      const markReady = (name: string, fromCache=false, count=0) => {
+        if(!fromCache){serverReady.add(name);serverCounts[name]=count;}else serverReady.delete(name);
+        if(knownCounts[name]===count||!fromCache)initialized.add(name);
         if (initialized.size === FIRESTORE_COLLECTIONS.length) {
-          setFirebaseState("live");
           setDataReady(true);
         }
+        if(serverReady.size===FIRESTORE_COLLECTIONS.length){setFirebaseState("live");try{localStorage.setItem(cacheKey,JSON.stringify(serverCounts));}catch{}}
+        else setFirebaseState("connecting");
       };
       const handleError = (error: Error) => {
         console.error("Firestore connection failed", error);
@@ -388,28 +414,28 @@ export default function HomePage() {
 
       setFirebaseState("connecting");
       unsubscribers = [
-        onSnapshot(collection(db, "users", nextUser.uid, "balanceEntries"), snapshot => { setBalanceEntries(toList<BalanceEntry>(snapshot)); markReady("balanceEntries"); }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "orders"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "balanceEntries"), {includeMetadataChanges:true}, snapshot => { setBalanceEntries(toList<BalanceEntry>(snapshot)); markReady("balanceEntries",snapshot.metadata.fromCache,snapshot.docs.length); }, handleError),
+        onSnapshot(collection(db, "users", nextUser.uid, "orders"), {includeMetadataChanges:true}, (snapshot) => {
           setOrders(toList<Order>(snapshot)
             .map(order => ({ ...order, status: normalizeOrderStatus(order.status) }))
             .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
-          markReady("orders");
+          markReady("orders",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "customers"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "customers"), {includeMetadataChanges:true}, (snapshot) => {
           setCustomers(toList<Customer>(snapshot));
-          markReady("customers");
+          markReady("customers",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "transactions"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "transactions"), {includeMetadataChanges:true}, (snapshot) => {
           setTransactions(toList<Transaction>(snapshot).sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))));
-          markReady("transactions");
+          markReady("transactions",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "bills"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "bills"), {includeMetadataChanges:true}, (snapshot) => {
           setBills(toList<Bill>(snapshot).sort((a, b) => a.dueDay - b.dueDay));
-          markReady("bills");
+          markReady("bills",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "notes"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "notes"), {includeMetadataChanges:true}, (snapshot) => {
           setNotes(toList<BusinessNote>(snapshot));
-          markReady("notes");
+          markReady("notes",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "dtfOrders"), (snapshot) => {
           setDtfOrders(toList<DtfOrder>(snapshot));
@@ -549,8 +575,12 @@ export default function HomePage() {
   const signOutGoogle = async () => {
     closePrivacy();
     if (!isFirebaseConfigured) return;
+    const saves:Promise<boolean>[]=[];window.dispatchEvent(new CustomEvent<PrepareReload>(prepareReloadEvent,{detail:{waitUntil:promise=>saves.push(promise)}}));
+    if(!(await Promise.all(saves)).every(Boolean)){showToast("Salve as alterações pendentes antes de sair.");return;}
     await signOut(clientAuth(getApps()[0]));
     setView("inicio");
+    try{localStorage.removeItem("psy-data-cache-ready-v1:"+uid);const db=getFirestore(getApps()[0]);await terminate(db);await clearIndexedDbPersistence(db);}catch{/* Other open tabs can hold the cache until they close. */}
+    window.location.reload();
   };
 
   const resetAllData = async () => {
@@ -1214,7 +1244,7 @@ export default function HomePage() {
     if(completed)preparePaymentSound(uid);
     await updateDoc(userDocument(uid, "tasks", id), { completed, completedAt: completed ? serverTimestamp() : null });
     const task=tasks.find(item=>item.id===id);
-    if(completed && task && !task.completed){const allDone=tasks.every(item=>item.id===id||item.completed);activitySucceeded({uid,title:allDone?"Afazeres em dia!":"Afazer concluído",description:task.title,kind:allDone?"milestone":"tick",progress:Math.round(tasks.filter(item=>item.id===id||item.completed).length/tasks.length*100),previousProgress:Math.round(tasks.filter(item=>item.completed).length/tasks.length*100)});}
+    if(completed && task && !task.completed){const allDone=tasks.every(item=>item.id===id||item.completed);const periodTasks=tasks.filter(item=>!item.completed||taskCompletionMonth(item)===calendarDate.slice(0,7));activitySucceeded({uid,title:allDone?"Afazeres em dia!":"Afazer concluído",description:task.title,kind:allDone?"milestone":"tick",progress:Math.round(periodTasks.filter(item=>item.id===id||item.completed).length/periodTasks.length*100),previousProgress:Math.round(periodTasks.filter(item=>item.completed).length/periodTasks.length*100)});}
   };
 
   const deleteTask = async (id: string) => {
@@ -1440,13 +1470,12 @@ export default function HomePage() {
     const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(db, async (transaction) => {
       const orderRef = userDocument(uid, "orders", editingOrder.id);
-      const current = await transaction.get(orderRef);
-      if (!current.exists()) throw new Error("Este pedido foi excluído.");
-      const latestNotes = await Promise.all(
+      const [current,latestNotes] = await Promise.all([transaction.get(orderRef),Promise.all(
         notes
-          .filter((note) => note.id !== sewingNoteId)
+          .filter((note) => note.id !== sewingNoteId && notePhotoOrderId(readDocument(note.content),storedOrders,customers)===editingOrder.id)
           .map((note) => transaction.get(userDocument(uid, "notes", note.id))),
-      );
+      )]);
+      if (!current.exists()) throw new Error("Este pedido foi excluído.");
       const sourceNotes = latestNotes
         .filter((note) => note.exists())
         .map((note) => ({ ...note.data(), id: note.id }) as BusinessNote);
@@ -1476,7 +1505,7 @@ export default function HomePage() {
         (item) => item.orderId === editingOrder.id,
       );
       if(includeBalance) transaction.set(balanceRef,balanceMovement(balanceDelta,"Pagamento · "+updatedOrder.customer));
-      transaction.update(orderRef, {
+      const orderPatch=changedFields(current.data(),{
         ...updatedOrder,
         deliveredAt: updatedOrder.status === "Entregue" ? (latestRaw.deliveredAt ?? (latestRaw.status === "Entregue" ? null : calendarDate)) : null,
         quantity:
@@ -1492,12 +1521,13 @@ export default function HomePage() {
             ? (current.data().photoData ?? updatedOrder.photoData)
             : updatedOrder.photoData,
       });
+      if(Object.keys(orderPatch).length)transaction.update(orderRef,orderPatch);
       const existingCustomer = customers.find(
         (customer) =>
           customerNameKey(customer.name) ===
           customerNameKey(updatedOrder.customer),
       );
-      transaction.set(
+      if(!existingCustomer || updatedOrder.customer!==editingOrder.customer || updatedOrder.phone!==editingOrder.phone)transaction.set(
         userDocument(uid, "customers", existingCustomer?.id ?? customerKey),
         { name: updatedOrder.customer, phone: updatedOrder.phone },
         { merge: true },
@@ -1937,7 +1967,7 @@ export default function HomePage() {
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
       {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
-      {editingOrder && <OrderEditModal order={editingOrder} close={() => setEditingOrder(null)} onSubmit={(event) => { void saveOrder(event).catch((error: unknown) => showToast(error instanceof Error && !error.name.startsWith("Firebase") ? error.message : "Não foi possível salvar o pedido. Confira os dados e tente novamente.")); }} />}
+      {editingOrder && <OrderEditModal busy={savingOrder} order={editingOrder} close={() => {if(!savingOrderRef.current)setEditingOrder(null);}} onSubmit={(event) => {event.preventDefault();if(savingOrderRef.current)return;savingOrderRef.current=true;setSavingOrder(true);void saveOrder(event).catch((error:unknown)=>showToast(error instanceof Error && !error.name.startsWith("Firebase")?error.message:"Não foi possível salvar o pedido. Confira os dados e tente novamente.")).finally(()=>{savingOrderRef.current=false;setSavingOrder(false);});}} />}
 
 
 
@@ -2052,8 +2082,8 @@ function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; s
   return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
 }
 
-function OrderEditModal({ order, close, onSubmit }: { order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function OrderEditModal({ order, close, onSubmit, busy=false }: { busy?: boolean; order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>{order.status !== "Orçamento" && <label className="full">Data combinada para pagamento<input name="paymentDueDate" type="date" defaultValue={order.paymentDueDate ?? ""} /></label>}<OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}{order.status !== "Orçamento" && <label className="full"><span><input name="customerMaterial" type="checkbox" defaultChecked={order.customerMaterial} /> Material fornecido pelo cliente (sem custo)</span></label>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar alterações</button></footer></form></aside></div>;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit} aria-busy={busy}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>{order.status !== "Orçamento" && <label className="full">Data combinada para pagamento<input name="paymentDueDate" type="date" defaultValue={order.paymentDueDate ?? ""} /></label>}<OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}{order.status !== "Orçamento" && <label className="full"><span><input name="customerMaterial" type="checkbox" defaultChecked={order.customerMaterial} /> Material fornecido pelo cliente (sem custo)</span></label>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy||busy}><Check size={17} /> {busy?"Salvando…":"Salvar alterações"}</button></footer></form></aside></div>;
 }

@@ -1,4 +1,5 @@
 "use client";
+import MoneyText from "./MoneyText";
 import NoteDialog from "./notes/NoteDialog";
 import { orderResult, type OrderCosts } from "./order-result";
 import type { OrderPayment } from "./order-follow-up";
@@ -238,11 +239,11 @@ function OrderPaymentHistory({ order, payments, displayMoney }: { order: Order; 
         <span><b>{entry.refund ? "Devolução" : "Pagamento"}</b>
           {entry.date ? <time dateTime={entry.date}>{entry.date.split("-").reverse().join("/")}</time> : <small>Sem data registrada</small>}
         </span>
-        <strong>{displayMoney(entry.refund ? -entry.amount : entry.amount)}</strong>
+        <strong><MoneyText>{displayMoney(entry.refund ? -entry.amount : entry.amount)}</MoneyText></strong>
       </li>)}
     </ul> : <p>Nenhum lançamento vinculado.</p>}
-    {difference > 0 && <p>Valor recebido sem parcela vinculada <strong>{displayMoney(difference)}</strong></p>}
-    {difference < 0 && <p>Os lançamentos vinculados excedem o valor recebido do pedido em <strong>{displayMoney(-difference)}</strong>.</p>}
+    {difference > 0 && <p>Valor recebido sem parcela vinculada <strong><MoneyText>{displayMoney(difference)}</MoneyText></strong></p>}
+    {difference < 0 && <p>Os lançamentos vinculados excedem o valor recebido do pedido em <strong><MoneyText>{displayMoney(-difference)}</MoneyText></strong>.</p>}
   </section>;
 }
 
@@ -273,9 +274,9 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           <span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}{order.dueDate ? ` · ${order.dueDate.split("-").reverse().join("/")}` : ""}</span>
         </header>
         <dl className="order-details-money">
-          <div><dt>Total do pedido</dt><dd>{displayMoney(order.total)}</dd></div>
-          <div><dt>Recebido</dt><dd>{displayMoney(order.paid)}</dd></div>
-          <div data-pending={pending > 0}><dt>A receber</dt><dd>{displayMoney(pending)}</dd></div>
+          <div><dt>Total do pedido</dt><dd><MoneyText>{displayMoney(order.total)}</MoneyText></dd></div>
+          <div><dt>Recebido</dt><dd><MoneyText>{displayMoney(order.paid)}</MoneyText></dd></div>
+          <div data-pending={pending > 0}><dt>A receber</dt><dd><MoneyText>{displayMoney(pending)}</MoneyText></dd></div>
         </dl>
         <div className="order-details-actions">
           {next && <button className="primary" disabled={busy} onClick={() => move(next)}>{next === "Entregue" ? "Marcar como entregue" : order.status === "Orçamento" ? "Confirmar pedido" : "Avançar etapa"}<ArrowRight size={16} /></button>}
@@ -301,13 +302,13 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
             <button className="secondary" disabled={costBusy || result.missing.length > 0 || result.confirmed} onClick={async () => { setCostBusy(true); setCostError(""); try { await confirmCosts(order, result.fingerprint); } catch(cause) { setCostError(cause instanceof Error ? cause.message : "Falha ao confirmar."); } finally { setCostBusy(false); } }}>{result.confirmed ? "Custos conferidos" : costBusy ? "Salvando…" : "Confirmar custos do pedido"}</button>
             <dl className="order-details-specs">
               <div><dt>Material comprado</dt><dd>{result.material == null ? "Sem registro" : displayMoney(result.material)}</dd></div>
-              {result.plannedMaterial != null && <div><dt>Material a comprar</dt><dd>{displayMoney(result.plannedMaterial)} · previsão</dd></div>}
+              {result.plannedMaterial != null && <div><dt>Material a comprar</dt><dd><MoneyText>{displayMoney(result.plannedMaterial)}</MoneyText> · previsão</dd></div>}
               <div><dt>Costura</dt><dd>{result.sewing == null ? "Sem cobrança registrada" : displayMoney(result.sewing)}</dd></div>
               {(order.dtfStatus !== "none" || result.dtf != null) && <div><dt>Custo DTF</dt><dd>{result.dtf == null ? "Não informado" : displayMoney(result.dtf)}</dd></div>}
-              {result.other > 0 && <div><dt>Outros custos</dt><dd>{displayMoney(result.other)}</dd></div>}
-              <div><dt>Total de custos registrados</dt><dd>{displayMoney(result.total)}</dd></div>
+              {result.other > 0 && <div><dt>Outros custos</dt><dd><MoneyText>{displayMoney(result.other)}</MoneyText></dd></div>}
+              <div><dt>Total de custos registrados</dt><dd><MoneyText>{displayMoney(result.total)}</MoneyText></dd></div>
               {result.margin !== null && <div><dt>Margem sobre os custos registrados</dt><dd>{result.margin.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</dd></div>}
-              <div><dt>Recebido menos custos registrados</dt><dd>{displayMoney(result.receivedAfterCosts)}</dd></div>
+              <div><dt>Recebido menos custos registrados</dt><dd><MoneyText>{displayMoney(result.receivedAfterCosts)}</MoneyText></dd></div>
             </dl>
             {(result.plannedMaterial != null || result.material == null || (result.dtf == null && order.dtfStatus !== "none")) && <p>Resultado parcial. Há custos pendentes de compra ou de registro.</p>}
           </section>

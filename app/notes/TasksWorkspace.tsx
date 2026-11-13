@@ -8,7 +8,7 @@ import { millis } from "../notes-model";
 import NoteDialog from "./NoteDialog";
 import PdfDownloadButton from "../PdfDownloadButton";
 import type { Customer } from "../finance-model";
-import type { Task } from "./task-model";
+import { taskCompletionMonth, type Task } from "./task-model";
 import "./notes.css";
 import "./tasks.css";
 
@@ -30,13 +30,16 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
   const [celebrate, setCelebrate] = useState("");
   const [feedback, setFeedback] = useState<{ message: string; error?: boolean }>();
   const [printOpen, setPrintOpen] = useState(false);
+  const [historyMonth,setHistoryMonth]=useState(today.slice(0,7));
   const input = useRef<HTMLInputElement>(null);
   const customerNames = new Map(customers.map(customer => [customer.id, customer.name]));
   const pending = tasks.filter(task => !task.completed).sort((a, b) => millis(a.createdAt) - millis(b.createdAt));
-  const completed = tasks.filter(task => task.completed).sort((a, b) => millis(b.completedAt) - millis(a.completedAt));
+  const completed = tasks.filter(task => task.completed && taskCompletionMonth(task)===historyMonth).sort((a, b) => millis(b.completedAt) - millis(a.completedAt));
+  const historyMonths=[...new Set([today.slice(0,7),...tasks.filter(task=>task.completed).map(taskCompletionMonth)])].sort().reverse();
   const ready = connection === "live";
   const disabled = !ready || !!pendingAction;
-  const percent = tasks.length ? Math.round(100 * completed.length / tasks.length) : 0;
+  const periodTotal=pending.length+completed.length;
+  const percent = periodTotal ? Math.round(100 * completed.length / periodTotal) : 0;
 
   async function run(actionId: string, action: () => Promise<void>, message: string) {
     if (disabled) return;
@@ -107,7 +110,7 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
     <section className="tasks-board panel" aria-label="Lista de afazeres">
       <div className="tasks-progress">
         <span className="tasks-progress-icon"><ListChecks size={21} /></span>
-        <div><strong>{completed.length} de {tasks.length} {tasks.length === 1 ? "tarefa concluída" : "tarefas concluídas"}</strong><ProgressBar value={percent} label="Progresso dos afazeres" /></div>
+        <div><strong>{completed.length} de {periodTotal} {periodTotal === 1 ? "tarefa concluída" : "tarefas concluídas"}</strong><ProgressBar value={percent} label="Progresso dos afazeres" /></div>
         <b><CountUp value={percent} />%</b>
       </div>
       <form className="tasks-add" onSubmit={add}>
@@ -121,10 +124,10 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
         <h2>Pendentes <span>{pending.length}</span></h2>
         {pending.length ? <ul>{pending.map(renderTask)}</ul> : <div className="tasks-empty"><CircleCheck size={23} /><p>{tasks.length ? "Tudo em dia. Todas as tarefas foram concluídas." : "Adicione sua primeira tarefa acima."}</p></div>}
       </div>
-      {completed.length > 0 && <div className="tasks-list">
-        <h2>Concluídas <span>{completed.length}</span></h2>
-        <ul>{completed.map(renderTask)}</ul>
-      </div>}
+      <div className="tasks-list">
+        <div className="tasks-history-heading"><h2>Concluídas <span>{completed.length}</span></h2><select aria-label="Mês do histórico de afazeres" value={historyMonth} onChange={event=>setHistoryMonth(event.target.value)}>{historyMonths.map(month=><option key={month} value={month}>{month?month.split("-").reverse().join("/"):"Sem data"}</option>)}</select></div>
+        {completed.length?<ul>{completed.map(renderTask)}</ul>:<p className="tasks-history-empty">Nenhum afazer concluído neste mês.</p>}
+      </div>
     </section>
     {printOpen && <TasksPrint customerNames={customerNames} pending={pending} completed={completed} today={today} close={() => setPrintOpen(false)} />}
   </section>;

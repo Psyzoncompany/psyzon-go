@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 import { Check, ChevronRight, Clock3, CircleAlert, Circle } from "lucide-react";
+import MoneyText from "../MoneyText";
 import type { FinanceStatus } from "./presentation";
 
 export type FinanceListItem = { id: string; title: string; detail: string; amount: string; status: FinanceStatus; open: () => void; quick?: { label: string; icon: ReactNode; action: () => void }[] };
@@ -37,7 +38,7 @@ function FinanceSwipeRow({ item }: { item: FinanceListItem }) {
   return <li className="finance-swipe-row" onKeyDown={event => { if (event.key === "Escape") setOffset(0); }}>
     {!!revealWidth && <div className="finance-quick-actions" aria-hidden={offset === 0}>{item.quick?.slice(0,2).map(action => <button key={action.label} type="button" tabIndex={offset === 0 ? -1 : 0} onClick={() => { setOffset(0); action.action(); }}>{action.icon}<span>{action.label}</span></button>)}</div>}
     <button type="button" className="finance-row" aria-label={`${item.title}, ${item.amount}, ${item.status.label}. Abrir detalhes`} aria-haspopup="dialog" style={{ transform: `translateX(${offset}px)` }} onPointerDown={event => { if (event.button !== 0) return; suppressed.current = false; gesture.current = { x: event.clientX, y: event.clientY, offset, moved: false }; }} onPointerMove={move} onPointerUp={finish} onPointerCancel={() => { gesture.current = null; setOffset(0); }} onClick={() => { if (suppressed.current) { suppressed.current = false; return; } if (offset) setOffset(0); else item.open(); }}>
-      <span className="finance-row-copy"><b title={item.title}>{item.title}</b><small>{item.detail}</small><StatusIndicator status={item.status}/></span><strong className="finance-row-value">{item.amount}</strong><ChevronRight size={16} className="finance-row-chevron" aria-hidden="true"/>
+      <span className="finance-row-copy"><b title={item.title}>{item.title}</b><small>{item.detail}</small><StatusIndicator status={item.status}/></span><strong className="finance-row-value"><MoneyText>{item.amount}</MoneyText></strong><ChevronRight size={16} className="finance-row-chevron" aria-hidden="true"/>
     </button>
   </li>;
 }

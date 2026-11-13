@@ -1,6 +1,9 @@
 "use client";
 
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import useMoneyFit from "./useMoneyFit";
+import "./money-layout.css";
+import MoneyText from "./MoneyText";
 
 const whole = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
 const duration = 680;
@@ -61,13 +64,14 @@ type CounterProps = { value: number; format?: (value: number) => string };
 export function CountUp({ value, format = whole.format }: CounterProps) {
   const label = format(value);
   // A privacy mask never mounts the numeric animation or exposes a previous frame.
-  if (!Number.isFinite(value) || !/\d/.test(label)) return <>{label}</>;
+  if (!Number.isFinite(value) || !/\d/.test(label)) return label.includes("R$")?<MoneyText>{label}</MoneyText>:<>{label}</>;
   return <VisibleCount value={value} label={label} format={format} />;
 }
 
 function VisibleCount({ value, label, format }: Required<CounterProps> & { label: string }) {
   const ref = useTween(value, (node, frame) => { node.lastElementChild?.setAttribute("data-frame", format(frame)); });
-  return <span ref={ref} className="motion-number"><span>{label}</span><i aria-hidden="true" /></span>;
+  useMoneyFit(ref,label);
+  return <span ref={ref} className="motion-number" data-money={label.includes("R$")?"true":undefined} data-money-long={label.includes("R$")&&label.replace(/\D/g,"").length>=9}><span>{label}</span><i aria-hidden="true" /></span>;
 }
 
 export function ProgressBar({ value, label, color }: { value: number; label: string; color?: string }) {

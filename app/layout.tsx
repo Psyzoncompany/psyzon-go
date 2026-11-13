@@ -14,6 +14,7 @@ import "./mobile-windows.css";
 import "./interface-motion.css";
 import "./studio-glass.css";
 import { appearanceBootstrap } from "./interface-appearance";
+import AutoUpdate from "./AutoUpdate";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin"] });
 
@@ -44,5 +45,5 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
-  return <html lang="pt-BR" suppressHydrationWarning><head><script nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceBootstrap }} /></head><body className={geist.variable}>{children}</body></html>;
+  return <html lang="pt-BR" suppressHydrationWarning><head><script nonce={nonce} dangerouslySetInnerHTML={{ __html: appearanceBootstrap }} /></head><body className={geist.variable}><AutoUpdate />{children}</body></html>;
 }

@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 import type { InterfaceAppearance } from "./interface-appearance";
+import { contentAnimationMs } from "./animation-timing";
 
 const revealTargets = [
   ".metric-card", ".panel", ".kanban-order-card", ".dtf-order",
@@ -31,7 +32,7 @@ export default function useInterfaceMotion(view: string, ready: boolean, motion:
       delete element.dataset.cardReveal;
     }
 
-    function animate(element: HTMLElement, keyframes: Keyframe[], delay = 0, duration = 560) {
+    function animate(element: HTMLElement, keyframes: Keyframe[], delay = 0, duration = contentAnimationMs) {
       if (prepared.has(element)) element.dataset.cardReveal = "revealing";
       try {
         const animation = element.animate(keyframes, { duration, delay, easing: easeOut, fill: "backwards" });

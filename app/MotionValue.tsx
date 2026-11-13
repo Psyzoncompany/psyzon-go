@@ -4,9 +4,10 @@ import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import useMoneyFit from "./useMoneyFit";
 import "./money-layout.css";
 import MoneyText from "./MoneyText";
+import { contentAnimationMs } from "./animation-timing";
 
 const whole = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
-const duration = 680;
+const duration = contentAnimationMs;
 
 function useTween(value: number, draw: (element: HTMLSpanElement, frame: number) => void) {
   const element = useRef<HTMLSpanElement>(null);

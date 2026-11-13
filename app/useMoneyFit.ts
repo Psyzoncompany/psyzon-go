@@ -1,5 +1,6 @@
 "use client";
 import { useLayoutEffect, type RefObject } from "react";
+import { contentAnimationMs } from "./animation-timing";
 export default function useMoneyFit(ref: RefObject<HTMLSpanElement|null>, label: string) {
   useLayoutEffect(()=>{
     const node=ref.current,parent=node?.parentElement;
@@ -19,7 +20,7 @@ export default function useMoneyFit(ref: RefObject<HTMLSpanElement|null>, label:
     const schedule=()=>{cancelAnimationFrame(frameId);frameId=requestAnimationFrame(fit);};
     fit();const observer=new ResizeObserver(schedule);observer.observe(parent);
     const theme=new MutationObserver(schedule);theme.observe(document.documentElement,{attributes:true,attributeFilter:["style","class","data-ui-theme","data-ui-size"]});
-    void document.fonts.ready.then(schedule);const timer=window.setTimeout(schedule,750);
+    void document.fonts.ready.then(schedule);const timer=window.setTimeout(schedule,contentAnimationMs+70);
     return()=>{disposed=true;observer.disconnect();theme.disconnect();window.clearTimeout(timer);cancelAnimationFrame(frameId);};
   },[ref,label]);
 }

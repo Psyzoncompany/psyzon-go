@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, type RefObject } from "react";
+import { contentAnimationMs } from "./animation-timing";
 
 // Only the mask changes. Inputs, accessible text and the editor's selection stay native.
 function prepareText(element: HTMLElement, segmenter: Intl.Segmenter) {
@@ -96,7 +97,7 @@ function animateTyping(
   }
   if (!items.length) return;
   const total = items.reduce((sum, item) => sum + item.weight, 0);
-  const duration = Math.min(680, Math.max(180, total * 18));
+  const duration = contentAnimationMs;
   const start =
     performance.now() +
     (document.documentElement.dataset.pageTransition ? 70 : 20);

@@ -7,6 +7,22 @@ import { NoteSaveQueue } from "../app/notes-save-queue";
 import { parseProductionOrder, sampleProductionOrder } from "../app/production-checklist";
 import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
 import { indexOrderTasks } from "../app/notes/task-model";
+import { checklistCompletion } from "../app/completion-feedback";
+
+test("completion feedback follows real checks and ignores typing, imports and undo", () => {
+  const before=newDraft().document;
+  before.blocks=[{id:"a",type:"check",text:"Conferir",done:false},{id:"b",type:"check",text:"Embalar",done:false}];
+  const checked={...before,blocks:before.blocks.map(item=>({...item,done:item.id==="a"}))};
+  assert.deepEqual(checklistCompletion(before,checked),{done:1,total:2,complete:false,progress:50,previousProgress:0});
+  assert.equal(checklistCompletion(checked,{...checked,blocks:checked.blocks.map(item=>({...item,text:"Editado"}))}),undefined);
+  assert.equal(checklistCompletion(checked,before),undefined);
+  assert.equal(checklistCompletion(before,{...before,blocks:[{id:"import",type:"check",text:"Histórico",done:true}]}),undefined);
+  assert.equal(checklistCompletion(checked,{...checked,blocks:checked.blocks.map(item=>({...item,done:true}))})?.complete,true);
+  assert.equal(checklistCompletion(undefined,checked),undefined);
+  const checklist=parseProductionOrder("1M\n1G");
+  const production={...before,blocks:[],productionChecklist:checklist};
+  assert.equal(checklistCompletion(production,{...production,productionChecklist:{...checklist,rows:checklist.rows.map(item=>({...item,done:true}))}})?.complete,true);
+});
 
 test("order task checklists resolve customer links and only unambiguous legacy titles", () => {
   const order = { id: "jer", customer: "JERFESSON", status: "Produção" as const };

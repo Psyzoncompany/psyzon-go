@@ -1,4 +1,4 @@
-export type PaymentSuccess = { uid: string; title: string; description: string; amount: number; id: string };
+export type PaymentSuccess = { uid: string; title: string; description: string; amount?: number; id: string; kind?: "tick" | "milestone"; progress?: number; previousProgress?: number };
 export const paymentFeedbackEvent = "psyzon-payment-success";
 export const paymentPreferenceEvent = "psyzon-payment-preferences";
 export const paymentPreferenceKey = (uid: string) => `psy-payment-feedback-v1:${uid}`;
@@ -24,26 +24,30 @@ export function preparePaymentSound(uid: string) {
     audioReady = audioContext.resume().catch(() => {});
   } catch { /* Audio is optional; browsers can block it. */ }
 }
-export function paymentSucceeded(value: Omit<PaymentSuccess, "id">) {
+export function paymentSucceeded(value: Omit<PaymentSuccess, "id" | "amount"> & { amount: number }) { notifySuccess(value); }
+export function activitySucceeded(value: Omit<PaymentSuccess, "id" | "amount">) { notifySuccess({ ...value, kind: value.kind ?? "tick" }); }
+function notifySuccess(value: Omit<PaymentSuccess,"id">) {
   window.dispatchEvent(new CustomEvent<PaymentSuccess>(paymentFeedbackEvent, { detail: { ...value, id: crypto.randomUUID() } }));
   const confirmedAt = performance.now();
-  void Promise.resolve(audioReady).then(() => playPaymentSound(value.uid, confirmedAt));
+  void Promise.resolve(audioReady).then(() => playPaymentSound(value.uid, confirmedAt, value.kind));
 }
-function playPaymentSound(uid: string, confirmedAt: number) {
+let lastTickSound=0;
+function playPaymentSound(uid: string, confirmedAt: number, kind?: PaymentSuccess["kind"]) {
   if (!paymentPreferences(uid).sound || !audioContext || audioContext.state !== "running" || performance.now() - confirmedAt > 1000) return;
+  if(kind==="tick") { if(performance.now()-lastTickSound<250)return;lastTickSound=performance.now(); }
   try {
     const context = audioContext;
-    [523.25, 659.25, 783.99].forEach((frequency, index) => {
+    (kind==="tick"?[659.25,880]:kind==="milestone"?[523.25,659.25,783.99,1046.5]:[523.25,659.25,783.99]).forEach((frequency, index) => {
       const oscillator = context.createOscillator(), gain = context.createGain();
       const start = context.currentTime + index * .085;
       oscillator.type = "sine";
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(.055, start + .012);
-      gain.gain.exponentialRampToValueAtTime(.0001, start + .38);
+      gain.gain.linearRampToValueAtTime(kind==="tick"?.022:.055, start + .012);
+      gain.gain.exponentialRampToValueAtTime(.0001, start + (kind==="tick"?.16:.38));
       oscillator.connect(gain); gain.connect(context.destination);
       oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
-      oscillator.start(start); oscillator.stop(start + .4);
+      oscillator.start(start); oscillator.stop(start + (kind==="tick"?.18:.4));
     });
   } catch { /* A successful save must never depend on sound playback. */ }
 }

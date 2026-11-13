@@ -22,7 +22,7 @@ import CollectionAgenda from "./CollectionAgenda";
 import CompanyBalance from "./CompanyBalance";
 import type { BalanceEntry } from "./company-balance";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
-import { preparePaymentSound, paymentSucceeded } from "./payment-feedback";
+import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./payment-feedback";
 import { operationCosts } from "./operations-data";
 import type { PurchaseCostInput } from "./notes/PurchaseCostReview";
 import { toDraft, type NoteMaterial } from "./notes-model";
@@ -1104,9 +1104,12 @@ export default function HomePage() {
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
     if (firebaseState !== "live") throw new Error("Aguarde a conexão para atualizar a etapa.");
+    const forward=orderStatuses.indexOf(status)>orderStatuses.indexOf(order.status);
+    if(forward)preparePaymentSound(uid);
     try {
       await updateDoc(userDocument(uid, "orders", order.id), { status, deliveredAt: status === "Entregue" ? order.deliveredAt || calendarDate : null });
-      showToast(status === "Entregue" ? "Pedido movido para Entregues" : "Etapa do pedido atualizada");
+      if(forward)activitySucceeded({uid,title:status==="Entregue"?"Pedido entregue!":status==="Pronto"?"Pedido pronto!":"Etapa concluída",description:order.customer+" · "+status,kind:status==="Pronto"||status==="Entregue"?"milestone":"tick",progress:status==="Entregue"?100:statusProgress[status],previousProgress:statusProgress[order.status]});
+      else showToast("Etapa do pedido atualizada");
     } catch {
       throw new Error("Não foi possível salvar a etapa. Tente novamente.");
     }
@@ -1178,13 +1181,17 @@ export default function HomePage() {
 
   const updateRestock = async (id: string, change: RestockChange) => {
     if (!uid || firebaseState !== "live") throw new Error("Aguarde a sincronização do estoque.");
+    if(change.type==="toggle"&&change.completed)preparePaymentSound(uid);
+    let completedNow=false;
     await runTransaction(getFirestore(getApps()[0]), async transaction => {
       const reference = userDocument(uid, "notes", id);
       const snapshot = await transaction.get(reference);
       if (!snapshot.exists()) throw new Error("Este item já foi removido.");
+      completedNow=change.type==="toggle"&&change.completed&&!restockTasks([{...snapshot.data(),id} as BusinessNote])[0]?.completed;
       const value = changeRestockNote({ ...snapshot.data(), id } as BusinessNote, change);
       transaction.update(reference, { ...value, updatedAt: serverTimestamp() });
     });
+    if(completedNow)activitySucceeded({uid,title:"Estoque reposto",description:stockItems.find(item=>item.id===id)?.title||"Reposição concluída",kind:"milestone"});
   };
 
   const saveRestock = async (input: RestockInput, id?: string) => {
@@ -1204,7 +1211,10 @@ export default function HomePage() {
 
   const toggleTask = async (id: string, completed: boolean) => {
     if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
+    if(completed)preparePaymentSound(uid);
     await updateDoc(userDocument(uid, "tasks", id), { completed, completedAt: completed ? serverTimestamp() : null });
+    const task=tasks.find(item=>item.id===id);
+    if(completed && task && !task.completed){const allDone=tasks.every(item=>item.id===id||item.completed);activitySucceeded({uid,title:allDone?"Afazeres em dia!":"Afazer concluído",description:task.title,kind:allDone?"milestone":"tick",progress:Math.round(tasks.filter(item=>item.id===id||item.completed).length/tasks.length*100),previousProgress:Math.round(tasks.filter(item=>item.completed).length/tasks.length*100)});}
   };
 
   const deleteTask = async (id: string) => {
@@ -1235,6 +1245,8 @@ export default function HomePage() {
 
   const updateMaterialPurchase = async (id: string, materialIds: string[], mode: "complete" | "reopen" | "date", date = historyDate(Date.now())) => {
     if (!uid) throw new Error("Entre na sua conta para registrar a compra.");
+    if(mode==="complete")preparePaymentSound(uid);
+    let completedNow=false;
     const noteRef = userDocument(uid, "notes", id);
     await runTransaction(getFirestore(getApps()[0]), async transaction => {
       const snapshot = await transaction.get(noteRef);
@@ -1245,6 +1257,7 @@ export default function HomePage() {
       const previous = new Set(note.purchasedMaterialIds);
       const selected = new Set(materialIds);
       const targets = materials.filter(material => selected.has(material.id) && previous.has(material.id) === (mode !== "complete"));
+      completedNow=mode==="complete"&&targets.length>0;
       const refs = targets.map(material => userDocument(uid, "historyEntries", materialHistoryId(id, material.id)));
       const existing = mode === "date" ? await Promise.all(refs.map(ref => transaction.get(ref))) : [];
 
@@ -1258,6 +1271,7 @@ export default function HomePage() {
       }
       if (mode !== "date") transaction.update(noteRef, { materials: mode === "reopen" ? materials.map(item => { if (!selected.has(item.id)) return item; const { actualCost, purchaseFreight, purchaseDate, linkedExpenseIds, linkedExpenseAmount, ...plan } = item; return plan; }) : materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
     });
+    if(completedNow)activitySucceeded({uid,title:"Compra concluída",description:notes.find(note=>note.id===id)?.title||"Materiais comprados",kind:"milestone"});
   };
 
   const reviewPurchaseCost = async (input: PurchaseCostInput) => {

@@ -11,6 +11,8 @@ import { useTypewriter } from "./Typewriter";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
 import { block, categories, currency, decimal, exportNote, makeId, millis, newDraft, plainText, readDocument, serializeDraft, supplierGroups, templates, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial, type StoredNote, type TextBlock } from "./notes-model";
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
+import { checklistCompletion } from "./completion-feedback";
+import { activitySucceeded, preparePaymentSound } from "./payment-feedback";
 import NoteDialog from "./notes/NoteDialog";
 import PdfDownloadButton from "./PdfDownloadButton";
 import MobileNotesControls from "./notes/MobileNotesControls";
@@ -29,7 +31,7 @@ const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
 const rawNote = (n: BusinessNote): StoredNote => ({ title: n.title, content: n.content, category: n.category, pinned: n.pinned, materials: n.materials || [], ...(typeof n.productionPhotoData === "string" ? { productionPhotoData: n.productionPhotoData } : {}) });
 const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(value) : "Agora";
 // One client queue per signed-in user also protects rapid unmount/remount navigation.
-type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void };
+type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void; beforeWrite?: (id: string) => StoredNote | undefined; completionBase?: Map<string,StoredNote> };
 const queues = new Map<string, QueueEntry>();
 
 export default function NotesWorkspace({ productionOnly = false, uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials, expenses, reviewPurchase }: Props) {
@@ -77,9 +79,15 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     const readRecoveries = (): Record<string, Recovery<StoredNote>> => { try { return JSON.parse(localStorage.getItem(key) || "{}"); } catch { return {}; } };
     let entry = queues.get(uid);
     if (!entry) {
-      const created: QueueEntry = { queue: undefined as unknown as NoteSaveQueue<StoredNote> };
+      const created: QueueEntry = { queue: undefined as unknown as NoteSaveQueue<StoredNote>, completionBase: new Map() };
       created.queue = new NoteSaveQueue<StoredNote>(
-        async (id, value) => { await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...value, updatedAt: serverTimestamp() }); },
+        async (id, value) => {
+          const before=created.completionBase?.get(id) ?? created.beforeWrite?.(id);
+          await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...value, updatedAt: serverTimestamp() });
+          created.completionBase?.set(id,value);
+          const progress=checklistCompletion(before?readDocument(before.content,before.materials):undefined,readDocument(value.content,value.materials));
+          if(progress)activitySucceeded({uid,title:progress.complete?"Checklist concluído":"Item conferido",description:value.title+" · "+progress.done+" de "+progress.total,kind:progress.complete?"milestone":"tick",progress:progress.progress,previousProgress:progress.previousProgress});
+        },
         (id, value) => created.recover?.(id, value),
         (id, status) => created.report?.(id, status),
       );
@@ -94,6 +102,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
         } catch { if (alive.current) setStorageError(true); }
       };
     entry.report = (id, status) => { if (alive.current) setStatuses(current => ({ ...current, [id]: status })); };
+    entry.beforeWrite = id => { const note=propsRef.current.find(item=>item.id===id);return note?rawNote(note):undefined; };
     const queue = entry.queue;
     const recovered = readRecoveries();
     const pending = queue.pendingValues();
@@ -155,6 +164,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     if (!queueRef.current?.isPending(id)) {
       const remote = propsRef.current.find(n => n.id === id);
       baseline.current[id] = remote ? JSON.stringify(rawNote(remote)) : "";
+      if(remote)queues.get(uid)?.completionBase?.set(id,rawNote(remote));else queues.get(uid)?.completionBase?.delete(id);
     }
     const next = { ...overlaysRef.current, [id]: { draft: value, time: Date.now() } };
     overlaysRef.current = next; setOverlays(next); queueRef.current?.stage(id, serialized);
@@ -164,6 +174,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     const existing = overlaysRef.current[id]?.draft || (propsRef.current.find(n => n.id === id) ? draftFor(propsRef.current.find(n => n.id === id)!) : undefined);
     if (!existing) return;
     const next = mutate(existing);
+    if(checklistCompletion(existing.document,next.document))preparePaymentSound(uid);
     const h = history.current[id] ||= { undo: [], redo: [], typingAt: 0 };
     if (!typing || Date.now() - h.typingAt > 700) { h.undo.push(existing); if (h.undo.length > 40) h.undo.shift(); }
     h.redo = []; h.typingAt = typing ? Date.now() : 0;

@@ -19,6 +19,16 @@
 .payment-success[data-animated="true"] .payment-success-halo { animation: payment-success-halo .85s ease-out both; }
 .payment-success[data-animated="true"] .payment-success-particles i::after { animation: payment-success-spark .65s .16s ease-out both; }
 .payment-feedback-settings { padding: 20px; margin-top: 16px; }
+.payment-success[data-kind="tick"] { top: auto; bottom: 24px; width: min(370px,calc(100vw - 24px)); padding: 12px 14px; gap: 10px; }
+.payment-success[data-kind="tick"] .payment-success-mark { flex-basis: 34px; height: 34px; }
+.payment-success[data-kind="tick"] :is(.payment-success-halo,.payment-success-particles,.payment-success-controls button:first-child) { display: none; }
+.payment-success[data-kind="milestone"] .payment-success-copy b { font-size: 18px; }
+.payment-success-copy:has(.completion-progress) { flex: 1; }
+.completion-progress { display: block; height: 4px; background: var(--blue-soft); border-radius: 8px; overflow: hidden; margin-top: 5px; }
+.completion-progress i { display: block; height: 100%; border-radius: inherit; background: var(--blue); transform-origin: left; transform: scaleX(var(--completion-to)); }
+.payment-success[data-animated="true"] .completion-progress i { animation: completion-progress-fill .55s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes completion-progress-fill { from { transform: scaleX(var(--completion-from)); } to { transform: scaleX(var(--completion-to)); } }
+@media(max-width:760px) { .payment-success[data-kind="tick"] { bottom: calc(88px + env(safe-area-inset-bottom)); } }
 .payment-feedback-settings h2 { font-size: 17px; margin: 0 0 12px; }
 .payment-feedback-settings label { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; border-top: 1px solid var(--border); font-size: 14px; }
 @keyframes payment-success-in { from { opacity: 0; translate: 0 -18px; scale: .96; } to { opacity: 1; translate: 0 0; scale: 1; } }

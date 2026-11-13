@@ -164,6 +164,7 @@ const SewingWorkspace = dynamic(() => import("./SewingWorkspace"), { ssr: false 
 const MonthlyClosingWorkspace = dynamic(() => import("./MonthlyClosingWorkspace"), { ssr: false });
 const AppearanceSettings = dynamic(() => import("./AppearanceSettings"), { ssr: false });
 const OrderPhotoField = dynamic(() => import("./OrderPhotoField"), { ssr: false });
+const PhotoOptimization = dynamic(() => import("./PhotoOptimization"), { ssr: false });
 const PSYZONAI = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
 const NotesWorkspace = dynamic(() => import("./NotesWorkspace"), { ssr: false });
 const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
@@ -1892,10 +1893,11 @@ export default function HomePage() {
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium">
+      {firebaseState==="live"&&<PhotoOptimization key={uid} uid={uid} orders={storedOrders} notes={notes} dtfOrders={dtfOrders}/>}
       <aside className="sidebar">
         <div className="sidebar-brand-row">
           <button className="brand" onClick={() => setView("inicio")} aria-label="Ir para o início">
-            <Image className="brand-mark" src="/icon-192-v3.png" alt="" width={34} height={34} priority />
+            <Image className="brand-mark" src="/brand-mark.webp" alt="" width={34} height={34} priority />
             <span><b>PSYZON</b><small>GO</small></span>
           </button>
           <button className="sidebar-collapse-button" onClick={() => setSidebarCollapsed((current) => !current)} aria-label={sidebarCollapsed ? "Abrir menu lateral" : "Fechar menu lateral"} aria-expanded={!sidebarCollapsed}>{sidebarCollapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}</button>
@@ -1909,7 +1911,7 @@ export default function HomePage() {
 
       <main className="main">
         <header className={`topbar ${noteViews.includes(view) ? "notes-topbar" : ""}`}>
-          <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/icon-192-v3.png" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
+          <button className="mobile-logo" onClick={() => setView("inicio")} aria-label="Ir para o início"><Image className="brand-mark" src="/brand-mark.webp" alt="" width={29} height={29} priority /><b>PSYZON</b></button>
           {noteViews.includes(view) ? <NotesNavigation view={view} navigate={setView} /> : <div className="search-wrap">
             <Search size={18} />
             <input ref={searchRef} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar em tudo…" aria-label="Buscar cliente, pedido ou produto" />
@@ -1980,11 +1982,11 @@ export default function HomePage() {
 
 
 function ConnectionErrorScreen({ message }: { message: string }) {
-  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados centralizados</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">CONFIGURAÇÃO DO FIRESTORE</span><h2>Não foi possível abrir os dados.</h2><p>{message}</p></div><button className="google-button" onClick={() => window.location.reload()}><RotateCcw size={17} /><b>Tentar novamente</b></button><div className="auth-security"><span><span /></span><div><b>Cloud Firestore</b><small>O login Google foi removido nesta etapa.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
+  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/brand-mark.webp" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados centralizados</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">CONFIGURAÇÃO DO FIRESTORE</span><h2>Não foi possível abrir os dados.</h2><p>{message}</p></div><button className="google-button" onClick={() => window.location.reload()}><RotateCcw size={17} /><b>Tentar novamente</b></button><div className="auth-security"><span><span /></span><div><b>Cloud Firestore</b><small>O login Google foi removido nesta etapa.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
 }
 
 function AuthScreenV2({ error, onSignIn }: { error: string; onSignIn: () => void }) {
-  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/icon-192-v3.png" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados privados por conta</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">ACESSO SEGURO</span><h2>Bem-vindo ao seu centro de operação.</h2><p>Entre com sua conta Google para acessar seus dados no Firestore.</p></div><button className="google-button" onClick={onSignIn}><span>G</span><b>Continuar com Google</b><ChevronRight size={17} /></button>{error && <p className="auth-error" role="alert">{error}</p>}<div className="auth-security"><span><span /></span><div><b>Conexão protegida</b><small>Seus dados ficam vinculados somente à sua conta.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
+  return <main className="auth-screen auth-screen-v2"><section className="auth-shell"><div className="auth-showcase"><div className="auth-logo"><img src="/brand-mark.webp" width="54" height="54" alt="PSYZON GO" /><span><b>PSYZON</b><small>GO</small></span></div><div className="auth-message"><span className="auth-kicker">GESTÃO QUE ACOMPANHA SUA PRODUÇÃO</span><h1>Controle a empresa.<br />Sem perder o ritmo.</h1><p>Pedidos, clientes, produção e financeiro trabalhando juntos em uma visão simples.</p></div><div className="auth-benefits"><span><Check size={15} /><b>Dados privados por conta</b></span><span><Check size={15} /><b>Sincronização em tempo real</b></span><span><Check size={15} /><b>Custos e prazos sob controle</b></span></div></div><div className="auth-access"><div><span className="auth-kicker">ACESSO SEGURO</span><h2>Bem-vindo ao seu centro de operação.</h2><p>Entre com sua conta Google para acessar seus dados no Firestore.</p></div><button className="google-button" onClick={onSignIn}><span>G</span><b>Continuar com Google</b><ChevronRight size={17} /></button>{error && <p className="auth-error" role="alert">{error}</p>}<div className="auth-security"><span><span /></span><div><b>Conexão protegida</b><small>Seus dados ficam vinculados somente à sua conta.</small></div></div><small className="auth-version">PSYZON COMPANY · OPERAÇÃO EM TEMPO REAL</small></div></section></main>;
 }
 
 
@@ -2003,7 +2005,7 @@ function localDateValue(date = new Date()) {
 function StartupLoading({ firstName }: { firstName?: string }) {
   return <main className="loading-state" role="status" aria-label="Carregando Psyzon GO">
     <div className="loading-brand">
-      <Image src="/icon-192-v3.png" alt="Psyzon GO" width={72} height={72} priority />
+      <Image src="/brand-mark.webp" alt="Psyzon GO" width={72} height={72} priority />
       <h1>{firstName ? `Boas-vindas, ${firstName}!` : "Boas-vindas ao Psyzon GO"}</h1>
       <div className="loading-track" aria-hidden="true"><span /></div>
     </div>

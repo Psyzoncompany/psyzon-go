@@ -29,7 +29,7 @@ export const maxDtfPrints = 50;
 export const maxDtfPrintPhoto = 18000;
 export const maxDtfPhotos = 8;
 export const maxDtfPhotoData = 450000;
-const isReferencePhoto = (photo: unknown): photo is string => typeof photo === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(photo);
+const isReferencePhoto = (photo: unknown): photo is string => typeof photo === "string" && /^data:image\/(?:jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(photo);
 
 export function dtfPhotos(order: Pick<DtfInput, "photoData" | "referencePhotos">) {
   const photos = isReferencePhoto(order.photoData) ? [order.photoData] : [];

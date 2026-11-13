@@ -67,7 +67,7 @@ service cloud.firestore {
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
         && (!("dtfStatus" in data) || data.dtfStatus in ["none", "pending", "requested"])
         && optionalText(data, "notes", 4000)
-        && (!("photoData" in data) || (text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))))
+        && (!("photoData" in data) || (text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/(jpeg|webp);base64,[A-Za-z0-9+/=]+$'))))
         && validCreatedAt(data);
     }
 
@@ -99,7 +99,7 @@ service cloud.firestore {
         && data.stage in ["Orçamento", "Aguardando arte", "Em impressão", "Pronto", "Entregue"]
         && text(data.artworkUrl, 0, 2000) && (data.artworkUrl == "" || data.artworkUrl.matches('^https?://[^\\s]+$'))
         && text(data.notes, 0, 4000)
-        && text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))
+        && text(data.photoData, 0, 450000) && (data.photoData == "" || data.photoData.matches('^data:image/(jpeg|webp);base64,[A-Za-z0-9+/=]+$'))
         && optionalText(data, "referencePhotos", 450000 - data.photoData.size())
         && optionalText(data, "printsData", 500000)
         && data.createdAt is timestamp && data.updatedAt == request.time;
@@ -169,7 +169,7 @@ service cloud.firestore {
         && data.pinned is bool
         && data.materials is list && data.materials.size() <= 100
         && (!("purchasedMaterialIds" in data) || (data.purchasedMaterialIds is list && data.purchasedMaterialIds.size() <= 100))
-        && (!("productionPhotoData" in data) || (text(data.productionPhotoData, 0, 450000) && (data.productionPhotoData == "" || data.productionPhotoData.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$'))))
+        && (!("productionPhotoData" in data) || (text(data.productionPhotoData, 0, 450000) && (data.productionPhotoData == "" || data.productionPhotoData.matches('^data:image/(jpeg|webp);base64,[A-Za-z0-9+/=]+$'))))
         && (!("checklist" in data) || data.checklist == null || validChecklist(data.checklist))
         && validCreatedAt(data)
         && data.updatedAt is timestamp;

@@ -129,6 +129,18 @@
 }
 
 @media screen and (max-width: 760px) {
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="inicio"] { --studio-photo: url("/studio-glass/mobile/inicio.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="producao"] { --studio-photo: url("/studio-glass/mobile/producao.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="dtf"] { --studio-photo: url("/studio-glass/mobile/dtf.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="notas"] { --studio-photo: url("/studio-glass/mobile/notas.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="materiais"] { --studio-photo: url("/studio-glass/mobile/materiais.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="afazeres"] { --studio-photo: url("/studio-glass/mobile/afazeres.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="reposicao"] { --studio-photo: url("/studio-glass/mobile/reposicao.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="costureiras"] { --studio-photo: url("/studio-glass/mobile/costureiras.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="clientes"] { --studio-photo: url("/studio-glass/mobile/clientes.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="financeiro"] { --studio-photo: url("/studio-glass/mobile/financeiro.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="historico"] { --studio-photo: url("/studio-glass/mobile/historico.webp"); }
+  :root[data-ui-theme="studio-glass"] .app-shell[data-view="mais"] { --studio-photo: url("/studio-glass/mobile/mais.webp"); }
   :root[data-ui-theme="studio-glass"] .app-shell::before { background-position: center, center, 57% center, center; }
   :root[data-ui-theme="studio-glass"] .app-shell .mobile-nav > button.active { color: var(--blue); }
 }

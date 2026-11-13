@@ -39,16 +39,16 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshot-wide.png",
+      "src": "/screenshot-wide.webp",
       "sizes": "1280x720",
-      "type": "image/png",
+      "type": "image/webp",
       "form_factor": "wide",
       "label": "Painel de produção e financeiro da PSYZON GO"
     },
     {
-      "src": "/screenshot-mobile.png",
+      "src": "/screenshot-mobile.webp",
       "sizes": "750x1334",
-      "type": "image/png",
+      "type": "image/webp",
       "form_factor": "narrow",
       "label": "PSYZON GO no celular"
     }

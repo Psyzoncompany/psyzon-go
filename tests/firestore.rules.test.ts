@@ -156,6 +156,7 @@ test("DTF orders support linked and avulso work, exact cent rounding and owner-o
   await assertSucceeds(updateDoc(ref, { separated: false, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { separated: "true", updatedAt: serverTimestamp() }));
   await assertSucceeds(updateDoc(ref, { quantity: 3, referencePhotos: '["data:image/jpeg;base64,AAAA"]', updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref,{photoData:"data:image/webp;base64,UklGRgAAAAA=",referencePhotos:'["data:image/webp;base64,UklGRgAAAAA="]',updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(ref, { quantity: 1.5, updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { printsData: [], updatedAt: serverTimestamp() }));
   await assertFails(updateDoc(ref, { paidCents: 129, updatedAt: serverTimestamp() }));
@@ -221,10 +222,14 @@ test("order photos and production checklists are restricted to the owner and exp
   const db = environment.authenticatedContext("user-a").firestore();
   const photo = "data:image/jpeg;base64,/9j/AAAA";
   await assertSucceeds(setDoc(doc(db, "users/user-a/orders/photo"), { ...validOrder(), photoData: photo }));
+  const webp="data:image/webp;base64,UklGRgAAAAA=";
+  await assertSucceeds(updateDoc(doc(db,"users/user-a/orders/photo"),{photoData:webp}));
+  await assertFails(updateDoc(doc(db,"users/user-a/orders/photo"),{photoData:"data:image/svg+xml;base64,AAAA"}));
   await assertFails(updateDoc(doc(db, "users/user-a/orders/photo"), { photoData: "https://example.com/image.svg" }));
   const note = { title: "Produção", content: "", category: "Produção", pinned: false, materials: [], updatedAt: Timestamp.now(), checklist: { client: "JERFESSON", deadline: "", notes: "", warnings: [], rows: [{ id: "1", model: "Masculina", size: "P", name: "Enzo", done: false }] } };
   await assertSucceeds(setDoc(doc(db, "users/user-a/notes/checklist"), note));
   await assertSucceeds(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: photo }));
+  await assertSucceeds(updateDoc(doc(db,"users/user-a/notes/checklist"),{productionPhotoData:webp}));
   await assertFails(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: "https://example.com/photo.svg" }));
   await assertSucceeds(updateDoc(doc(db, "users/user-a/notes/checklist"), { productionPhotoData: "" }));
   await assertFails(updateDoc(doc(db, "users/user-a/notes/checklist"), { checklist: { ...note.checklist, rows: Array(501).fill({}) } }));

@@ -65,6 +65,10 @@ export async function enforcePrivacyRateLimit(identity: FirebaseIdentity, reques
   return enforceFinancialRateLimit(identity, request, "values-privacy", 12, 24);
 }
 
+export async function enforceImageRateLimit(identity: FirebaseIdentity, request: Request) {
+  return enforceFinancialRateLimit(identity,request,"image-conversion",180,540);
+}
+
 async function enforceFinancialRateLimit(identity: FirebaseIdentity, request: Request, scope: string, userLimit: number, ipLimit: number) {
   const now = Date.now();
   const windowStart = now - (now % RATE_LIMIT_WINDOW_MS);

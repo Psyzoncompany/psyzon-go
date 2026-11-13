@@ -1,0 +1,13 @@
+.company-balance-card { display: flex; flex-direction: column; justify-content: center; }
+.company-balance-card .metric-top h2 { margin: 0; color: var(--muted); font-size: 10px; font-weight: 680; text-transform: uppercase; letter-spacing: .065em; line-height: 1.4; }
+.company-balance-card > strong { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; white-space: normal; }
+.company-balance-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.company-balance-actions button { display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; min-height: 28px; background: transparent; border: 0; color: var(--muted); font-size: 11px; cursor: pointer; }
+.company-balance-actions button:hover { color: var(--blue); }
+.company-balance-actions .company-balance-initialize { color: var(--blue); }
+.company-balance-history-content { padding: 0 20px 20px; }
+@media(max-width:760px) { :root[data-ui-theme] .app-shell[data-layout] .company-metrics > .company-balance-card { min-height: 0; } :root[data-ui-theme] .app-shell[data-layout] .company-metrics > .company-balance-card > strong { margin: 0; font-size: 22px; } }
+:root[data-ui-theme] .app-shell[data-layout] .metric-grid.sewing-metrics.company-metrics { grid-template-columns: repeat(5,minmax(0,1fr)); }
+.finance-premium-summary.company-finance-summary { grid-template-columns: repeat(4,minmax(0,1fr)); }
+@media(max-width:1100px) { :root[data-ui-theme] .app-shell[data-layout] .metric-grid.sewing-metrics.company-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); } .company-metrics > .company-balance-card { grid-column: 1/-1; } .finance-premium-summary.company-finance-summary { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media(max-width:760px) { .company-balance-card .metric-top h2 { font-size: 11px; text-transform: none; letter-spacing: 0; } .company-balance-actions button { min-height: 44px; } .company-metrics > .company-balance-card { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; column-gap: 12px; min-height: 0; } .company-metrics > .company-balance-card > strong { margin: 0; font-size: 22px; text-align: right; } .company-metrics .company-balance-actions { grid-column: 1/-1; } .finance-premium-summary.company-finance-summary article:last-child { grid-column: auto; display: grid; grid-template-columns: 1fr; } .finance-premium-summary .company-balance-card { padding: 16px; border-radius: 20px; } }

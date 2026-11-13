@@ -2,7 +2,7 @@
 import { TypedHeading } from "./Typewriter";
 import { CountUp } from "./MotionValue";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import Modal from "./Modal";
 import FinanceListCard, { StatusIndicator, type FinanceListItem } from "./finance/FinanceListCard";
 import FinanceDetailSheet from "./finance/FinanceDetailSheet";
@@ -14,6 +14,7 @@ import { customerNameKey } from "./finance-model";
 export type BillInput = Omit<Bill, "id" | "createdAt" | "lastPaidMonth" | "paidInstallments" | "settled">;
 type Expense = { id: string; description: string; amount: number; type: string; transactionDate?: string; createdAt?: unknown; category?: string };
 type Props = {
+  balanceCard: ReactNode;
   today?: string;
   bills: Bill[];
   restock: Bill[];
@@ -38,7 +39,7 @@ export function expenseDate(item: Expense) {
   return date && Number.isFinite(date.getTime()) ? localDateValue(date) : "";
 }
 
-export default function FinanceWorkspace({ today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
+export default function FinanceWorkspace({ balanceCard, today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
   const [selectedMonth, setMonth] = useState<string | null>(null);
   const month = selectedMonth ?? currentMonth;
   const [editor, setEditor] = useState<{ bill: Bill | null } | null>(null);
@@ -82,7 +83,7 @@ export default function FinanceWorkspace({ today = localDateValue(), bills, rest
   return <div className="finance-workspace finance-premium">
     <div className="page-heading compact"><div><TypedHeading>Financeiro</TypedHeading></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="finance-premium-summary"><article><small>A pagar</small><strong><CountUp value={toPay} format={displayTotal} /></strong><span>{openCount}</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
+      <div className="finance-premium-summary company-finance-summary">{balanceCard}<article><small>A pagar</small><strong><CountUp value={toPay} format={displayTotal} /></strong><span>{openCount}</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
       <div className="finance-premium-columns">
         <FinanceListCard title="Contas a pagar" subtitle={openCount} total={<CountUp value={toPay} format={displayTotal} />} totalLabel="Total em aberto" icon={<ReceiptText size={23}/>} items={toBillItems(payable)} empty="Nenhuma conta a pagar. Tudo em dia."/>
         <FinanceListCard title="A receber" subtitle={`${debtors.length + receivable.length} ${debtors.length + receivable.length === 1 ? "saldo pendente" : "saldos pendentes"}`} total={<CountUp value={pending} format={displayTotal} />} totalLabel="Total a receber" icon={<ArrowDownLeft size={23}/>} items={[...customerItems, ...toBillItems(receivable)]} empty="Nenhum valor a receber."><div className="finance-next-month"><span>A pagar em {nextPayables.label}</span><b>{displayTotal(nextPayables.total)}</b></div></FinanceListCard>

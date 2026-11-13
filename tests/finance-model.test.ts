@@ -396,6 +396,14 @@ test("monthly closing excludes unreviewed profit and counts receipts, sewing and
   assert.equal(earlier.totals.delivered, 0);
 });
 
+test("legacy bill payments resolve by exact bill link and timestamp without touching unrelated expenses", () => {
+  const old=bill({id:"internet",billingType:"fixed",lastPaidMonth:"2026-08"});
+  const expenses=[{id:"random-old",billId:"internet",source:"bill",type:"expense",createdAt:{seconds:Date.parse("2026-08-12T15:00:00Z")/1000}}, {id:"prior",billId:"internet",source:"bill",type:"expense",transactionDate:"2026-07-12"}, {id:"other",billId:"different",source:"bill",type:"expense",transactionDate:"2026-08-12"}];
+  assert.equal(currentBillExpense(old,expenses)?.id,"random-old");
+  assert.equal(billReversal(old,expenses).lastPaidMonth,"2026-07");
+  assert.equal(currentBillExpense({...old,lastPaidMonth:"2026-09"},expenses),undefined);
+});
+
 test("company balance counts only explicit ledger movements and reverses removed payments", async () => {
   const { companyBalance }=await import("../app/company-balance");
   const item=(id:string,amount:number)=>({id,amount,description:id,date:"2026-11-12"});

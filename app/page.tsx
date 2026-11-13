@@ -1808,17 +1808,19 @@ export default function HomePage() {
       const snapshot = await transaction.get(reference);
       if (!snapshot.exists()) throw new Error("Esta conta foi excluída.");
       const current = { ...snapshot.data(), id: snapshot.id } as Bill;
-      if (current.direction === "receivable" || !billIsSettled(current) || current.lastPaidMonth !== bill.lastPaidMonth || current.billingType !== bill.billingType || current.paidInstallments !== bill.paidInstallments) {
+      if (current.direction === "receivable" || !billIsSettled(current,current.lastPaidMonth || calendarDate.slice(0,7)) || current.lastPaidMonth !== bill.lastPaidMonth || current.billingType !== bill.billingType || current.paidInstallments !== bill.paidInstallments) {
         throw new Error("A conta mudou. Confira os dados atualizados antes de desfazer.");
       }
       const periods = current.lastPaidMonth ? [current.lastPaidMonth, "once"] : ["once"];
-      const payments = await Promise.all(periods.map(period => transaction.get(userDocument(uid, "transactions", billPaymentId(bill.id, period)))));
-      const recorded = currentBillExpense(current, payments.flatMap(payment => payment.exists() ? [{ ...payment.data(), id: payment.id } as Transaction] : []));
+      const paymentIds=new Set([...periods.map(period=>billPaymentId(bill.id,period)),...transactions.filter(item=>item.source==="bill"&&item.billId===bill.id).map(item=>item.id)]);
+      const payments = await Promise.all([...paymentIds].map(id => transaction.get(userDocument(uid, "transactions", id))));
+      const livePayments=payments.flatMap(payment => payment.exists() ? [{ ...payment.data(), id: payment.id } as Transaction] : []);
+      const recorded = currentBillExpense(current, livePayments);
       if (recorded?.id !== expected?.id || millis(recorded?.createdAt) !== millis(expected?.createdAt)) {
         throw new Error("O pagamento mudou. Confira os dados atualizados antes de desfazer.");
       }
       if (recorded) { transaction.delete(userDocument(uid, "transactions", recorded.id)); transaction.delete(userDocument(uid,"balanceEntries",recorded.id)); }
-      const reversal = billReversal(current, transactions);
+      const reversal = billReversal(current, livePayments);
       transaction.update(reference, { ...reversal, lastPaidMonth: reversal.lastPaidMonth ?? deleteField() });
     });
     showToast("Pagamento desfeito. Conta voltou para A pagar.");

@@ -7,7 +7,7 @@ import { operationCosts } from "../../operations-data";
 import { orderResult } from "../../order-result";
 import type { ClosingTransaction } from "../../monthly-closing";
 import { openFinanceReport } from "./ai-operations";
-import { materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOrders } from "../../notes/materials-model";
+import { materialPurchaseBills, materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOrders } from "../../notes/materials-model";
 import { notePhotoOrderId } from "../../order-photo-sync";
 import { orderStatuses, normalizeOrderStatus } from "../../order-model";
 import { restockTasks, restockBills, restockPrefix } from "../../notes/restock-model";
@@ -200,6 +200,7 @@ function businessOpenBalances(data: Awaited<ReturnType<typeof getBusinessData>>)
     ...data.bills as unknown as Bill[],
     ...restockBills(restockTasks(notes)),
     ...sewingBills(orders, readSewing(notes)),
+    ...materialPurchaseBills(notes, orders, data.customers as unknown as Customer[]),
   ].filter(bill => bill.account === "business");
   return financialSummary(customerBalances(data.customers as unknown as Customer[], orders), bills, monthKey());
 }
@@ -208,13 +209,13 @@ const matchesQuery = (value: string, query: string) => customerNameKey(value).in
 const queryParameters = { type: "object", properties: { query: { type: "string", description: "Filtro opcional por nome, cliente ou descrição." } } };
 
 const getOpenFinance: ToolDefinition = {
-  declaration: { type: "function", name: "get_open_finance", description: "Consulta as mesmas contas abertas do Financeiro: a pagar, atrasadas e a receber. Inclui saldos de clientes, reposição e costura. Use para listar e priorizar vencimentos. Valores pendentes não representam dinheiro disponível.", parameters: queryParameters },
+  declaration: { type: "function", name: "get_open_finance", description: "Consulta as mesmas contas abertas do Financeiro: a pagar, atrasadas e a receber. Inclui saldos de clientes, reposição, materiais dos pedidos e costura. Use para listar e priorizar vencimentos. Valores pendentes não representam dinheiro disponível.", parameters: queryParameters },
   riskLevel: 1, requiredPermission: "read_only", requiresConfirmation: false,
   execute: async ({ identity }, args) => {
     const data = await getBusinessData(identity, false);
     const orders = data.orders as unknown as Order[];
     const notes = data.notes as unknown as BusinessNote[];
-    const derived = [...restockBills(restockTasks(notes)), ...sewingBills(orders, readSewing(notes))];
+    const derived = [...restockBills(restockTasks(notes)), ...sewingBills(orders, readSewing(notes)), ...materialPurchaseBills(notes, orders, data.customers as unknown as Customer[])];
     const financeReport = openFinanceReport(orders, data.customers as unknown as Customer[], data.bills as unknown as Bill[], derived, today(), text(args.query));
     const modelRows = (items: AIFinanceEntry[]) => items.map(({ amount, ...item }) => ({ ...item, amountFormatted: formatMoney(amount) }));
     return {

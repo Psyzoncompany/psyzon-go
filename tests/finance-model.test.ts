@@ -426,11 +426,11 @@ test("company balance counts only explicit ledger movements and reverses removed
   assert.equal(companyBalance([item("a",.1),item("b",.2)]),.3);
 });
 
-test("material purchase deadline stays seven days before delivery across months and years", async () => {
+test("material purchase deadline stays fifteen days before delivery across months and years", async () => {
   const { materialPurchaseDeadline } = await import("../app/notes/materials-model");
-  assert.equal(materialPurchaseDeadline("2026-11-21"), "2026-11-14");
-  assert.equal(materialPurchaseDeadline("2027-01-03"), "2026-12-27");
-  assert.equal(materialPurchaseDeadline("2028-03-03"), "2028-02-25");
+  assert.equal(materialPurchaseDeadline("2026-11-21"), "2026-11-06");
+  assert.equal(materialPurchaseDeadline("2027-01-03"), "2026-12-19");
+  assert.equal(materialPurchaseDeadline("2028-03-03"), "2028-02-17");
   assert.equal(materialPurchaseDeadline("2026-02-30"), undefined);
   assert.equal(materialPurchaseDeadline(), undefined);
 });

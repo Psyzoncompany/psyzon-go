@@ -13,6 +13,7 @@ import "./kanban-redesign.css";
 import "./mobile-windows.css";
 import "./interface-motion.css";
 import "./studio-glass.css";
+import "./compact-cards.css";
 import { appearanceBootstrap } from "./interface-appearance";
 import AutoUpdate from "./AutoUpdate";
 

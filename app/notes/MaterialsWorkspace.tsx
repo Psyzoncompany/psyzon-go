@@ -74,11 +74,11 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
     <button type="button" className="materials-back" onClick={back}><ArrowLeft size={16} /> Bloco de notas</button>
     <header className="materials-heading">
       <div><h1>Materiais</h1></div>
-      <div className="materials-heading-actions"><button type="button" className="primary" onClick={() => setEntry({})}><Plus size={17} /> Adicionar materiais</button><button type="button" className="secondary" onClick={() => setShoppingOpen(true)}><Clipboard size={17} /> Compras por fornecedor</button><button type="button" className="secondary" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar materiais</button></div>
+      <div className="materials-heading-actions"><button type="button" className="primary" aria-label="Adicionar materiais" onClick={() => setEntry({})}><Plus size={17} /> Adicionar</button><button type="button" className="secondary" aria-label="Compras por fornecedor" onClick={() => setShoppingOpen(true)}><Clipboard size={17} /> Fornecedores</button><button type="button" className="secondary" aria-label="Exportar materiais" disabled={!allLines.length} onClick={() => setExportOpen(true)}><Download size={17} /> Exportar</button></div>
     </header>
     <div className="materials-totals" aria-label="Resumo dos pedidos exibidos">
       <article><small>Pedidos na lista</small><strong><CountUp value={filtered.length} /></strong><span>{completed ? "Concluídos" : "Pendentes de compra"}</span></article>
-      <article><small>Quantidade total</small><strong><CountUp value={totals.kg} format={decimal} /> kg</strong><span>{totals.sets} conjuntos de gola e punho</span></article>
+      <article><small>Quantidade total</small><strong className="materials-weight"><CountUp value={totals.kg} format={decimal} /> kg</strong>{totals.sets > 0 && <span>{totals.sets} conjuntos de gola e punho</span>}</article>
       <article><small>{completed ? "Custo real conferido" : "Valor estimado"}</small><strong><CountUp value={completed ? actualTotal(filtered.flatMap(order => order.materials)) : totals.cost} format={currency} /></strong><span>{completed && unreviewed ? `${unreviewed} compra(s) a conferir` : "Materiais dos pedidos exibidos"}</span></article>
     </div>
     <div className="materials-toolbar">

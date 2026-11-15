@@ -8,6 +8,7 @@ import OrderPricingFields from "./OrderPricingFields";
 import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import type { BillInput } from "./FinanceWorkspace";
+import { materialPurchaseBills } from "./notes/materials-model";
 import { forecastMaterial } from "./material-forecast";
 import { urgentOrder } from "./order-model";
 import { orderAlerts, type OrderAlert } from "./order-alerts";
@@ -854,6 +855,7 @@ export default function HomePage() {
   const dtfLinks = useMemo(() => dtfOrders.map(order => [order, ...readDtfPrints(order.printsData)]), [dtfOrders]);
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
+  const materialPayables = useMemo(() => materialPurchaseBills(notes, orders, customers), [notes, orders, customers]);
   const sewingLedger = useMemo(() => readSewing(notes), [notes]);
   const operations = useMemo(() => ["producao", "historico"].includes(view) ? operationCosts(orders, notes, customers, transactions) : undefined, [view, orders, notes, customers, transactions]);
   const orderCosts = operations?.costs ?? new Map();
@@ -863,7 +865,7 @@ export default function HomePage() {
   const orderTasks = useMemo(() => indexOrderTasks(orders, customers, tasks), [orders, customers, tasks]);
   const sewingPayables = sewingBills(orders, sewingLedger);
   const sewingTotal = sewingPayables.reduce((sum,bill)=>sum+bill.amount,0);
-  const allPayables = [...bills, ...stockPayables, ...sewingPayables];
+  const allPayables = [...bills, ...stockPayables, ...sewingPayables, ...materialPayables];
   const visibleCustomers = balances.filter((customer) => !customer.archived);
   const { pending, toPay: payable, debtors } = financialSummary(balances, allPayables, calendarDate.slice(0, 7));
   const nextPayables = view === "inicio" ? nextMonthPayables(allPayables, calendarDate.slice(0, 7)) : undefined;
@@ -1938,7 +1940,7 @@ export default function HomePage() {
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
           {view === "ai" && <PSYZONAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
-          {view === "financeiro" && <FinanceWorkspace balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} today={calendarDate} restock={[...stockPayables,...sewingPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
+          {view === "financeiro" && <FinanceWorkspace balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} today={calendarDate} restock={[...stockPayables,...sewingPayables,...materialPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : bill?.category === "Materiais dos pedidos" ? "materiais" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "financeiro" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}
           {view === "historico" && <MonthlyClosingWorkspace uid={uid} today={calendarDate} data={{ orders, notes, customers, transactions, bills }} save={saveMonthlyClosing} money={displayMoney} />}
           {view === "historico" && <HistoryWorkspace

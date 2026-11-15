@@ -1,0 +1,115 @@
+/* Shared mobile geometry. Keep print reports and the user's text scale intact. */
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme] .app-shell[data-layout] :is(.metric-grid, .dtf-metrics, .history-metrics, .finance-premium-summary, .restock-summary, .sewing-summary) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+    align-items: start;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] :is(.metric-card, .dtf-metrics article, .history-metrics article, .finance-premium-summary article, .restock-summary article, .sewing-summary article) {
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    padding: 14px;
+    gap: 6px;
+    align-content: start;
+    border-radius: 16px;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .metric-card:last-child {
+    grid-column: auto;
+    display: block;
+    min-height: 0;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] :is(.metric-card > strong, .dtf-metrics strong, .history-metrics strong, .finance-premium-summary strong, .restock-summary strong, .sewing-summary strong) {
+    display: block;
+    min-width: 0;
+    margin: 8px 0 4px;
+    font-size: calc(21px * var(--ui-zoom));
+    line-height: 1.2;
+    overflow-wrap: normal;
+    word-break: normal;
+    font-variant-numeric: tabular-nums;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] :is(.metric-top small, .finance-premium-summary small, .restock-summary small, .sewing-summary small) {
+    font-size: calc(12px * var(--ui-zoom));
+    line-height: 1.35;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] :is(.metric-detail, .finance-premium-summary article > span, .restock-summary article > span) {
+    font-size: calc(12px * var(--ui-zoom));
+    line-height: 1.4;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-heading {
+    display: grid;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-heading-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-heading-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 8px;
+    gap: 5px;
+    font-size: calc(12px * var(--ui-zoom));
+    white-space: nowrap;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-heading-actions svg { flex-shrink: 0; }
+  /* Labels and values share rows instead of three tall, narrow cards. */
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--card);
+    overflow: hidden;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals article {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 55%);
+    align-items: center;
+    gap: 4px 12px;
+    min-height: 0;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals article + article { border-top: 1px solid var(--border); }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals small { font-size: calc(12px * var(--ui-zoom)); line-height: 1.35; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals strong {
+    min-width: 0;
+    margin: 0;
+    text-align: right;
+    font-size: calc(18px * var(--ui-zoom));
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow-wrap: normal;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals article > span { display: none; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-totals article:nth-child(2) > span {
+    display: block;
+    grid-column: 1 / -1;
+    font-size: calc(11px * var(--ui-zoom));
+    line-height: 1.4;
+  }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-tabs { display: flex; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-tabs button { flex: 1; min-height: 40px; padding: 8px; font-size: 13px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-search { max-width: none; min-height: 44px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-search input { font-size: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-toolbar select { width: 100%; min-width: 0; min-height: 44px; font-size: 16px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order > header { flex-wrap: wrap; padding: 12px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order > header > strong { flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: nowrap; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order footer { display: grid; gap: 8px; padding: 12px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order-actions { gap: 6px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order-actions button { flex: 1 1 140px; min-height: 44px; font-size: 12px; }
+  :root[data-ui-theme] .app-shell[data-layout] .materials-order-actions label { min-height: 44px; }
+}

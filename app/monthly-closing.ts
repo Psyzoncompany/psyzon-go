@@ -2,6 +2,7 @@ import { customerBalances, financialSummary, roundMoney, type Bill, type Custome
 import { historyDate } from "./history-model";
 import type { Order } from "./order-model";
 import type { BusinessNote } from "./notes-model";
+import { materialPurchaseBills } from "./notes/materials-model";
 import { operationCosts } from "./operations-data";
 import { orderResult } from "./order-result";
 import { sewingBills, sewingEntriesForPeriod, sewingEntryTotals } from "./sewing-model";
@@ -22,7 +23,7 @@ export function monthlyClosing(data: ClosingData, month: string, today: string) 
   })));
   const missingPurchases = notes.flatMap(note => (note.materials ?? []).filter(item => note.purchasedMaterialIds?.includes(item.id) && (item.actualCost === undefined || !item.purchaseDate)).map(item => ({ title: note.title + " · " + item.fabricType, detail: "Compra sem custo real ou data conferida" })));
   const totals = sewingEntryTotals(sewingEntriesForPeriod(operations.ledger.entries, undefined, month));
-  const accounts = financialSummary(customerBalances(customers, orders), [...bills, ...restockBills(restockTasks(notes)), ...sewingBills(orders, operations.ledger)], today.slice(0,7));
+  const accounts = financialSummary(customerBalances(customers, orders), [...bills, ...restockBills(restockTasks(notes)), ...sewingBills(orders, operations.ledger), ...materialPurchaseBills(notes, orders, customers)], today.slice(0,7));
   const sum = (values: number[]) => roundMoney(values.reduce((a,b) => a + b, 0));
   const income = movements.filter(item => item.type === "income");
   const refunds = movements.filter(item => item.type === "expense" && item.source === "customer_refund");

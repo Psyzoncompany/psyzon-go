@@ -1,7 +1,7 @@
-import { currency, decimal, type NoteDraft, type NoteMaterial } from "../notes-model";
+import { currency, decimal, toDraft, type BusinessNote, type NoteDraft, type NoteMaterial } from "../notes-model";
 import { extraFabricKg, forecastMaterial } from "../material-forecast";
 import { notePhotoOrderId } from "../order-photo-sync";
-import { customerNameKey } from "../finance-model";
+import { customerNameKey, roundMoney, type Bill } from "../finance-model";
 
 export type MaterialOrder = {
   id: string;
@@ -29,7 +29,7 @@ export type MaterialLine = {
 };
 
 type MaterialNote = { id: string; draft: NoteDraft; purchasedIds?: string[] };
-type LinkedOrder = { id: string; customer: string; quantity?: number; dueDate?: string };
+type LinkedOrder = { id: string; customer: string; quantity?: number; dueDate?: string; status?: string; customerMaterial?: boolean };
 type LinkedCustomer = { id: string; name: string };
 
 export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrder[], customers: LinkedCustomer[]): MaterialOrder[] {
@@ -61,8 +61,27 @@ export function materialPurchaseDeadline(delivery?: string) {
   if (!delivery || !/^\d{4}-\d{2}-\d{2}$/.test(delivery)) return undefined;
   const date = new Date(delivery + "T12:00:00Z");
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== delivery) return undefined;
-  date.setUTCDate(date.getUTCDate() - 7);
+  date.setUTCDate(date.getUTCDate() - 15);
   return date.toISOString().slice(0, 10);
+}
+
+// Derive commitments from the same pending materials shown in the shopping list.
+// No bill documents or cash movements are created by a forecast.
+export function materialPurchaseBills(notes: BusinessNote[], orders: LinkedOrder[], customers: LinkedCustomer[]): Bill[] {
+  const linkedOrders = new Map(orders.map(order => [order.id, order]));
+  const materials = materialOrdersFromNotes(notes.filter(note => note.materials?.length).map(note => ({
+    id: note.id, draft: toDraft(note), purchasedIds: note.purchasedMaterialIds,
+  })), orders, customers);
+  return splitMaterialOrders(materials, false).flatMap(note => {
+    const order = linkedOrders.get(note.productionOrderId ?? "");
+    if (order?.status === "Orçamento" || order?.customerMaterial) return [];
+    const amount = roundMoney(materialTotals(materialLines(note)).cost);
+    if (!Number.isFinite(amount) || amount <= 0) return [];
+    return [{ id: `material-purchase-${note.id}`, description: `Materiais · ${note.client || note.title}`,
+      amount, account: "business", billingType: "once", direction: "payable", settled: false,
+      dueDay: Number(note.purchaseDueDate?.slice(-2)) || 1,
+      ...(note.purchaseDueDate ? { dueDate: note.purchaseDueDate } : {}), category: "Materiais dos pedidos" }];
+  });
 }
 
 export function fabricShoppingList(orders: MaterialOrder[], productionOrders: Array<{ id: string; customer: string; product: string; status?: string }>) {

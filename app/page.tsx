@@ -1894,7 +1894,7 @@ export default function HomePage() {
   const photoProductionOrders = productionOrders.map(order => photoOrders.find(item => item.id === order.id) ?? order);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium" data-design="motion">
       {firebaseState==="live"&&<PhotoOptimization key={uid} uid={uid} orders={storedOrders} notes={notes} dtfOrders={dtfOrders}/>}
       <aside className="sidebar">
         <div className="sidebar-brand-row">

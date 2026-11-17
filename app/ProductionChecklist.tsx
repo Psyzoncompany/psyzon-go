@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState, type CSSProperties, type FormEvent } from "react";
+import Image from "next/image";
+import { useId, useRef, useState, type CSSProperties, type FormEvent } from "react";
 import { createPortal } from "react-dom";
-import { Check, ClipboardList, Plus, Printer, Sparkles, X } from "lucide-react";
+import { Camera, Check, ChevronRight, Plus, Printer, Sparkles, TriangleAlert, X } from "lucide-react";
 import { getAuth } from "firebase/auth";
 import Modal from "./Modal";
 import { makeId } from "./notes-model";
@@ -16,15 +17,19 @@ import { parseProductionOrder, sampleProductionOrder, sortProductionRows, valida
 import { defaultProductionColor, productionColorFromNotes, productionColorFromProduct, productionColorInk, validProductionColor } from "./production-theme";
 
 export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, linkedDeadline, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; linkedDeadline?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void | Promise<void>; onChange: (value: Checklist | null) => void }) {
-  const [open, setOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [modal, setModal] = useState<"import" | "piece" | "setup" | "warnings" | null>(null);
   const [raw, setRaw] = useState(source);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const modalId = useId();
   const printRoot = useRef<HTMLDivElement>(null);
   const rows = value ? sortProductionRows(value.rows) : [];
+  const checkedCount = rows.filter(row => row.done).length;
   const productPhoto = photoData ?? linkedPhotoData ?? "";
+  const deadline = value?.deadline || linkedDeadline;
+  const observations = value?.notes.trim().replace(/\s+/g, " ");
+  const warningCount = value?.warnings.length ?? 0;
   const automatic = productionColorFromNotes(value?.notes ?? "") ?? productionColorFromNotes(source) ?? productionColorFromProduct(linkedProduct ?? "") ?? productionColorFromNotes(title);
   const customized = validProductionColor(manualColor);
   const color = customized ? manualColor : automatic?.hex ?? defaultProductionColor;
@@ -53,26 +58,84 @@ export default function ProductionChecklist({ value, title, source, photoData, l
         result.notes = [`Cor da camisa: ${importedColor.label}`, result.notes].filter(Boolean).join("\n").slice(0, 4000);
       }
       onChange({ ...result, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || linkedDeadline || "" });
-      setOpen(false);
+      setModal(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível organizar a lista."); }
     finally { setBusy(false); }
   };
-  return <section className="production-checklist">
-    <div className="checklist-toolbar"><div><ClipboardList size={18} /><b>Checklist de produção</b>{value && <span>{value.rows.length} peças · {value.rows.filter((row) => row.done).length} conferidas</span>}</div><div><button className="secondary" onClick={() => { setRaw(source); setError(""); setOpen(true); }}>{value ? "Colar outra lista" : "Colar pedido"}</button>{value && <><PdfDownloadButton disabled={photoBusy} generate={async () => {
-      const root = printRoot.current;
-      if (!root) throw new Error("Checklist indisponível");
-      await (await import("./production-download")).downloadProduction(root, value.client || title);
-    }} /><button className="primary" disabled={photoBusy} onClick={() => void print()}><Printer size={16} /> Imprimir A4</button></>}</div></div>
-    <div className="checklist-setup"><div className="checklist-product-photo"><OrderPhotoField label="Foto do produto no PDF" value={productPhoto} onPhotoChange={onPhotoChange} includeFormField={false} onBusyChange={setPhotoBusy} />{linkedPhotoData && linkedPhotoData !== productPhoto && <button className="secondary" disabled={photoBusy} onClick={() => onPhotoChange(linkedPhotoData)}>Usar foto do pedido vinculado</button>}</div>{value && <section className="checklist-order-details" aria-label="Dados para produção"><h3>Dados para produção</h3><div className="checklist-meta"><label>Cliente / pedido<input value={value.client} maxLength={120} onChange={(event) => onChange({ ...value, client: event.target.value })} /></label><label>Entrega<input type="date" value={value.deadline} onChange={(event) => onChange({ ...value, deadline: event.target.value })} /></label></div><div className="checklist-theme"><label>Cor da camisa no PDF<input type="color" value={color} onChange={event => onColorChange(event.target.value)} /></label><span>{customized ? "Cor personalizada" : automatic ? automatic.label : "Azul padrão"}</span>{customized && <button className="secondary" type="button" onClick={() => onColorChange("")}>Usar cor automática</button>}</div><label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={3} onChange={(event) => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label></section>}</div>
-    {error && !open && <p className="form-error" role="alert">{error}</p>}
+  const openImport = () => { setRaw(source); setError(""); setModal("import"); };
 
-    {value && <>{value.warnings.length > 0 && <div className="checklist-warnings" role="status">{value.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>}<ChecklistPieces rows={rows} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} /><div className="checklist-footer"><button className="secondary" disabled={value.rows.length >= 500} onClick={() => setAdding(true)}><Plus size={15} /> Adicionar peça</button><button className="secondary" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div>{typeof document !== "undefined" && createPortal(<div ref={printRoot} className="production-print-root" style={theme} aria-hidden="true"><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}</>}
-    {adding && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel="Masculina" close={() => setAdding(false)} add={specification => {
+  return <section className="production-checklist" aria-label="Checklist de produção">
+    <div className="checklist-toolbar">
+      <div className="checklist-piece-count">
+        <h2>{value ? `${rows.length} ${rows.length === 1 ? "peça" : "peças"}` : "Lista de peças"}</h2>
+        {value && <span>{checkedCount} {checkedCount === 1 ? "conferida" : "conferidas"}</span>}
+      </div>
+      <div className="checklist-output">
+        {value ? <>
+          <PdfDownloadButton disabled={photoBusy} generate={async () => {
+            const root = printRoot.current;
+            if (!root) throw new Error("Checklist indisponível");
+            await (await import("./production-download")).downloadProduction(root, value.client || title);
+          }} />
+          <button className="primary" type="button" disabled={photoBusy} onClick={() => void print()}><Printer size={16} aria-hidden="true" /> Imprimir A4</button>
+        </> : <button className="primary" type="button" aria-haspopup="dialog" onClick={openImport}>Colar pedido</button>}
+      </div>
+    </div>
+    <div className="checklist-controls">
+      <button className="checklist-reference" type="button" aria-haspopup="dialog" onClick={() => setModal("setup")}>
+        <span className="checklist-thumbnail" aria-hidden="true">{productPhoto
+          ? <Image src={productPhoto} alt="" width={40} height={40} unoptimized />
+          : <Camera size={18} />}</span>
+        <span className="checklist-reference-copy">
+          <span><b>Dados e foto</b>{deadline && <small>Entrega {deadline.split("-").reverse().join("/")}</small>}</span>
+          {observations && <small className="checklist-observation-preview">{observations}</small>}
+        </span>
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>
+      {value && <div className="checklist-list-actions">
+        {warningCount > 0 && <button className="checklist-warning-button" type="button" aria-haspopup="dialog" onClick={() => setModal("warnings")}><TriangleAlert size={15} aria-hidden="true" />{warningCount} {warningCount === 1 ? "aviso" : "avisos"}</button>}
+        <button className="secondary" type="button" aria-haspopup="dialog" onClick={openImport}>Colar outra lista</button>
+        <button className="secondary" type="button" aria-haspopup="dialog" disabled={rows.length >= 500} onClick={() => setModal("piece")}><Plus size={15} aria-hidden="true" /> Adicionar peça</button>
+      </div>}
+    </div>
+    {error && modal !== "import" && <p className="form-error" role="alert">{error}</p>}
+    {value && <>
+      {rows.length > 0 && <ChecklistPieces rows={rows} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} />}
+      <div className="checklist-footer"><button className="secondary" type="button" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div>
+      {typeof document !== "undefined" && createPortal(<div ref={printRoot} className="production-print-root" style={theme} aria-hidden="true"><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}
+    </>}
+    {modal === "setup" && <Modal titleId={modalId} busy={photoBusy} compact close={() => setModal(null)}>
+      <header><h2 id={modalId}>Dados e foto</h2><button type="button" disabled={photoBusy} onClick={() => setModal(null)} aria-label="Fechar"><X size={20} /></button></header>
+      <div className="checklist-setup">
+        {value && <>
+          <div className="checklist-meta">
+            <label>Cliente / pedido<input value={value.client} maxLength={120} onChange={event => onChange({ ...value, client: event.target.value })} /></label>
+            <label>Entrega<input type="date" value={value.deadline} onChange={event => onChange({ ...value, deadline: event.target.value })} /></label>
+          </div>
+          <label className="checklist-observations">Atenção na produção<textarea value={value.notes} maxLength={4000} rows={4} onChange={event => onChange({ ...value, notes: event.target.value })} placeholder="Cor, tecido, estampa, medidas especiais…" /></label>
+          <div className="checklist-theme">
+            <label>Cor da camisa no PDF<input type="color" value={color} onChange={event => onColorChange(event.target.value)} /></label>
+            <span>{customized ? "Cor personalizada" : automatic?.label ?? "Azul padrão"}</span>
+            {customized && <button className="secondary" type="button" onClick={() => onColorChange("")}>Usar cor automática</button>}
+          </div>
+        </>}
+        <div className="checklist-product-photo">
+          <OrderPhotoField label="Foto do produto no PDF" value={productPhoto} onPhotoChange={onPhotoChange} includeFormField={false} onBusyChange={setPhotoBusy} />
+          {linkedPhotoData && linkedPhotoData !== productPhoto && <button className="secondary" type="button" disabled={photoBusy} onClick={() => onPhotoChange(linkedPhotoData)}>Usar foto do pedido vinculado</button>}
+        </div>
+      </div>
+      <div className="checklist-dialog-actions"><button className="primary" type="button" disabled={photoBusy} onClick={() => setModal(null)}>Concluir</button></div>
+    </Modal>}
+    {modal === "warnings" && value && <Modal titleId={modalId} busy={false} compact close={() => setModal(null)}>
+      <header><h2 id={modalId}>Avisos da lista</h2><button type="button" onClick={() => setModal(null)} aria-label="Fechar"><X size={20} /></button></header>
+      <ul className="checklist-warning-list">{value.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
+    </Modal>}
+    {modal === "piece" && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel="Masculina" close={() => setModal(null)} add={specification => {
       if (value.rows.length >= 500) return "O checklist já atingiu o limite de 500 peças.";
       onChange({ ...value, rows: sortProductionRows([...value.rows, { ...specification, id: makeId(), done: false }]) });
-      setAdding(false);
+      setModal(null);
     }} />}
-    {open && <Modal titleId="checklist-title" busy={busy} close={() => setOpen(false)}><header><h2 id="checklist-title">Organizar pedido</h2><button disabled={busy} onClick={() => setOpen(false)} aria-label="Fechar"><X size={20} /></button></header><div className="checklist-import"><label>Lista do pedido<textarea value={raw} maxLength={30000} rows={16} onChange={(event) => setRaw(event.target.value)} placeholder="1G&#10;1M&#10;1MF&#10;2GF" /></label><button className="secondary" disabled={busy} onClick={() => setRaw(sampleProductionOrder)}>Usar exemplo JERFESSON</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary" disabled={busy || !raw.trim()} onClick={() => void organize(false)}><Check size={16} /> Organizar lista</button><button className="secondary" disabled={busy || !raw.trim()} onClick={() => void organize(true)}><Sparkles size={16} />{busy ? "Organizando…" : "Organizar com IA"}</button></div></Modal>}
+    {modal === "import" && <Modal titleId={modalId} busy={busy} close={() => setModal(null)}><header><h2 id={modalId}>Organizar pedido</h2><button disabled={busy} onClick={() => setModal(null)} aria-label="Fechar"><X size={20} /></button></header><div className="checklist-import"><label>Lista do pedido<textarea value={raw} maxLength={30000} rows={16} onChange={(event) => setRaw(event.target.value)} placeholder="1G&#10;1M&#10;1MF&#10;2GF" /></label><button className="secondary" disabled={busy} onClick={() => setRaw(sampleProductionOrder)}>Usar exemplo JERFESSON</button>{error && <p className="form-error" role="alert">{error}</p>}<button className="primary" disabled={busy || !raw.trim()} onClick={() => void organize(false)}><Check size={16} /> Organizar lista</button><button className="secondary" disabled={busy || !raw.trim()} onClick={() => void organize(true)}><Sparkles size={16} />{busy ? "Organizando…" : "Organizar com IA"}</button></div></Modal>}
   </section>;
 }
 
@@ -92,7 +155,6 @@ function AddPieceDialog({ models, defaultModel, close, add }: { models: string[]
   return <Modal titleId="add-piece-title" busy={false} close={close}>
     <header><h2 id="add-piece-title">Adicionar peça</h2><button type="button" onClick={close} aria-label="Fechar especificações da peça"><X size={20} /></button></header>
     <form className="checklist-entry-form" onSubmit={submit}>
-      <p>Preencha as especificações. A peça entra na lista ao confirmar.</p>
       <label>Modelo<input name="model" list="checklist-model-options" defaultValue={defaultModel} required maxLength={80} data-initial-focus placeholder="Ex.: Masculina, feminina ou infantil" /></label>
       <datalist id="checklist-model-options">{[...new Set([...models, "Masculina", "Feminina", "Infantil", "Unissex"])].map(model => <option key={model} value={model} />)}</datalist>
       <label>Tamanho<input name="size" list="checklist-size-options" required maxLength={40} placeholder="Ex.: P, M, G, 10 anos ou sob medida" /></label>

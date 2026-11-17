@@ -28,7 +28,7 @@ export default function ChecklistPieces({ rows, onUpdate, onRemove }: {
         <tbody>{items.map((row, index) => {
           const number = column * split + index + 1;
           return <tr key={row.id} className={row.done ? "done" : ""}>
-            <td><input type="checkbox" checked={row.done} onChange={event => onUpdate(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${number}: ${row.name}`} /></td>
+            <td><label className="checklist-row-check"><input type="checkbox" checked={row.done} onChange={event => onUpdate(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${number}: ${row.name}`} /></label></td>
             <td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${number}`} onChange={event => onUpdate(row.id, { model: event.target.value })} /></td>
             <td><input value={row.size} maxLength={40} aria-label={`Tamanho da peça ${number}`} onChange={event => onUpdate(row.id, { size: event.target.value })} /></td>
             <td><input value={row.name} maxLength={160} aria-label={`Nome da peça ${number}`} onChange={event => onUpdate(row.id, { name: event.target.value })} /></td>

@@ -9,7 +9,7 @@ import FinanceListCard, { StatusIndicator, type FinanceListItem } from "./financ
 import FinanceDetailSheet from "./finance/FinanceDetailSheet";
 import { financeDate, financeStatus, recurrenceLabel, sortedBills } from "./finance/presentation";
 import { Check, Pencil, Plus, Trash2, Undo2, X, ReceiptText, ArrowDownLeft, WalletCards, CheckCheck, ArrowUpRight } from "lucide-react";
-import { billDueDate, billIsSettled, currentBillExpense, financialSummary, localDateValue, nextMonthPayables, type Bill, type CustomerBalance } from "./finance-model";
+import { billDueDate, billIsSettled, currentBillExpense, financialSummary, localDateValue, futurePayables, type Bill, type CustomerBalance } from "./finance-model";
 
 import { customerNameKey } from "./finance-model";
 export type BillInput = Omit<Bill, "id" | "createdAt" | "lastPaidMonth" | "paidInstallments" | "settled">;
@@ -53,9 +53,16 @@ export default function FinanceWorkspace({ balanceCard, today = localDateValue()
   const [confirmDelete, setConfirmDelete] = useState(false);
   const working = useRef(false);
   const expenses = transactions.filter((item) => item.type === "expense" && expenseDate(item).startsWith(month)).sort((a, b) => expenseDate(b).localeCompare(expenseDate(a)));
-  const { debtors, receivable, pending } = financialSummary(customers, [...bills, ...restock], currentMonth);
-  const { payable,toPay } = financialSummary(customers,[...bills,...restock],payableMonth);
-  const nextPayables = nextMonthPayables([...bills, ...restock], currentMonth);
+  const allBills = [...bills, ...restock];
+  const current = financialSummary(customers, allBills, currentMonth);
+  const { debtors, receivable, pending } = current;
+  const [year, monthNumber] = currentMonth.split("-").map(Number);
+  const nextMonth = localDateValue(new Date(year, monthNumber, 1, 12)).slice(0, 7);
+  const forecastMonth = payableMonth > currentMonth ? payableMonth : nextMonth;
+  const forecast = futurePayables(allBills, currentMonth, forecastMonth);
+  const period = payableMonth > currentMonth ? { payable: forecast.payable, toPay: forecast.total }
+    : payableMonth === currentMonth ? current : financialSummary(customers, allBills, payableMonth);
+  const { payable, toPay } = period;
   const settledBills = bills.filter(bill => billIsSettled(bill, currentMonth));
   const run = async (action: () => Promise<void>) => {
     if (working.current) return;
@@ -64,7 +71,6 @@ export default function FinanceWorkspace({ balanceCard, today = localDateValue()
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível concluir. Tente novamente."); }
     finally { working.current = false; setBusy(false); }
   };
-  const allBills = [...bills, ...restock];
   const stockIds = new Set(restock.map(bill => bill.id));
   const undatedIds = new Set(restock.filter(bill => !bill.dueDate).map(bill => bill.id));
   const openDetails = (kind: "bill" | "customer" | "expense", id: string, period=currentMonth) => { setError(""); setConfirmDelete(false); setSelected({ kind, id, period }); };
@@ -90,10 +96,24 @@ export default function FinanceWorkspace({ balanceCard, today = localDateValue()
   return <div className="finance-workspace finance-premium">
     <div className="page-heading compact"><div><TypedHeading>Financeiro</TypedHeading></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="finance-premium-summary company-finance-summary">{balanceCard}<article><small>A pagar</small><strong><CountUp value={toPay} format={displayTotal} /></strong><span>{openCount}</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
+      <div className="finance-premium-summary company-finance-summary">{balanceCard}<article><small>A pagar</small><strong><CountUp value={current.toPay} format={displayTotal} /></strong><span>{current.payable.length} em aberto no mês</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
+      <section className="finance-premium-summary finance-forecast-summary" aria-label="A pagar nos próximos meses">
+        <article>
+          <small>A pagar nos próximos meses</small>
+          <strong><CountUp value={forecast.total} format={displayTotal} /></strong>
+          <div className="finance-forecast-picker">
+            <input type="month" aria-label="Mês da previsão" min={nextMonth} value={forecastMonth}
+              onChange={event => { if (event.target.value >= nextMonth) setPayableMonth(event.target.value); }} />
+            <button type="button" className="secondary" onClick={() => {
+              setPayableMonth(forecastMonth);
+              document.getElementById("finance-payables-list")?.scrollIntoView({ block: "start" });
+            }}>Ver contas <ArrowUpRight size={14} /></button>
+          </div>
+        </article>
+      </section>
       <div className="finance-premium-columns">
-        <FinanceListCard title="Contas a pagar" subtitle={openCount} total={<CountUp value={toPay} format={displayTotal} />} totalLabel="Total do período" icon={<ReceiptText size={23}/>} items={toBillItems(payable,payableMonth)} empty="Nenhuma conta a pagar neste período."><div className="finance-month-controls"><label>Mês das contas<input type="month" aria-label="Mês das contas a pagar" value={payableMonth} onChange={event=>event.target.value&&setPayableMonth(event.target.value)} /></label></div></FinanceListCard>
-        <FinanceListCard title="A receber" subtitle={`${debtors.length + receivable.length} ${debtors.length + receivable.length === 1 ? "saldo pendente" : "saldos pendentes"}`} total={<CountUp value={pending} format={displayTotal} />} totalLabel="Total a receber" icon={<ArrowDownLeft size={23}/>} items={[...customerItems, ...toBillItems(receivable)]} empty="Nenhum valor a receber."><div className="finance-next-month"><span>A pagar em {nextPayables.label}</span><b><MoneyText>{displayTotal(nextPayables.total)}</MoneyText></b></div></FinanceListCard>
+        <div id="finance-payables-list"><FinanceListCard title="Contas a pagar" subtitle={openCount} total={<CountUp value={toPay} format={displayTotal} />} totalLabel="Total do período" icon={<ReceiptText size={23}/>} items={toBillItems(payable,payableMonth)} empty="Nenhuma conta a pagar neste período."><div className="finance-month-controls"><label>Mês das contas<input type="month" aria-label="Mês das contas a pagar" value={payableMonth} onChange={event=>event.target.value&&setPayableMonth(event.target.value)} /></label></div></FinanceListCard></div>
+        <FinanceListCard title="A receber" subtitle={`${debtors.length + receivable.length} ${debtors.length + receivable.length === 1 ? "saldo pendente" : "saldos pendentes"}`} total={<CountUp value={pending} format={displayTotal} />} totalLabel="Total a receber" icon={<ArrowDownLeft size={23}/>} items={[...customerItems, ...toBillItems(receivable)]} empty="Nenhum valor a receber."/>
       </div>
       {credits.length > 0 && <FinanceListCard title="Créditos de clientes" subtitle={`${credits.length} cliente(s)`} total={displayTotal(credits.reduce((sum,customer)=>sum+(customer.credit??0),0))} totalLabel="Crédito disponível" icon={<ArrowDownLeft size={23}/>} items={credits.map(customer=>({id:customer.id,title:customer.name,detail:"Crédito disponível para compensar ou devolver",amount:displayMoney(customer.credit??0),status:{tone:"open",label:"Crédito"},open:()=>openDetails("customer",customer.id)}))} empty="" />}
       <section className="finance-paid-section"><button type="button" className="finance-paid-toggle" aria-expanded={showSettled} onClick={() => setShowSettled(value => !value)}><CheckCheck size={18}/><span>Contas quitadas <small>{settledBills.length}</small></span><b>{showSettled ? "Ocultar" : "Ver contas"}</b></button>{showSettled && <FinanceListCard title="Contas quitadas" subtitle="Concluídas neste período / quitadas" total={<CountUp value={paidSum} format={displayMoney} />} totalLabel="Total quitado" icon={<CheckCheck size={23}/>} items={toBillItems(settledBills)} empty="Nenhuma conta quitada neste período."/>}</section>

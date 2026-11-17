@@ -169,12 +169,19 @@ export function nextMonthPayables(bills: Bill[], currentMonth: string) {
   const next = new Date(year, monthNumber, 1, 12);
   const month = localDateValue(next).slice(0, 7);
   const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(next);
-  const scheduled = bills.filter(bill => {
+  return { label, total: futurePayables(bills, currentMonth, month).total };
+}
+
+export function futurePayables(bills: Bill[], currentMonth: string, month: string) {
+  const [year, monthNumber] = currentMonth.split("-").map(Number);
+  const [targetYear, targetMonth] = month.split("-").map(Number);
+  const offset = (targetYear - year) * 12 + targetMonth - monthNumber;
+  const payable = offset > 0 ? bills.filter(bill => {
     if (bill.direction === "receivable" || billIsSettled(bill, month)) return false;
     if (bill.billingType === "once") return bill.dueDate?.startsWith(`${month}-`);
     if (bill.billingType === "fixed") return true;
     const remaining = (bill.totalInstallments ?? 1) - (bill.paidInstallments ?? 0);
-    return remaining > (billIsSettled(bill, currentMonth) ? 0 : 1);
-  });
-  return { label, total: roundMoney(scheduled.reduce((sum, bill) => sum + bill.amount, 0)) };
+    return remaining >= offset + (billIsSettled(bill, currentMonth) ? 0 : 1);
+  }) : [];
+  return { payable, total: roundMoney(payable.reduce((sum, bill) => sum + bill.amount, 0)) };
 }

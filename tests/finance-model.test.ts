@@ -434,3 +434,16 @@ test("material purchase deadline stays fifteen days before delivery across month
   assert.equal(materialPurchaseDeadline("2026-02-30"), undefined);
   assert.equal(materialPurchaseDeadline(), undefined);
 });
+
+test("future months exclude earlier debts and count only installments still scheduled", async () => {
+  const { futurePayables } = await import("../app/finance-model");
+  const records = [
+    bill({ billingType: "once", dueDate: "2026-11-15", amount: 100 }),
+    bill({ billingType: "once", dueDate: "2026-12-15", amount: 200 }),
+    bill({ billingType: "once", dueDate: "2027-01-15", amount: 300 }),
+    bill({ billingType: "installment", totalInstallments: 2, paidInstallments: 0, amount: 25 }),
+    bill({ billingType: "fixed", amount: 45 }),
+  ];
+  assert.equal(futurePayables(records, "2026-11", "2026-12").total, 270);
+  assert.equal(futurePayables(records, "2026-11", "2027-01").total, 345);
+});

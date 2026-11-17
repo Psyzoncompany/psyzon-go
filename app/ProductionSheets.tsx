@@ -20,7 +20,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
     if (printedUnnamed.has(key)) return false;
     printedUnnamed.add(key); return true;
   });
-  const pages = productionPages(printRows);
+  const pages = productionPages(printRows, 24);
   const sizesOnly = checklist.rows.every(isUnnamed);
   if (sizesOnly && pages.length === 1) {
     const models = groups(printRows, "model");
@@ -37,6 +37,8 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   const inlineLimit = photoData && checklist.rows.length <= 20 ? 420 : 200;
   const extra = attention.length > inlineLimit || attention.split("\n").length > 8 ? attention.match(/[\s\S]{1,1200}/g) ?? [] : [];
   const totalPages = pages.length + extra.length;
+  const showOpeningSummary = pages.length > 1 || checklist.rows.length >= 30;
+  const showClosingSummary = totalPages > 1 || (!sizesOnly && !showOpeningSummary);
   const photoNotes = Boolean(photoData && attention && !extra.length);
   const total = <><strong>{checklist.rows.length} UNIDADES</strong><small>Total do pedido</small></>;
   const header = <header className="production-sheet-header">
@@ -46,27 +48,30 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
     </div>
     {photoData ? <figure className="production-product-photo"><img src={photoData} alt="Foto do produto" /><figcaption>Referência do produto</figcaption></figure> : <div className="production-sheet-total">{total}</div>}
   </header>;
-  const footer = (index: number) => <footer className="production-sheet-footer">
-    <div className={`production-sheet-bottom ${index >= pages.length ? "production-summary-only" : ""}`}>
-      {!sizesOnly && <section className="production-summary"><h2>RESUMO POR TAMANHO</h2>
+  const sizeSummary = (opening = false) => <section className={opening ? "production-summary production-opening-summary" : "production-summary"}><h2>RESUMO POR TAMANHO</h2>
         <div className="production-summary-models">{summary.map(([model, items]) => <section className="production-summary-model" key={model}>
           <h3><span>{model}</span><b>{items.length} un.</b></h3>
           <div className="production-summary-sizes">{productionSummary(items).map(item => <span key={item.size}><small>{item.size}</small><b>{item.quantity} un.</b></span>)}</div>
         </section>)}</div>
-      </section>}
-      {index < pages.length && <section className="production-additions" aria-label="Pedidos adicionais para preencher à mão">
+      </section>;
+  const footer = (index: number) => <footer className="production-sheet-footer">
+    {index === totalPages - 1 && <div className={`production-sheet-bottom${showClosingSummary ? "" : " production-additions-only"}`}>
+      {showClosingSummary && sizeSummary()}
+      <section className="production-additions" aria-label="Pedidos adicionais para preencher à mão">
         <h2>PEDIDOS ADICIONAIS</h2>
         <table><colgroup><col className="addition-name" /><col className="addition-model" /><col className="addition-size" /><col className="addition-quantity" /></colgroup>
           <thead><tr><th scope="col">Nome</th><th scope="col">Modelo</th><th scope="col">Tam.</th><th scope="col">Qtd.</th></tr></thead>
           <tbody>{Array.from({ length: 4 }, (_, index) => <tr key={index}>{Array.from({ length: 4 }, (_, cell) => <td key={cell}>{"\u00a0"}</td>)}</tr>)}</tbody>
         </table>
         <div className="production-additions-totals"><span>Extras: <b /></span><span>Total atualizado: <b /></span></div>
-      </section>}
-    </div>
-    <p>{checklist.rows.filter((row) => row.name === "Sem nome").length} peça(s) sem nome · {checklist.rows.length} peças no total <span>A4 · Página {index + 1} de {totalPages}</span></p>
+      </section>
+    </div>}
+    <p><span>{checklist.client && <b>{checklist.client} · </b>}{checklist.rows.filter(isUnnamed).length} peça(s) sem nome · {checklist.rows.length} peças no total</span><span className="production-page-number">Página {index + 1} de {totalPages}</span></p>
   </footer>;
   return <>{pages.map((columns, pageIndex) => <article className={`production-sheet${sizesOnly ? " production-sizes-only" : ""}`} key={pageIndex}>
-    {header}
+    {pageIndex === 0 && header}
+    {pageIndex === 0 && showOpeningSummary && sizeSummary(true)}
+    {pageIndex === 0 && attention && !extra.length && !photoNotes && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
     <div className="production-sheet-columns">{columns.map((rows, column) => <div key={column}>{groups(rows, "model").map(([model, items]) => <section className="production-group" key={model}>
       {firstModel.get(model) === items[0].id && <h2><span>{model}</span><b>{modelTotals.get(model)} un.</b></h2>}
       {groups(items, "size").map(([size, pieces]) => <div className="production-size" key={size}>
@@ -82,7 +87,6 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
         </div>}
       </div>)}
     </section>)}</div>)}</div>
-    {attention && !extra.length && !photoNotes && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
     {footer(pageIndex)}
-  </article>)}{extra.map((text, index) => <article className="production-sheet" key={`notes-${index}`}>{header}<section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO · OBSERVAÇÕES E CONFERÊNCIA</h2><p>{text}</p></section>{footer(pages.length + index)}</article>)}</>;
+  </article>)}{extra.map((text, index) => <article className="production-sheet" key={`notes-${index}`}><section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO · OBSERVAÇÕES E CONFERÊNCIA</h2><p>{text}</p></section>{footer(pages.length + index)}</article>)}</>;
 }

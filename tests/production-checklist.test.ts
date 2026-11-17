@@ -93,6 +93,28 @@ test("printing preserves every piece across columns and pages", () => {
   assert.deepEqual(pages.flat(2).map((row) => row.id).sort(), rows.map((row) => row.id).sort());
 });
 
+test("large orders show size totals up front and additions only on the actual last sheet", () => {
+  const sizes = ["P", "M", "G", "GG", "G3"];
+  const quantities = [29, 41, 23, 9, 1];
+  const rows = sizes.flatMap((size, group) => Array.from({ length: quantities[group] }, (_, i) => ({
+    id: `${size}-${i}`, model: "Masculina", size, name: group === 0 && i < 7 ? "Sem nome" : `Pessoa ${i + 1}`, done: false,
+  })));
+  const notes = "Observação de produção. ".repeat(30);
+  const checklist = { client: "Pedido de teste", deadline: "", rows, notes, warnings: [] };
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  const sheets = html.match(/<article\b[\s\S]*?<\/article>/g) ?? [];
+  const first = sheets[0];
+  const last = sheets.at(-1)!;
+  assert.ok(sheets.length > 2);
+  assert.match(first, /<\/header><section class="production-summary production-opening-summary"/);
+  assert.match(first, /<small>M<\/small><b>41 un\.<\/b>/);
+  assert.doesNotMatch(first, /PEDIDOS ADICIONAIS/);
+  for (const sheet of sheets.slice(1, -1)) assert.doesNotMatch(sheet, /production-sheet-header|RESUMO POR TAMANHO|PEDIDOS ADICIONAIS/);
+  assert.doesNotMatch(last, /production-sheet-header/);
+  assert.match(last, /ATENÇÃO NA PRODUÇÃO[\s\S]*RESUMO POR TAMANHO[\s\S]*PEDIDOS ADICIONAIS/);
+  assert.equal(html.match(/PEDIDOS ADICIONAIS/g)?.length, 1);
+});
+
 test("imported lists, saved pieces, summaries and print pages share ascending size order", () => {
   const checklist = parseProductionOrder("MASCULINA\nGG\nLucas\nP\nEnzo\nG\nJoão\nPP\nPedro\nM\nJeferson\nFEMININA\nG\nViviane\nP\nVitória");
   assert.deepEqual(checklist.rows.map(row => row.size), ["PP", "P", "M", "G", "GG", "P", "G"]);

@@ -32,15 +32,17 @@ function isFabric(material: NoteMaterial) {
 }
 
 export function fabricHistoryEntry(note: Pick<BusinessNote, "title">, material: NoteMaterial, date: string): Omit<HistoryEntry, "id"> | undefined {
-  if (!isFabric(material)) return;
-  return { kind: "fabric", source: "material", date, title: `Malha ${material.fabricType}${material.color ? ` · ${material.color}` : ""}`.slice(0, 200), supplier: (material.supplier || "").slice(0, 120), quantity: material.fabricKg, amount: roundMoney(material.fabricCost), notes: (note.title || "").slice(0, 1200) };
+  const quantity = material.actualQuantities?.fabricKg ?? material.fabricKg;
+  if (!isFabric(material) || quantity <= 0) return;
+  const amount = material.actualQuantities && material.actualCost !== undefined ? material.actualCost + (material.purchaseFreight ?? 0) : material.fabricCost;
+  return { kind: "fabric", source: "material", date, title: `Malha ${material.fabricType}${material.color ? ` · ${material.color}` : ""}`.slice(0, 200), supplier: (material.supplier || "").slice(0, 120), quantity, amount: roundMoney(amount), notes: (note.title || "").slice(0, 1200) };
 }
 
 export function legacyFabricPurchases(notes: BusinessNote[], entries: HistoryEntry[]) {
   const known = new Set(entries.map(entry => entry.id));
   return notes.flatMap(note => {
     const purchased = new Set(note.purchasedMaterialIds);
-    const materials = (note.materials ?? []).filter(material => isFabric(material) && purchased.has(material.id) && !known.has(materialHistoryId(note.id, material.id)));
+    const materials = (note.materials ?? []).filter(material => isFabric(material) && !material.actualQuantities && purchased.has(material.id) && !known.has(materialHistoryId(note.id, material.id)));
     return materials.length ? [{ id: note.id, title: note.title || "Anotação sem título", materialIds: materials.map(material => material.id), quantity: materials.reduce((sum, material) => sum + material.fabricKg, 0) }] : [];
   });
 }

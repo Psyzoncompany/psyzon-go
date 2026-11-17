@@ -289,7 +289,7 @@ const getMaterials: ToolDefinition = {
     const orders = materialOrdersFromNotes(materialNotes.map(note => ({ id: note.id, draft: toDraft(note), purchasedIds: note.purchasedMaterialIds })), data.orders as unknown as Order[], (data.customers as unknown as Customer[]).filter(customer => !customer.archived));
     const query = text(args.query);
     const entries = (purchased: boolean) => {
-      const lines = splitMaterialOrders(orders, purchased).flatMap(materialLines)
+      const lines = splitMaterialOrders(orders, purchased).flatMap(order => materialLines(order))
         .filter(line => matchesQuery(`${line.order} ${line.client} ${line.material} ${line.color} ${line.supplier}`, query));
       const totals = materialTotals(lines);
       return {

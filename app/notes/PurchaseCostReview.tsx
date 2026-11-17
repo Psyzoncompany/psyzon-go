@@ -2,7 +2,7 @@
 import { useState, type FormEvent } from "react";
 import type { NoteMaterial } from "../notes-model";
 import NoteDialog from "./NoteDialog";
-import { localDateValue } from "../finance-model";
+import { localDateValue, roundMoney } from "../finance-model";
 import "../operational-controls.css";
 export type PurchaseCostInput = { noteId: string; materialId: string; amount: number; freight: number; date: string; expenseIds: string[]; expected: string };
 export type LinkedExpense = { id: string; orderId?: string; type: string; amount: number; description: string; source?: string; category?: string };
@@ -22,7 +22,7 @@ export default function PurchaseCostReview({ noteId, orderId, material, expenses
   return <NoteDialog title="Conferir valor da compra" close={() => { if (!busy) close(); }}>
     <form className="operations-form" onSubmit={submit}>
       <p>{material.fabricType} · {material.color} · {material.supplier}</p>
-      <label>Valor real dos materiais (R$)<input name="amount" type="number" min="0" max="100000000" step=".01" required defaultValue={material.actualCost ?? material.totalCost} /></label>
+      <label>Valor real dos materiais (R$)<input name="amount" type="number" min="0" max="100000000" step=".01" required defaultValue={roundMoney(material.actualCost ?? material.totalCost).toFixed(2)} /></label>
       <label>Frete desta compra (R$)<input name="freight" type="number" min="0" max="100000000" step=".01" required defaultValue={material.purchaseFreight ?? 0} /></label>
       <label>Data da compra<input name="date" type="date" required max={localDateValue()} defaultValue={material.purchaseDate || localDateValue()} /></label>
       {orderId && <fieldset className="operations-expenses"><legend>Pagamentos já incluídos neste valor</legend>

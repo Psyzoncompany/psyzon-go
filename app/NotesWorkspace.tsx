@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Circle, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
+import { Archive, ArrowLeft, Bold, Calculator, Check, CheckCheck, CheckSquare, ChevronDown, Copy, Download, FilePlus2, FileText, Heading2, Layers, Link2, List, ListChecks, MoreHorizontal, NotebookPen, PanelLeft, Pencil, Pin, Plus, Printer, Redo2, RotateCcw, Search, Trash2, Undo2, X } from "lucide-react";
 import { getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { collection, doc, getFirestore, serverTimestamp, setDoc, updateDoc, runTransaction } from "firebase/firestore";
@@ -21,18 +21,19 @@ import PdfDownloadButton from "./PdfDownloadButton";
 import MobileNotesControls from "./notes/MobileNotesControls";
 import MaterialCalculator from "./notes/MaterialCalculator";
 import MaterialsWorkspace from "./notes/MaterialsWorkspace";
-import { materialOrdersFromNotes } from "./notes/materials-model";
+import { materialOrdersFromNotes, type MaterialPurchaseInput } from "./notes/materials-model";
 import "./notes/notes.css";
 import ProductionChecklist from "./ProductionChecklist";
 import { notePhotoOrderId } from "./order-photo-sync";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { expenses: LinkedExpense[]; reviewPurchase: (input: PurchaseCostInput) => Promise<void>; productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], completed: boolean) => Promise<void> };
+type Props = { expenses: LinkedExpense[]; reviewPurchase: (input: PurchaseCostInput) => Promise<void>; productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], purchase?: MaterialPurchaseInput[]) => Promise<void> };
 type Filter = "all" | "pinned" | "ready" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
 const rawNote = (n: BusinessNote): StoredNote => ({ title: n.title, content: n.content, category: n.category, pinned: n.pinned, materials: n.materials || [], ...(typeof n.productionPhotoData === "string" ? { productionPhotoData: n.productionPhotoData } : {}) });
 const labelDate = (value: number) => value ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(value) : "Agora";
+const materialDisplayCost = (item: NoteMaterial) => item.actualCost === undefined ? item.totalCost : item.actualCost + (item.purchaseFreight ?? 0);
 // One client queue per signed-in user also protects rapid unmount/remount navigation.
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void; beforeWrite?: (id: string) => StoredNote | undefined; completionBase?: Map<string,StoredNote> };
 const queues = new Map<string, QueueEntry>();
@@ -161,7 +162,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
   useTypewriter(editorRef, draft && !productionOnly && !materialsOpen ? `${selectedId}/${mobileEditor}/${showChecklist}` : null);
   const displayedMaterials = (draft?.materials ?? []).map(material => purchasedIds.has(material.id) ? material : forecastMaterial(material,linkedOrder?.quantity));
   const groups = supplierGroups(displayedMaterials);
-  const total = displayedMaterials.reduce((sum, m) => sum + m.totalCost, 0);
+  const total = displayedMaterials.reduce((sum, item) => sum + materialDisplayCost(item), 0);
 
   const stage = (id: string, value: NoteDraft) => {
     const serialized = serializeDraft(value);
@@ -232,11 +233,11 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
   const activeCount = allNotes.filter(n => n.draft.document.status === "active" && !isReady(n.draft.document)).length;
   const readyCount = allNotes.filter(n => n.draft.document.status === "active" && isReady(n.draft.document)).length;
 
-  async function completeMaterials(id: string, materialIds: string[], completed: boolean) {
+  async function completeMaterials(id: string, materialIds: string[], purchase?: MaterialPurchaseInput[]) {
     const queue = queueRef.current;
     await queue?.flush(id);
     if (queue?.isPending(id)) throw new Error("A anotação ainda tem alterações pendentes. Salve antes de concluir a compra.");
-    await onCompleteMaterials(id, materialIds, completed);
+    await onCompleteMaterials(id, materialIds, purchase);
   }
 
   async function saveMaterial(input: MaterialSaveInput) {
@@ -305,7 +306,44 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
           {draft.document.blocks.map((b, index) => <div className={`an-text-block ${b.type} ${b.done ? "done" : ""} ${b.bold ? "bold" : ""}`} key={b.id}>{b.type === "check" ? <button className="an-check-circle" role="checkbox" aria-checked={!!b.done} aria-label={`Concluir: ${b.text || "tarefa"}`} disabled={locked} onClick={() => changeBlock(b.id, { done: !b.done })}>{b.done ? <Check size={13} /> : null}</button> : b.type === "bullet" ? <span className="an-bullet">•</span> : null}<EditableBlock value={b.text} id={b.id} readOnly={locked} placeholder={index === 0 ? "Comece a escrever…" : ""} onFocus={() => setActiveBlock(b.id)} onChange={text => changeBlock(b.id, { text }, true)} onEnter={(before, after) => { setActiveBlock(b.id); const added = block(after, b.type === "heading" ? "paragraph" : b.type); change(d => { const blocks = d.document.blocks.map(item => item.id === b.id ? { ...item, text: before } : item); blocks.splice(index + 1, 0, added); return { ...d, document: { ...d.document, blocks } }; }); requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${added.id}"]`)?.focus()); }} onRemoveEmpty={() => { if (draft.document.blocks.length <= 1 || b.text) return; change(d => ({ ...d, document: { ...d.document, blocks: d.document.blocks.filter(v => v.id !== b.id) } })); const previous = draft.document.blocks[Math.max(0, index - 1)]; requestAnimationFrame(() => editorRef.current?.querySelector<HTMLElement>(`[data-block-id="${previous.id}"]`)?.focus()); }} /></div>)}
         </div>
         {!locked && !showChecklist && <button className="an-new-line" onClick={() => addBlock()}><Plus size={14} />Adicionar linha</button>}
-        {!!draft.materials.length && <section className="an-materials" aria-label="Materiais da anotação"><header><h2>Materiais</h2><span>{draft.materials.length} {draft.materials.length === 1 ? "item" : "itens"}</span></header>{groups.map(group => <div className="an-supplier" key={group.supplier}><h3>{group.supplier}</h3>{group.materials.map(material => <div className="an-material" key={material.id}><div className="an-material-info"><span className="an-material-mark"><Circle size={16} /></span><div><b>Malha {material.fabricType}</b><small>{material.color} · {decimal(material.fabricKg)} kg</small><small>{material.collarType === "common" ? `Ribana · ${material.collarColor || material.color} · ${decimal(material.ribanaKg)} kg` : `Gola polo + punho · ${material.collarColor || material.color} · ${material.poloUnits} conjuntos`}</small></div></div><div className="an-material-right"><b>{currency(material.totalCost)}</b>{!locked && <div><button aria-label={`Editar material ${material.color}`} title={purchasedIds.has(material.id) ? "Reabra a compra em Materiais antes de editar" : "Editar material"} disabled={purchasedIds.has(material.id)} onClick={() => setCalculator(material)}>Editar</button><button aria-label={`Duplicar material ${material.color}`} title="Duplicar material" onClick={() => change(d => ({ ...d, materials: [...d.materials, { ...material, id: makeId() }] }))}><Copy size={14} /></button><button className="danger" aria-label={`Remover material ${material.color}`} title="Reabra a compra em Materiais antes de remover um item concluído" disabled={purchasedIds.has(material.id)} onClick={() => change(d => ({ ...d, materials: d.materials.filter(m => m.id !== material.id) }))}><X size={15} /></button></div>}</div></div>)}<div className="an-supplier-total"><span>Subtotal · {group.supplier}</span><b>{currency(group.materials.reduce((sum, m) => sum + m.totalCost, 0))}</b></div><button className="an-link" onClick={() => copySupplier(group.supplier)}><Copy size={15} />Copiar pedido deste fornecedor</button></div>)}<div className="an-material-grand-total"><div><b>Total de materiais</b><small>Estimativa de compra</small></div><strong>{currency(total)}</strong></div></section>}
+        {!!draft.materials.length && <section className="an-materials" aria-label="Materiais da anotação">
+          <header><h2>Materiais</h2><span>{draft.materials.length} {draft.materials.length === 1 ? "item" : "itens"}</span></header>
+          {groups.map(group => <div className="an-supplier" key={group.supplier}>
+            <header className="an-supplier-header">
+              <h3>{group.supplier}</h3>
+              <button type="button" className="an-supplier-copy" aria-label={`Copiar pedido de ${group.supplier}`} onClick={() => copySupplier(group.supplier)}>
+                <Copy size={14} aria-hidden="true" /> Copiar pedido
+              </button>
+            </header>
+            {group.materials.map(material => {
+              const purchased = purchasedIds.has(material.id);
+              const fabricKg = material.actualQuantities?.fabricKg ?? material.fabricKg;
+              const collarQuantity = material.actualQuantities?.collarQuantity ?? (material.collarType === "common" ? material.ribanaKg : material.poloUnits);
+              return <div className="an-material" key={material.id}>
+                <div className="an-material-info">
+                  <span className="an-material-mark" aria-hidden="true"><Layers size={16} /></span>
+                  <div>
+                    <b>Malha {material.fabricType}</b>
+                    <small>{material.color} · {decimal(fabricKg)} kg</small>
+                    {collarQuantity > 0 && <small>{material.collarType === "common" ? `Ribana · ${material.collarColor || material.color} · ${decimal(collarQuantity)} kg` : `Gola polo + punho · ${material.collarColor || material.color} · ${collarQuantity} conjuntos`}</small>}
+                  </div>
+                </div>
+                <div className="an-material-right">
+                  <b>{currency(materialDisplayCost(material))}</b>
+                  {!locked && <div className="an-material-actions">
+                    <button type="button" aria-label={`Editar material ${material.color}`} title={purchased ? "Reabra a compra em Materiais antes de editar" : "Editar material"} disabled={purchased} onClick={() => setCalculator(material)}><Pencil size={15} /></button>
+                    <button type="button" aria-label={`Duplicar material ${material.color}`} title="Duplicar material" onClick={() => change(d => ({ ...d, materials: [...d.materials, { ...material, id: makeId() }] }))}><Copy size={15} /></button>
+                    <button type="button" className="danger" aria-label={`Remover material ${material.color}`} title={purchased ? "Reabra a compra em Materiais antes de remover" : "Remover material"} disabled={purchased} onClick={() => change(d => ({ ...d, materials: d.materials.filter(m => m.id !== material.id) }))}><Trash2 size={15} /></button>
+                  </div>}
+                </div>
+              </div>;
+            })}
+            {groups.length > 1 && <div className="an-supplier-total">
+              <span>Subtotal</span><b>{currency(group.materials.reduce((sum, material) => sum + materialDisplayCost(material), 0))}</b>
+            </div>}
+          </div>)}
+          <div className="an-material-grand-total"><b>Total de materiais</b><strong>{currency(total)}</strong></div>
+        </section>}
         {!locked && !draft.materials.length && <button className="an-material-empty" onClick={() => setCalculator("new")}><Calculator size={18} /><span><b>Planejar materiais</b><small>Calcule tecido, ribana e conjuntos polo nesta anotação.</small></span><Plus size={17} /></button>}
         <footer className="an-document-footer"><span>{draft.materials.length} {draft.materials.length === 1 ? "material" : "materiais"} · {groups.length} {groups.length === 1 ? "fornecedor" : "fornecedores"}</span>{!locked && <button onClick={() => setCalculator("new")}><Calculator size={16} />Calculadora</button>}</footer>
       </article></div> : <div className="an-empty-document"><NotebookPen size={40} strokeWidth={1.2} /><h2>{filter === "trash" ? "Lixeira vazia" : "Um espaço para suas ideias"}</h2><p>{filter === "trash" ? "As anotações excluídas ficam aqui para restauração." : "Organize compras, produção e clientes em um só lugar."}</p><button className="an-primary" onClick={() => setModal("new")}><Plus size={17} />Nova anotação</button></div>}

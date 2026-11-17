@@ -39,7 +39,7 @@ import { dtfAlertDays, dueLabel, dueTone, normalizeOrderStatus, orderDtfStatus, 
 import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, customerRefund, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
-import { updatePurchasedMaterials } from "./notes/materials-model";
+import { confirmMaterialPurchase, updatePurchasedMaterials, type MaterialPurchaseInput } from "./notes/materials-model";
 import { indexOrderTasks, taskCompletionMonth, type Task } from "./notes/task-model";
 import FloatingTasks from "./notes/FloatingTasks";
 import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
@@ -1274,7 +1274,7 @@ export default function HomePage() {
     showToast("Registro excluído");
   };
 
-  const updateMaterialPurchase = async (id: string, materialIds: string[], mode: "complete" | "reopen" | "date", date = historyDate(Date.now())) => {
+  const updateMaterialPurchase = async (id: string, materialIds: string[], mode: "complete" | "reopen" | "date", date = historyDate(Date.now()), purchase?: MaterialPurchaseInput[]) => {
     if (!uid) throw new Error("Entre na sua conta para registrar a compra.");
     if(mode==="complete")preparePaymentSound(uid);
     let completedNow=false;
@@ -1284,9 +1284,24 @@ export default function HomePage() {
       if (!snapshot.exists()) throw new Error("Esta anotação foi removida.");
       const note = snapshot.data() as BusinessNote;
       const sourceOrder = orders.find(order => order.id === notePhotoOrderId(readDocument(note.content), orders, customers));
-      const materials = (note.materials ?? []).map(material => mode === "complete" && materialIds.includes(material.id) && !note.purchasedMaterialIds?.includes(material.id) ? forecastMaterial(material, sourceOrder?.quantity) : material);
       const previous = new Set(note.purchasedMaterialIds);
       const selected = new Set(materialIds);
+      const purchaseById = new Map(purchase?.map(item => [item.id, item]));
+      const noteMaterials = note.materials ?? [];
+      if (mode === "complete" && (selected.size !== purchaseById.size || noteMaterials.filter(item => selected.has(item.id) && !previous.has(item.id)).length !== selected.size)) throw new Error("A compra mudou. Reabra a conferência.");
+      const materials = noteMaterials.map(material => {
+        if (!selected.has(material.id)) return material;
+        if (mode === "complete") {
+          const input = purchaseById.get(material.id);
+          if (!input) throw new Error("Confira os dados da compra.");
+          return confirmMaterialPurchase(forecastMaterial(material, sourceOrder?.orderKind ? undefined : sourceOrder?.quantity), input, date);
+        }
+        if (mode === "reopen") {
+          const { actualCost, actualQuantities, purchaseFreight, purchaseDate, linkedExpenseIds, linkedExpenseAmount, ...plan } = material;
+          return plan;
+        }
+        return material;
+      });
       const targets = materials.filter(material => selected.has(material.id) && previous.has(material.id) === (mode !== "complete"));
       completedNow=mode==="complete"&&targets.length>0;
       const refs = targets.map(material => userDocument(uid, "historyEntries", materialHistoryId(id, material.id)));
@@ -1300,7 +1315,7 @@ export default function HomePage() {
           if (entry) transaction.set(ref, entry);
         }
       }
-      if (mode !== "date") transaction.update(noteRef, { materials: mode === "reopen" ? materials.map(item => { if (!selected.has(item.id)) return item; const { actualCost, purchaseFreight, purchaseDate, linkedExpenseIds, linkedExpenseAmount, ...plan } = item; return plan; }) : materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete") });
+      if (mode !== "date") transaction.update(noteRef, { materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete"), updatedAt: serverTimestamp() });
     });
     if(completedNow)activitySucceeded({uid,title:"Compra concluída",description:notes.find(note=>note.id===id)?.title||"Materiais comprados",kind:"milestone"});
   };
@@ -1326,7 +1341,12 @@ export default function HomePage() {
       if (reused.some(item => item.linkedExpenseIds?.some(id => input.expenseIds.includes(id)))) throw new Error("Um dos pagamentos já pertence a outra compra.");
       const linkedTotal = roundMoney(expenses.reduce((sum, item) => sum + (item?.amount ?? 0), 0));
       if (linkedTotal > roundMoney(input.amount + input.freight)) throw new Error("Os pagamentos selecionados ultrapassam o custo real informado.");
-      transaction.update(ref, { materials: note.materials!.map(item => item.id === material.id ? { ...item, actualCost: roundMoney(input.amount), purchaseFreight: roundMoney(input.freight), purchaseDate: input.date, linkedExpenseIds: [...new Set(input.expenseIds)], linkedExpenseAmount: linkedTotal } : item), updatedAt: serverTimestamp() });
+      const reviewed = { ...material, actualCost: roundMoney(input.amount), purchaseFreight: roundMoney(input.freight), purchaseDate: input.date, linkedExpenseIds: [...new Set(input.expenseIds)], linkedExpenseAmount: linkedTotal };
+      transaction.update(ref, { materials: note.materials!.map(item => item.id === material.id ? reviewed : item), updatedAt: serverTimestamp() });
+      if (reviewed.actualQuantities) {
+        const entry = fabricHistoryEntry(note, reviewed, input.date);
+        if (entry) transaction.set(userDocument(uid, "historyEntries", materialHistoryId(input.noteId, material.id)), entry);
+      }
     });
   };
 
@@ -1944,7 +1964,7 @@ export default function HomePage() {
           /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
@@ -1977,7 +1997,7 @@ export default function HomePage() {
 
       <MobileNavigation view={view} navigate={setView} /><SiteTypewriter page={view} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
-        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} /> : <p role="status">Carregando lista vinculada…</p>}
+        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 

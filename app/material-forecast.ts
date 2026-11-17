@@ -15,5 +15,6 @@ export function forecastMaterial(material: NoteMaterial, quantity?: number): Not
 }
 
 export function extraFabricKg(material: NoteMaterial, quantity?: number) {
-  return Math.max(0, forecastMaterial(material, quantity).fabricKg - material.fabricKg);
+  if (!quantity || quantity <= (material.orderQuantityBaseline ?? quantity)) return 0;
+  return Math.max(0, forecastMaterial(material, quantity).fabricKg - (material.actualQuantities?.fabricKg ?? material.fabricKg));
 }

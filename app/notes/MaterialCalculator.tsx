@@ -18,16 +18,19 @@ const atualTextilPrices = {
     { color: "Penteado claro", loose: 51.90, roll: 46.71 },
   ],
 };
-const purchaseModes = [{ id: "loose", label: "Por kg" }, { id: "roll", label: "Compra em peça" }] as const;
+const suppliers = ["Costa Rica", "Atual Têxtil"];
+const purchaseModes = [{ id: "loose", label: "Avulsa" }, { id: "roll", label: "Em peça" }] as const;
 function loadProfile(uid: string, supplier: string, fabric: string): Profile {
   try { return { ...defaults, ...JSON.parse(localStorage.getItem(`psyzon:material:${uid}:${supplier}:${fabric}`) || "{}") }; } catch { return defaults; }
 }
 export default function MaterialCalculator({ uid, material, initialQuantity, close, add }: { uid: string; material?: NoteMaterial; initialQuantity?: number; close: () => void; add: (material: NoteMaterial) => void }) {
   const [followOrder,setFollowOrder]=useState(!!initialQuantity && (!material || !!material.orderQuantityBaseline));
   const [supplier, setSupplier] = useState(material?.supplier || "Costa Rica");
+  const [customSupplier, setCustomSupplier] = useState(() => !suppliers.includes(supplier));
   const [fabricType, setFabricType] = useState<NoteMaterial["fabricType"]>(material?.fabricType || "PV");
   const [profile, setProfile] = useState<Profile>(() => material ? { yieldPerKg: String(material.yieldPerKg ?? 4.2), ribanaPercent: String(material.ribanaPercent ?? 5), fabricPrice: String(material.fabricPricePerKg ?? (material.fabricKg ? material.fabricCost / material.fabricKg : 43.9)), ribanaPrice: String(material.ribanaPricePerKg), poloPrice: String(material.poloPricePerUnit ?? 2.5) } : loadProfile(uid, "Costa Rica", "PV"));
-  const [supplierRate, setSupplierRate] = useState(material ? "manual" : "");
+  const [priceCategory, setPriceCategory] = useState(material ? "manual" : "");
+  const [purchaseMode, setPurchaseMode] = useState<"loose" | "roll">("loose");
   const [color, setColor] = useState(material?.color || "");
   const [collarType, setCollarType] = useState<NoteMaterial["collarType"]>(material?.collarType || "common");
   const [sameColor, setSameColor] = useState(!material || !material.collarColor || material.collarColor === material.color);
@@ -45,10 +48,8 @@ export default function MaterialCalculator({ uid, material, initialQuantity, clo
   const numeric = (v: string) => v.trim() ? Number(v.replace(",", ".")) : NaN;
   const isAtualTextil = supplier.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase() === "atual textil";
   const supplierPrices = isAtualTextil && (fabricType === "PV" || fabricType === "Algodão") ? atualTextilPrices[fabricType] : undefined;
-  const [rateMode, rateColor] = supplierRate.split(":");
-  const purchaseMode = purchaseModes.find(option => option.id === rateMode);
-  const catalogPrice = purchaseMode && supplierPrices?.find(option => option.color === rateColor)?.[purchaseMode.id];
-  const fabricPrice = supplierPrices && supplierRate !== "manual" ? catalogPrice ?? NaN : numeric(profile.fabricPrice);
+  const catalogRate = supplierPrices?.find(option => option.color === priceCategory);
+  const fabricPrice = supplierPrices && priceCategory !== "manual" ? catalogRate?.[purchaseMode] ?? NaN : numeric(profile.fabricPrice);
   let result: ReturnType<typeof calculateMaterial> | undefined, error = "";
   try {
     result = calculateMaterial({ mode, quantity: numeric(quantity), yieldPerKg: numeric(profile.yieldPerKg), waste: numeric(waste), ribanaPercent: numeric(profile.ribanaPercent), fabricPrice, ribanaPrice: numeric(profile.ribanaPrice), poloPrice: numeric(profile.poloPrice), collarType, ...(poloQuantity !== "" ? { poloQuantity: numeric(poloQuantity) } : {}) });
@@ -59,7 +60,7 @@ export default function MaterialCalculator({ uid, material, initialQuantity, clo
       result.total = result.fabricCost + result.ribanaCost + result.poloCost;
       result.perPiece = result.pieces ? result.total / result.pieces : 0;
     }
-  } catch (e) { error = quantity.trim() && (!supplierPrices || supplierRate) ? (e as Error).message : ""; }
+  } catch (e) { error = quantity.trim() && (!supplierPrices || priceCategory) ? (e as Error).message : ""; }
   const save = () => {
     if (!result || !color.trim() || !supplier.trim() || (!sameColor && !collarColor.trim())) return;
     add({ ...(followOrder && initialQuantity ? {orderQuantityBaseline:initialQuantity}:{}), id: material?.id || makeId(), supplier: isAtualTextil ? "Atual Têxtil" : supplier.trim(), fabricType, color: color.trim(), collarColor: sameColor ? color.trim() : collarColor.trim(), collarType, fabricKg: result.kg, fabricPricePerKg: fabricPrice, fabricCost: result.fabricCost, ribanaKg: result.ribanaKg, ribanaPricePerKg: numeric(profile.ribanaPrice), ribanaCost: result.ribanaCost, poloUnits: result.poloUnits, poloPricePerUnit: numeric(profile.poloPrice), poloCost: result.poloCost, totalCost: result.total, yieldPerKg: numeric(profile.yieldPerKg), ribanaPercent: numeric(profile.ribanaPercent) });
@@ -67,7 +68,7 @@ export default function MaterialCalculator({ uid, material, initialQuantity, clo
   const changeProfile = (nextSupplier: string, nextFabric: NoteMaterial["fabricType"]) => {
     setSupplier(nextSupplier);
     setFabricType(nextFabric);
-    setSupplierRate(material ? "manual" : "");
+    setPriceCategory(material ? "manual" : "");
     if (!material) setProfile(loadProfile(uid, nextSupplier, nextFabric));
   };
   const manualPriceField = <label>Malha por kg (R$)<input type="number" min="0" step="any" value={profile.fabricPrice} onChange={e => setProfile({ ...profile, fabricPrice: e.target.value })} required /></label>;
@@ -76,19 +77,33 @@ export default function MaterialCalculator({ uid, material, initialQuantity, clo
     <div className="an-segment"><button aria-pressed={tab === "fabric"} onClick={() => setTab("fabric")}>Tecido e peças</button><button aria-pressed={tab === "general"} onClick={() => setTab("general")}>Conta rápida</button></div>
     {tab === "fabric" ? <form className="an-calc-body" onSubmit={e => { e.preventDefault(); save(); }}>
 
-      <label>Fornecedor<input aria-label="Fornecedor" list="an-suppliers" maxLength={120} value={supplier} onChange={e => changeProfile(e.target.value, fabricType)} required /><datalist id="an-suppliers"><option>Costa Rica</option><option>Atual Têxtil</option></datalist></label>
+      <label>Fornecedor
+        <select value={customSupplier ? "" : supplier} onChange={e => {
+          setCustomSupplier(e.target.value === "");
+          changeProfile(e.target.value, fabricType);
+        }}>
+          {suppliers.map(name => <option key={name}>{name}</option>)}
+          <option value="">Outro fornecedor</option>
+        </select>
+      </label>
+      {customSupplier && <label>Nome do fornecedor<input maxLength={120} value={supplier} onChange={e => changeProfile(e.target.value, fabricType)} required /></label>}
       <div className="an-form-row"><label>Tipo de malha<select value={fabricType} onChange={e => changeProfile(supplier, e.target.value as NoteMaterial["fabricType"])}>{["PV", "PP", "PIQUET", "Algodão", "Dry Fit"].map(v => <option key={v}>{v}</option>)}</select></label><label>Cor da malha<input placeholder="Ex.: Azul royal" maxLength={100} value={color} onChange={e => setColor(e.target.value)} required /></label></div>
       {supplierPrices && <>
-        <label>Preço da Atual Têxtil
-          <select value={supplierRate} onChange={e => setSupplierRate(e.target.value)} required>
-            <option value="" disabled>Selecione a cor e a forma de compra</option>
-            {purchaseModes.map(({ id, label }) => <optgroup key={id} label={label}>
-              {supplierPrices.map(option => <option key={option.color} value={`${id}:${option.color}`}>{option.color} · {currency(option[id])}/kg{id === "roll" ? " em peça" : ""}</option>)}
-            </optgroup>)}
+        <label>Categoria de preço da Atual Têxtil
+          <select value={priceCategory} onChange={e => setPriceCategory(e.target.value)} required>
+            <option value="" disabled>Selecione a categoria</option>
+            {supplierPrices.map(option => <option key={option.color}>{option.color}</option>)}
             <option value="manual">Informar preço manualmente</option>
           </select>
         </label>
-        {supplierRate === "manual" && manualPriceField}
+        <div className="an-purchase-options" role="group" aria-label="Forma de compra">
+          {purchaseModes.map(({ id, label }) => (
+            <button key={id} type="button" aria-pressed={!!catalogRate && purchaseMode === id} disabled={!catalogRate} onClick={() => setPurchaseMode(id)}>
+              {label}{catalogRate && <strong>{currency(catalogRate[id])}/kg</strong>}
+            </button>
+          ))}
+        </div>
+        {priceCategory === "manual" && manualPriceField}
       </>}
       {!!initialQuantity && <label className="an-check-label"><input type="checkbox" checked={followOrder} onChange={e => setFollowOrder(e.target.checked)} /> Recalcular quando a quantidade do pedido mudar</label>}
       <div className="an-segment"><button type="button" aria-pressed={mode === "pieces"} onClick={() => { setMode("pieces"); setQuantity(""); }}>Quero produzir</button><button type="button" aria-pressed={mode === "kg"} onClick={() => { setMode("kg"); setQuantity(""); }}>Tenho tecido</button></div>

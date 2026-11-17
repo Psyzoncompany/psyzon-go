@@ -30,9 +30,10 @@
 .materials-table th { color: var(--muted); background: var(--card-subtle); font-weight: 650; }
 .materials-table th, .materials-table td { padding: 8px 12px; border-block-start: 1px solid var(--border); overflow-wrap: anywhere; }
 .materials-table small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
-.materials-order footer { display: flex; justify-content: flex-end; padding: 9px 12px; border-top: 1px solid var(--border); }
-.materials-order footer label { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 11px; font-weight: 650; cursor: pointer; }
-.materials-order footer input, .materials-export-options input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
+.materials-order footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border); }
+.materials-purchase-item { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 10px; min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.materials-purchase-item legend { padding: 0 4px; color: var(--text); font-size: 13px; font-weight: 650; }
+.materials-export-options input { width: 15px; height: 15px; margin: 0; accent-color: var(--green); }
 .materials-empty { padding: 28px 10px; color: var(--muted); text-align: center; }
 .materials-empty svg { color: var(--blue); }
 .materials-empty h2 { margin: 7px 0; color: var(--text); font-size: 15px; }

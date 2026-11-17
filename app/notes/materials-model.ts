@@ -28,6 +28,27 @@ export type MaterialLine = {
   cost: number;
 };
 
+export type MaterialPurchaseInput = NonNullable<NoteMaterial["actualQuantities"]> & {
+  id: string;
+  expected: string;
+  amount: number;
+};
+
+export function materialPurchaseSnapshot(material: NoteMaterial) {
+  return JSON.stringify([material.supplier, material.fabricType, material.color, material.collarType,
+    material.collarColor || material.color, material.fabricKg, material.ribanaKg, material.poloUnits, material.totalCost]);
+}
+
+export function confirmMaterialPurchase(material: NoteMaterial, input: MaterialPurchaseInput, date: string): NoteMaterial {
+  if (materialPurchaseSnapshot(material) !== input.expected) throw new Error("O planejamento mudou. Reabra a compra para conferir as quantidades.");
+  const { fabricKg, collarQuantity, amount } = input;
+  const validQuantity = (quantity: number) => Number.isFinite(quantity) && quantity >= 0 && quantity <= 1000000;
+  if (!validQuantity(fabricKg) || !validQuantity(collarQuantity) || fabricKg + collarQuantity <= 0
+    || (material.collarType === "polo" && !Number.isInteger(collarQuantity))) throw new Error("Confira as quantidades compradas.");
+  if (!Number.isFinite(amount) || amount < 0 || amount > 100000000) throw new Error("Confira o valor real da compra.");
+  return { ...material, actualQuantities: { fabricKg, collarQuantity }, actualCost: roundMoney(amount), purchaseDate: date };
+}
+
 type MaterialNote = { id: string; draft: NoteDraft; purchasedIds?: string[] };
 type LinkedOrder = { orderKind?: "repair" | "collection"; id: string; customer: string; quantity?: number; dueDate?: string; status?: string; customerMaterial?: boolean };
 type LinkedCustomer = { id: string; name: string };
@@ -125,14 +146,15 @@ export function updatePurchasedMaterials(materials: Pick<NoteMaterial, "id">[], 
   return [...new Set(materials.map(material => material.id))].filter(id => selected.has(id) ? completed : purchased.has(id));
 }
 
-export function materialLines(order: MaterialOrder): MaterialLine[] {
+export function materialLines(order: MaterialOrder, useActualQuantities = true): MaterialLine[] {
   return order.materials.flatMap(item => {
+    const actual = useActualQuantities ? item.actualQuantities : undefined;
     const base = { orderId: order.id, order: order.title, client: order.client, supplier: item.supplier || "Costa Rica" };
-    const fabric: MaterialLine = { ...base, material: `Malha ${item.fabricType}`, color: item.color, quantity: item.fabricKg, unit: "kg", price: item.fabricPricePerKg ?? (item.fabricKg ? item.fabricCost / item.fabricKg : 0), cost: item.fabricCost };
+    const fabric: MaterialLine = { ...base, material: `Malha ${item.fabricType}`, color: item.color, quantity: actual?.fabricKg ?? item.fabricKg, unit: "kg", price: item.fabricPricePerKg ?? (item.fabricKg ? item.fabricCost / item.fabricKg : 0), cost: item.fabricCost };
     const collar: MaterialLine = item.collarType === "polo"
-      ? { ...base, material: "Gola polo + punho", color: item.collarColor || item.color, quantity: item.poloUnits, unit: "conj.", price: item.poloPricePerUnit ?? (item.poloUnits ? (item.poloCost ?? item.totalCost - item.fabricCost) / item.poloUnits : 0), cost: item.poloCost ?? item.totalCost - item.fabricCost }
-      : { ...base, material: "Ribana", color: item.collarColor || item.color, quantity: item.ribanaKg, unit: "kg", price: item.ribanaPricePerKg, cost: item.ribanaCost };
-    return collar.quantity > 0 ? [fabric, collar] : [fabric];
+      ? { ...base, material: "Gola polo + punho", color: item.collarColor || item.color, quantity: actual?.collarQuantity ?? item.poloUnits, unit: "conj.", price: item.poloPricePerUnit ?? (item.poloUnits ? (item.poloCost ?? item.totalCost - item.fabricCost) / item.poloUnits : 0), cost: item.poloCost ?? item.totalCost - item.fabricCost }
+      : { ...base, material: "Ribana", color: item.collarColor || item.color, quantity: actual?.collarQuantity ?? item.ribanaKg, unit: "kg", price: item.ribanaPricePerKg, cost: item.ribanaCost };
+    return [fabric, collar].filter(line => line.quantity > 0 || (line === fabric && !actual));
   });
 }
 

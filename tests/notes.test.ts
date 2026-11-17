@@ -5,7 +5,8 @@ import test from "node:test";
 import { block, calculateMaterial, exportNote, newDraft, readDocument, recalculateMaterial, serializeDraft, toDraft, type NoteMaterial } from "../app/notes-model";
 import { NoteSaveQueue } from "../app/notes-save-queue";
 import { parseProductionOrder, sampleProductionOrder } from "../app/production-checklist";
-import { materialLines, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
+import { confirmMaterialPurchase, materialLines, materialPurchaseSnapshot, materialsCsv, materialsText, materialTotals, splitMaterialOrders, updatePurchasedMaterials } from "../app/notes/materials-model";
+import { fabricHistoryEntry } from "../app/history-model";
 import { indexOrderTasks } from "../app/notes/task-model";
 import { checklistCompletion } from "../app/completion-feedback";
 import { changedFields } from "../app/changed-fields";
@@ -98,6 +99,21 @@ test("product photos persist separately from checklist text and can be removed",
 });
 
 const material: NoteMaterial = { id: "pv-1", supplier: "Atual Têxtil", fabricType: "PV", color: "Azul celeste", collarColor: "Branco", fabricKg: 3.93, fabricCost: 172.527, collarType: "common", ribanaKg: .2, ribanaCost: 10.6, ribanaPricePerKg: 53, poloUnits: 0, totalCost: 183.127 };
+
+test("confirming purchases records real quantities and cost while retaining the plan", () => {
+  const input = { id: material.id, expected: materialPurchaseSnapshot(material), fabricKg: 4.5, collarQuantity: 0.3, amount: 190.01 };
+  const purchase = confirmMaterialPurchase(material, input, "2026-11-17");
+  assert.equal(purchase.fabricKg, 3.93);
+  assert.equal(purchase.totalCost, 183.127);
+  assert.deepEqual(materialLines({ id: "note", title: "Compra", client: "", materials: [purchase] }).map(line => line.quantity), [4.5, 0.3]);
+  const history = fabricHistoryEntry({ title: "Compra" }, purchase, "2026-11-17");
+  assert.equal(history?.quantity, 4.5);
+  assert.equal(history?.amount, 190.01);
+  const unchanged = confirmMaterialPurchase(material, { ...input, fabricKg: material.fabricKg, collarQuantity: material.ribanaKg, amount: material.totalCost }, "2026-11-17");
+  assert.equal(unchanged.actualCost, 183.13);
+  assert.throws(() => confirmMaterialPurchase({ ...material, fabricKg: 5 }, input, "2026-11-17"), /planejamento mudou/);
+  assert.throws(() => confirmMaterialPurchase(material, { ...input, amount: -1 }, "2026-11-17"), /valor real/);
+});
 test("completing a materials order covers only the items checked and leaves new materials pending", () => {
   const next = { ...material, id: "pv-2" };
   const orders = [{ id: "note", title: "Compra", client: "Ana", materials: [material, next], purchasedIds: updatePurchasedMaterials([material, next], ["deleted"], [material.id], true) }];

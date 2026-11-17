@@ -11,6 +11,7 @@ export type NoteMaterial = {
   fabricPricePerKg?: number; yieldPerKg?: number; ribanaPercent?: number;
   orderQuantityBaseline?: number;
   actualCost?: number;
+  actualQuantities?: { fabricKg: number; collarQuantity: number };
   purchaseFreight?: number;
   purchaseDate?: string;
   linkedExpenseIds?: string[];

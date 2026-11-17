@@ -290,7 +290,6 @@
   :root[data-ui-theme="liquid-glass-card"] .an-editor-topbar { background: var(--card-subtle); min-height: 60px; }
   :root[data-ui-theme="liquid-glass-card"] .an-document { padding-top: 26px; }
   :root[data-ui-theme="liquid-glass-card"] .an-editor-modes button { border-radius: 11px; min-height: 35px; }
-  :root[data-ui-theme="liquid-glass-card"] .an-material { border-radius: 16px; background: var(--card-subtle); }
   :root[data-ui-theme="liquid-glass-card"] .app-shell .materials-totals article { padding: 18px; }
   :root[data-ui-theme="liquid-glass-card"] .materials-toolbar { padding: 10px; background: var(--glass-surface); border: 1px solid var(--glass-rim); border-radius: 18px; }
   :root[data-ui-theme="liquid-glass-card"] .materials-order > header { padding: 18px; }

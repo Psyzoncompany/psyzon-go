@@ -41,7 +41,8 @@ export function indexOrderCosts(materials: MaterialOrder[], expenses: Expense[])
 }
 
 export function orderResult(order: Order, costs: OrderCosts | undefined, sewing: number | undefined) {
-  const material = costs?.purchasedMaterial ?? (order.customerMaterial ? 0 : undefined);
+  const material = costs?.purchasedMaterial ?? (order.customerMaterial || order.orderKind === "repair" ? 0 : undefined);
+  if (order.orderKind === "repair") sewing ??= 0;
   const dtf = order.dtfCost ?? undefined;
   const other = roundMoney((order.otherCost ?? 0) + (costs?.otherExpenses ?? 0));
   const total = roundMoney((material ?? 0) + (sewing ?? 0) + (dtf ?? 0) + other);

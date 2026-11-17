@@ -23,7 +23,7 @@ export function indexOrderPayments(records: PaymentRecord[]) {
 export function nextOrderAction(order: Order, alerts: OrderAlert[], tasks: Task[]) {
   if (order.status === "Orçamento") return;
   const pending = roundMoney(order.receivable ?? Math.max(0, order.total - order.paid));
-  if (order.status === "Entregue") return pending > 0 ? { title: "Cobrar saldo", view: "financeiro" as const, pending } : undefined;
+  if (order.status === "Entregue" || order.orderKind === "collection") return pending > 0 ? { title: "Cobrar saldo", view: "financeiro" as const, pending } : undefined;
   const production = alerts.find(alert => alert.view === "materiais") ?? alerts.find(alert => alert.view === "dtf");
   if (production) return production;
   const task = tasks.find(item => !item.completed);
@@ -32,5 +32,5 @@ export function nextOrderAction(order: Order, alerts: OrderAlert[], tasks: Task[
     return { title: "Cobrar saldo", view: "financeiro" as const, pending };
   const sewing = alerts.find(alert => alert.view === "costureiras");
   if (sewing) return sewing;
-  return { title: order.status === "Pronto" ? "Combinar entrega" : "Acompanhar produção", view: "producao" as const };
+  return { title: order.status === "Pronto" ? "Combinar entrega" : order.orderKind === "repair" ? "Acompanhar conserto" : "Acompanhar produção", view: "producao" as const };
 }

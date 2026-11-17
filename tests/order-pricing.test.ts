@@ -130,3 +130,23 @@ test("polo adds fifteen to adult and child prices and uses the seven-real sewing
   assert.equal(synchronizedOrderQuantities([polo], [], [])[0].total, 590);
   assert.equal(sewingBalances([polo], readSewing([]))[0].total, 70);
 });
+
+test("repair fees stay manual and collection orders affect receivables without adding sewing costs", async () => {
+  const { readSpecialOrder } = await import("../app/special-order");
+  const { customerBalances } = await import("../app/finance-model");
+  const { sewingBills } = await import("../app/sewing-model");
+  const form = new FormData();
+  form.set("product", "Conserto");
+  form.set("quantity", "3");
+  form.set("total", "24.50");
+  form.set("dueDate", "2026-12-10");
+  const repair = { ...readSpecialOrder(form, "repair"), customer: "Ana", id: "r", status: "Produção" as const, paid: 0 };
+  form.set("product", "Cobrança");
+  form.set("total", "100");
+  const collection = { ...readSpecialOrder(form, "collection"), customer: "Ana", id: "c", status: "Pronto" as const, paid: 25 };
+  const orders = [repair, collection];
+  assert.equal(collection.quantity, 0);
+  assert.equal(collection.dueDate, "");
+  assert.equal(customerBalances([{ id: "ana", name: "Ana", phone: "" }], orders)[0].pending, 99.50);
+  assert.deepEqual(sewingBills(orders, { people: ["Zefa"], entries: [], assignments: {}, rates: {} }), []);
+});

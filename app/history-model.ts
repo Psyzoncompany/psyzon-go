@@ -56,6 +56,7 @@ export function pendingFabric(notes: BusinessNote[]) {
 export function historyRows(orders: Order[], bills: Bill[], transactions: Expense[], entries: HistoryEntry[], month: string): HistoryRow[] {
   const system: HistoryRow[] = [];
   for (const order of orders) {
+    if (order.orderKind === "collection") continue;
     const date = historyDate(order.createdAt);
     if (date) system.push({ id: `order-${order.id}`, source: "system", kind: "orders", date, title: order.product, quantity: 1, amount: 0, supplier: "", notes: `${order.customer} · ${order.quantity} peças` });
   }

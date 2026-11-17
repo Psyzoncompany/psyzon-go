@@ -11,10 +11,12 @@ export function dtfDeadline(delivery: string) {
 
 export function indexDtfCustomerLinks(customers: Customer[], productionOrders: Order[], notes: BusinessNote[]) {
   const byName = new Map(customers.map(customer => [customerNameKey(customer.name), customer.id]));
-  const orders = new Map(productionOrders.map(order => [order.id, order]));
+  const specialIds = new Set(productionOrders.filter(order => order.orderKind).map(order => order.id));
+  const eligible = productionOrders.filter(order => !order.orderKind);
+  const orders = new Map(eligible.map(order => [order.id, order]));
   const result = new Map<string, DtfCustomerLink>();
 
-  for (const order of productionOrders) {
+  for (const order of eligible) {
     const id = byName.get(customerNameKey(order.customer));
     const deadline = order.status !== "Entregue" ? dtfDeadline(order.dueDate) : undefined;
     if (id && deadline && deadline < (result.get(id)?.deadline ?? "9999")) result.set(id, { deadline });
@@ -23,7 +25,7 @@ export function indexDtfCustomerLinks(customers: Customer[], productionOrders: O
   const linked = notes.flatMap(note => {
     if (!note.content.startsWith(documentPrefix)) return [];
     const { orderId, customerId, status, productionChecklist } = readDocument(note.content);
-    if (status === "trash") return [];
+    if (status === "trash" || specialIds.has(orderId)) return [];
     const order = orders.get(orderId);
     const orderCustomer = order ? byName.get(customerNameKey(order.customer)) : undefined;
     const id = customerId || orderCustomer;
@@ -41,7 +43,7 @@ export function indexDtfCustomerLinks(customers: Customer[], productionOrders: O
     const previous = result.get(customer.id) ?? {};
     const note = notes.find(note => note.id === previous.noteId);
     const explicit = note ? orders.get(readDocument(note.content).orderId) : undefined;
-    const matching = productionOrders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
+    const matching = eligible.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name));
     const active = matching.filter(order => order.status !== "Entregue");
     const candidates = active.length ? active : matching;
     const order = explicit && customerNameKey(explicit.customer) === customerNameKey(customer.name) ? explicit : candidates.length === 1 ? candidates[0] : undefined;

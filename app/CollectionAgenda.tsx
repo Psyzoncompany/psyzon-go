@@ -15,10 +15,10 @@ export default function CollectionAgenda({ orders, today, money, charged, edit }
     </select></header>
     {error && <p className="form-error" role="alert">{error}</p>}
     {rows.length ? <ul className="operations-list">{rows.map(order => <li key={order.id}>
-      <span><b>{order.customer}</b><small>{order.product} · {order.paymentDueDate ? order.paymentDueDate.split("-").reverse().join("/") : "Sem data combinada"}</small>
+      <span><b>{order.customer}</b><small>{order.orderKind === "collection" ? "Só cobrança · " : ""}{order.product} · {order.paymentDueDate ? order.paymentDueDate.split("-").reverse().join("/") : "Sem data combinada"}</small>
       {order.lastChargedAt && <small>Última cobrança {order.lastChargedAt.split("-").reverse().join("/")}</small>}</span>
       <strong><MoneyText>{money(order.receivable ?? Math.max(0, order.total - order.paid))}</MoneyText></strong>
-      <div className="operations-actions"><button className="secondary" onClick={() => edit(order)}>Combinar data</button><button className="secondary" disabled={!!busy || order.lastChargedAt === today} onClick={async () => {
+      <div className="operations-actions"><button className="secondary" onClick={() => edit(order)}>{order.orderKind === "collection" ? "Editar cobrança" : "Combinar data"}</button><button className="secondary" disabled={!!busy || order.lastChargedAt === today} onClick={async () => {
         setBusy(order.id); setError("");
         try { await charged(order); } catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao registrar cobrança."); }
         finally { setBusy(""); }

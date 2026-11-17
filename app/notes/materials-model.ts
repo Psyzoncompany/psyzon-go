@@ -29,7 +29,7 @@ export type MaterialLine = {
 };
 
 type MaterialNote = { id: string; draft: NoteDraft; purchasedIds?: string[] };
-type LinkedOrder = { id: string; customer: string; quantity?: number; dueDate?: string; status?: string; customerMaterial?: boolean };
+type LinkedOrder = { orderKind?: "repair" | "collection"; id: string; customer: string; quantity?: number; dueDate?: string; status?: string; customerMaterial?: boolean };
 type LinkedCustomer = { id: string; name: string };
 
 export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrder[], customers: LinkedCustomer[]): MaterialOrder[] {
@@ -38,7 +38,8 @@ export function materialOrdersFromNotes(notes: MaterialNote[], orders: LinkedOrd
   return notes.filter(({ draft }) => draft.materials.length && draft.document.status !== "trash").map(({ id, draft, purchasedIds }) => {
     const { document, materials, title } = draft;
     const linkedId = notePhotoOrderId(document, orders, customers);
-    const quantity = linkedId ? ordersById.get(linkedId)?.quantity : undefined;
+    const linkedOrder = linkedId ? ordersById.get(linkedId) : undefined;
+    const quantity = linkedOrder?.orderKind ? undefined : linkedOrder?.quantity;
     const purchased = new Set(purchasedIds);
     return {
       id,
@@ -74,7 +75,7 @@ export function materialPurchaseBills(notes: BusinessNote[], orders: LinkedOrder
   })), orders, customers);
   return splitMaterialOrders(materials, false).flatMap(note => {
     const order = linkedOrders.get(note.productionOrderId ?? "");
-    if (order?.status === "Orçamento" || order?.customerMaterial) return [];
+    if (order?.orderKind === "collection" || order?.status === "Orçamento" || order?.customerMaterial) return [];
     const amount = roundMoney(materialTotals(materialLines(note)).cost);
     if (!Number.isFinite(amount) || amount <= 0) return [];
     return [{ id: `material-purchase-${note.id}`, description: `Materiais · ${note.client || note.title}`,

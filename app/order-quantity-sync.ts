@@ -38,6 +38,7 @@ export function synchronizedOrderQuantities(
     }
   }
   return orders.map((order) => {
+    if (order.orderKind === "collection") return order;
     const effective = counts.has(order.id)
       ? {
           ...order,
@@ -47,7 +48,7 @@ export function synchronizedOrderQuantities(
           checklistChildQuantity: children.get(order.id)!,
         }
       : order;
-    if (effective.unitPrice === undefined) return effective;
+    if (effective.orderKind || effective.unitPrice === undefined) return effective;
     const unitPrice =
       effective.pricingMode === "quantity"
         ? suggestedShirtPrice(effective.quantity)

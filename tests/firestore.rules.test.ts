@@ -36,6 +36,21 @@ const validOrder = () => ({
   createdAt: Timestamp.now(),
 });
 
+test("repair and collection orders enforce their own quantities and stages", async () => {
+  const db = environment.authenticatedContext("special-orders").firestore();
+  const repair = doc(db, "users/special-orders/orders/repair");
+  await assertSucceeds(setDoc(repair, { ...validOrder(), orderKind: "repair", status: "Produção", dtfStatus: "none" }));
+  await assertFails(updateDoc(repair, { status: "Aguardando material" }));
+  await assertFails(updateDoc(repair, { unitPrice: 5 }));
+  await assertSucceeds(updateDoc(repair, { status: "Pronto" }));
+  const collection = doc(db, "users/special-orders/orders/collection");
+  await assertSucceeds(setDoc(collection, { ...validOrder(), orderKind: "collection", status: "Pronto", dueDate: "", quantity: 0 }));
+  await assertFails(updateDoc(collection, { quantity: 1 }));
+  await assertFails(updateDoc(collection, { status: "Entregue" }));
+  await assertFails(updateDoc(collection, { orderKind: deleteField() }));
+  await assertSucceeds(updateDoc(collection, { paid: 400, paymentDueDate: "2026-12-15" }));
+});
+
 before(async () => {
   environment = await initializeTestEnvironment({
     projectId: "psyzon-go-rules-test",

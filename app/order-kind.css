@@ -1,0 +1,20 @@
+.modal .order-kind-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.order-kind-picker legend { padding-inline: 4px; color: var(--muted); font-size: .78rem; }
+.modal .order-kind-picker label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.modal .order-kind-picker input[type="checkbox"] { width: 17px; height: 17px; padding: 0; accent-color: var(--blue); }
+.production-collections { display: grid; gap: 8px; margin-top: 16px; padding: 14px; }
+.production-collections h2 { margin: 0; font-size: 1rem; }
+.production-collections-list { list-style: none; margin: 0; padding: 0; }
+.production-collections-list li + li { border-top: 1px solid var(--border); }
+.production-collections-list button { display: flex; flex-wrap: wrap; width: 100%; align-items: center; justify-content: space-between; gap: 6px 12px; min-height: 52px; text-align: left; }
+.production-collections-list button > span:first-child { display: grid; min-width: 0; overflow-wrap: anywhere; }
+.production-collections-list small { color: var(--muted); }

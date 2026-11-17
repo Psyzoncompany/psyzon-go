@@ -3,6 +3,14 @@ export const orderStatuses = [...productionStages, "Entregue"] as const;
 export type OrderStatus = (typeof orderStatuses)[number];
 export const orderDtfStatus = { none: "Não precisa de DTF", pending: "Precisa pedir DTF", requested: "DTF já pedido" } as const;
 export type OrderDtfStatus = keyof typeof orderDtfStatus;
+export type SpecialOrderKind = "repair" | "collection";
+export const specialOrderLabels = { repair: "Só conserto", collection: "Só cobrança" } as const;
+
+export function orderStages(order: { orderKind?: SpecialOrderKind }) {
+  if (order.orderKind === "collection") return ["Pronto"] as const;
+  if (order.orderKind === "repair") return ["Produção", "Pronto", "Entregue"] as const;
+  return orderStatuses;
+}
 
 export function normalizeOrderStatus(status: unknown): OrderStatus {
   if (status === "Aprovado") return "Aguardando material";
@@ -16,6 +24,7 @@ export function nextOrderStatus(status: OrderStatus): OrderStatus | undefined {
 
 export type Order = {
   id: string;
+  orderKind?: SpecialOrderKind;
   customer: string;
   phone?: string;
   product: string;

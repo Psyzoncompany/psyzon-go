@@ -10,7 +10,7 @@ export function taskCompletionMonth(task: Task) {
 
 const nameWords = (value: string) => customerNameKey(value).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
-export function indexOrderTasks(orders: Pick<Order, "id" | "customer" | "status">[], customers: Pick<Customer, "id" | "name" | "archived">[], tasks: Task[]) {
+export function indexOrderTasks(orders: Pick<Order, "id" | "customer" | "status" | "orderKind">[], customers: Pick<Customer, "id" | "name" | "archived">[], tasks: Task[]) {
   const activeByName = new Map<string, string[]>();
   const knownNames = new Set<string>();
   const customersByName = new Map<string, string[]>();
@@ -18,7 +18,7 @@ export function indexOrderTasks(orders: Pick<Order, "id" | "customer" | "status"
     const name = nameWords(order.customer);
     if (!name) continue;
     knownNames.add(name);
-    if (order.status === "Orçamento" || order.status === "Entregue") continue;
+    if (order.orderKind === "collection" || order.status === "Orçamento" || order.status === "Entregue") continue;
     const active = activeByName.get(name) ?? [];
     active.push(order.id);
     activeByName.set(name, active);

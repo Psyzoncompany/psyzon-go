@@ -42,12 +42,16 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "paymentDueDate", "lastChargedAt", "costsConfirmedAt", "costsFingerprint", "customerMaterial", "childQuantity", "pricingMode", "shirtType"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "paymentDueDate", "lastChargedAt", "costsConfirmedAt", "costsFingerprint", "customerMaterial", "childQuantity", "pricingMode", "shirtType", "orderKind"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
         && text(data.product, 1, 160)
-        && data.quantity is int && data.quantity > 0 && data.quantity <= 1000000
+        && data.quantity is int && data.quantity >= 0 && data.quantity <= 1000000
+        && ((data.get("orderKind", "") == "collection" && data.quantity == 0 && data.total > 0 && data.status == "Pronto" && data.dueDate == "") || (data.get("orderKind", "") != "collection" && data.quantity > 0 && calendarDate(data.dueDate)))
+        && data.get("orderKind", "") in ["", "repair", "collection"]
+        && (data.get("orderKind", "") != "repair" || data.status in ["Produção", "Pronto", "Entregue"])
+        && (data.get("orderKind", "") == "" || (data.get("dtfStatus", "none") == "none" && !("unitPrice" in data)))
         && (!("shirtType" in data) || data.shirtType in ["standard","polo"])
         && money(data.total, true)
         && (!("paymentDueDate" in data) || data.paymentDueDate == null || calendarDate(data.paymentDueDate))
@@ -63,7 +67,6 @@ service cloud.firestore {
         && (!("pricingMode" in data) || (("unitPrice" in data) && data.pricingMode in ["quantity","manual"]))
         && (!("childQuantity" in data) || (data.childQuantity is int && data.childQuantity >= 0 && data.childQuantity <= data.quantity))
         && money(data.paid, true) && (data.paid <= data.total || (resource != null && data.paid <= resource.data.paid))
-        && calendarDate(data.dueDate)
         && data.status in ["Orçamento", "Aprovado", "Aguardando material", "Produção", "Finalização", "Pronto", "Entregue"]
         && (!("dtfStatus" in data) || data.dtfStatus in ["none", "pending", "requested"])
         && optionalText(data, "notes", 4000)
@@ -230,7 +233,7 @@ service cloud.firestore {
     match /users/{uid}/orders/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validOrder(request.resource.data);
-      allow update: if owns(uid) && validOrder(request.resource.data) && unchanged("createdAt");
+      allow update: if owns(uid) && validOrder(request.resource.data) && unchanged("createdAt") && unchanged("orderKind");
       allow delete: if owns(uid);
     }
 

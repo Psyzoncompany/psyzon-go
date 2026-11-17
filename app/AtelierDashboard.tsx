@@ -98,13 +98,13 @@ export default function AtelierDashboard(props: Props) {
             return <li key={order.id} data-critical={critical}>
               <span className="atelier-order-icon"><Shirt size={19} aria-hidden="true" /></span>
               <div className="atelier-order-name">
-                <b>{order.customer}</b><small>{order.product} · {order.quantity} un.</small>
+                <b>{order.customer}</b><small>{order.product}{order.orderKind !== "collection" && ` · ${order.quantity} un.`}</small>
                 {action && <button type="button" className="atelier-order-action" onClick={() => navigate(action.view, "id" in action ? action.id : undefined)}>
                   {action.title}<ArrowRight size={13} />
                 </button>}
               </div>
               <div className="atelier-order-meta">
-                <span>{order.status}</span>
+                <span>{order.orderKind === "collection" ? "Só cobrança" : order.orderKind === "repair" ? "Só conserto" : order.status}</span>
                 {filter === "collect" ? <MoneyText>{money(order.receivable ?? 0)}</MoneyText> : <small>{dueLabel(order.dueDate, order.status, todayDate)}</small>}
                 {filter !== "collect" && <button type="button" className="atelier-checklist" aria-label={`Abrir checklist de ${order.customer}`} title="Abrir checklist" onClick={() => props.openChecklist(order)}><ClipboardList size={17} /></button>}
               </div>

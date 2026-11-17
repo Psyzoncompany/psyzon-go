@@ -14,11 +14,12 @@ import Image from "next/image";
 import { AlertTriangle, ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, CalendarDays, Shirt, MoreHorizontal, PackageOpen, Layers, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
 import { useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { urgentOrder, dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStatuses, productionStages, type Order, type OrderStatus } from "./order-model";
+import { urgentOrder, dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStages, orderStatuses, specialOrderLabels, productionStages, type Order, type OrderStatus } from "./order-model";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import useProductionDrag from "./useProductionDrag";
 import "./production-board.css";
 import "./order-details.css";
+import "./order-kind.css";
 import "./notes/notes.css";
 
 type Props = {
@@ -55,12 +56,13 @@ export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewi
   const board = useRef<HTMLDivElement>(null);
   const drag = useProductionDrag(board, (id, stage) => {
     const order = orders.find(item => item.id === id);
-    if (order && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
+    if (order && orderStages(order).some(allowed => allowed === stage) && !working.has(id) && order.status !== "Entregue" && order.status !== stage) moveOrder(order, stage);
   });
   const columns = useRef<Array<HTMLElement | null>>([]);
   const grouped = new Map(orderStatuses.map(status => [status, [] as Order[]]));
   const selected = orders.find(order => order.id === selectedId);
-  for (const order of orders) if (filter !== "late" || dueTone(order.dueDate, order.status) === "danger") grouped.get(order.status)?.push(order);
+  const collections = orders.filter(order => order.orderKind === "collection");
+  for (const order of orders) if (order.orderKind !== "collection" && (filter !== "late" || dueTone(order.dueDate, order.status) === "danger")) grouped.get(order.status)?.push(order);
   for (const stage of productionStages) grouped.get(stage)?.sort((a, b) => sort === "customer" ? a.customer.localeCompare(b.customer, "pt-BR") : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
   const delivered = orders.filter(order => order.status === "Entregue").sort((a, b) => (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""));
   const deliveryMonths = new Map<string, Order[]>();
@@ -100,7 +102,7 @@ export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewi
 
   return <section className="production-workspace" onPointerMove={drag.move} onPointerUp={drag.end} onPointerCancel={drag.end} onLostPointerCapture={drag.end}>
     <header className="production-heading">
-      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><TypedHeading>Produção</TypedHeading><p>{orders.length - deliveredCount} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
+      <div className="kanban-heading-title"><span className="kanban-heading-icon"><Layers size={26} /></span><div><TypedHeading>Produção</TypedHeading><p>{orders.length - deliveredCount - collections.length} em andamento <span>·</span> {deliveredCount} {deliveredCount === 1 ? "entregue" : "entregues"}</p></div></div>
       <div className="kanban-tools"><label>Organizar<select aria-label="Organizar pedidos" value={sort} onChange={event => setSort(event.target.value)}><option value="deadline">Prazo</option><option value="customer">Cliente</option></select></label><label>Filtros<select aria-label="Filtrar pedidos" value={filter} onChange={event => setFilter(event.target.value)}><option value="all">Todos</option><option value="late">Atrasados</option></select></label><button className="primary" onClick={onCreate}><Plus size={17} /> Novo pedido</button></div>
     </header>
     {error && <p className="form-error" role="alert">{error}</p>}
@@ -123,6 +125,20 @@ export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewi
         </section>;
       })}
     </div>
+    {collections.length > 0 && <section className="panel production-collections" aria-label="Só cobranças">
+      <h2>Só cobranças <span className="production-count">{collections.length}</span></h2>
+      <ul className="production-collections-list">
+        {collections.map(order => {
+          const pending = order.receivable ?? Math.max(0, order.total - order.paid);
+          return <li key={order.id}>
+            <button type="button" className="production-note-link" onClick={() => setSelectedId(order.id)}>
+              <span><b>{order.customer}</b><small>{order.product}</small></span>
+              <span>{pending > 0 ? <MoneyText>{displayMoney(pending)}</MoneyText> : "Recebido"} <ArrowRight size={14} /></span>
+            </button>
+          </li>;
+        })}
+      </ul>
+    </section>}
     <details className="production-delivered">
       <summary data-production-drop="Entregue" data-drop-active={drag.dragged?.stage === "Entregue"}><Check size={18} /> <strong>Pedidos entregues</strong><span className="production-count"><CountUp value={delivered.length} /></span><ChevronDown className="production-delivered-chevron" size={17} /></summary>
       {delivered.length ? [...deliveryMonths].map(([month, entries], index) => <details className="production-delivery-month" key={month} open={index === 0}>
@@ -223,7 +239,7 @@ function OrderCard({ order, busy, open, openChecklist, dragging, startDrag, aler
   return <article className="production-order-card kanban-order-card" data-moving={dragging} data-urgent={urgent}>
     <button className="kanban-card-open" type="button" aria-label={`Abrir pedido de ${order.customer}`} aria-haspopup="dialog" onClick={open}>
       <span className="kanban-card-photo"><OrderPhoto order={order} /></span>
-      <span className="kanban-card-copy"><b>{order.customer}</b><small>{order.product}</small></span>
+      <span className="kanban-card-copy"><b>{order.customer}</b><small>{order.orderKind === "repair" ? specialOrderLabels.repair + " · " : ""}{order.product}</small></span>
       <span className="kanban-card-meta"><span className={`due ${urgent ? "danger" : dueTone(order.dueDate, order.status)}`}><CalendarDays size={15} />{dueLabel(order.dueDate, order.status)}</span><span className="kanban-card-quantity"><Shirt size={17} />{order.quantity} un.</span></span>
     </button>
     <div className="kanban-card-actions"><button type="button" className="kanban-alert-button" data-pending={alertCount > 0} aria-label={`Pendências de ${order.customer} (${alertCount})`} aria-haspopup="dialog" title={`${alertCount} pendência(s)`} onClick={openAlerts}><AlertTriangle size={16} /></button><span className="kanban-drag" aria-hidden="true" title="Arraste para mudar de etapa" onPointerDown={busy ? undefined : startDrag}><GripVertical size={13} /></span><button className="production-open-list" type="button" aria-label={`Abrir lista de ${order.customer}`} title="Abrir lista" onClick={openChecklist}><ClipboardList size={16} /></button><button type="button" aria-label={`Opções do pedido de ${order.customer}`} title="Detalhes e ações" onClick={open}><MoreHorizontal size={17} /></button></div>
@@ -251,7 +267,8 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
   const [costBusy, setCostBusy] = useState(false);
   const [costError, setCostError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
-  const next = nextOrderStatus(order.status);
+  const collection = order.orderKind === "collection";
+  const next = collection ? undefined : nextOrderStatus(order.status);
   async function copyQuote() {
     try {
       await navigator.clipboard.writeText([`Orçamento · PSYZON COMPANY`, order.customer, `${order.product} · ${order.quantity} peças`, `Total: ${displayMoney(order.total)}`, order.notes].filter(Boolean).join("\n"));
@@ -270,8 +287,8 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
         {error && <p className="form-error" role="alert">{error}</p>}
         <header className="order-details-title">
           <h3>{order.product}</h3>
-          <span>{order.status} · {order.quantity} {order.quantity === 1 ? "peça" : "peças"}</span>
-          <span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}{order.dueDate ? ` · ${order.dueDate.split("-").reverse().join("/")}` : ""}</span>
+          <span>{collection ? specialOrderLabels.collection : `${order.orderKind === "repair" ? "Só conserto · " : ""}${order.status} · ${order.quantity} ${order.quantity === 1 ? "peça" : "peças"}`}</span>
+          {!collection && <span className={`due ${dueTone(order.dueDate, order.status)}`}>{dueLabel(order.dueDate, order.status)}{order.dueDate ? ` · ${order.dueDate.split("-").reverse().join("/")}` : ""}</span>}
         </header>
         <dl className="order-details-money">
           <div><dt>Total do pedido</dt><dd><MoneyText>{displayMoney(order.total)}</MoneyText></dd></div>
@@ -281,7 +298,7 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
         <div className="order-details-actions">
           {next && <button className="primary" disabled={busy} onClick={() => move(next)}>{next === "Entregue" ? "Marcar como entregue" : order.status === "Orçamento" ? "Confirmar pedido" : "Avançar etapa"}<ArrowRight size={16} /></button>}
           <button className="secondary" disabled={busy} onClick={edit}><Pencil size={16} /> Editar pedido</button>
-          <button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button>
+          {!collection && <button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button>}
         </div>
         <dl className="order-details-specs">
           {adultPrice !== null && order.quantity > children && <div><dt>Adultas</dt><dd>{order.quantity - children} un. × {displayMoney(adultPrice)}</dd></div>}
@@ -294,7 +311,7 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           <summary><span>Histórico de pagamentos</span><small>{payments.length} {payments.length === 1 ? "lançamento" : "lançamentos"}</small><ChevronDown size={16} /></summary>
           <OrderPaymentHistory order={order} payments={payments} displayMoney={displayMoney} />
         </details>}
-        {order.status !== "Orçamento" && <details className="order-details-disclosure">
+        {!collection && order.status !== "Orçamento" && <details className="order-details-disclosure">
           <summary><span>Custo e resultado</span><small>{result.confirmed ? "Conferido · " : "Conferir · "}{displayMoney(result.result)}</small><ChevronDown size={16} /></summary>
           <section className="order-details-costs" aria-label="Custo e resultado">
             {costError && <p className="form-error" role="alert">{costError}</p>}
@@ -314,9 +331,9 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           </section>
         </details>}
         <footer className="order-details-secondary-actions">
-          {!order.photoData && <button className="production-note-link" onClick={edit}><Camera size={16} /> Adicionar foto</button>}
+          {!collection && !order.photoData && <button className="production-note-link" onClick={edit}><Camera size={16} /> Adicionar foto</button>}
           {order.status === "Orçamento" && <button className="production-note-link" onClick={() => void copyQuote()}>Copiar orçamento</button>}
-          {order.status === "Pronto" && /^\d{8,15}$/.test(phone) && <a className="production-note-link" href={`https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar cliente</a>}
+          {!collection && order.status === "Pronto" && /^\d{8,15}$/.test(phone) && <a className="production-note-link" href={`https://wa.me/${phone}?text=${encodeURIComponent(`Olá, ${order.customer}. Seu pedido da PSYZON está pronto para retirada ou entrega.`)}`} target="_blank" rel="noopener noreferrer"><MessageCircle size={16} /> Avisar cliente</a>}
           <button className="production-note-link" disabled={busy} onClick={remove}><Trash2 size={15} /> Excluir pedido</button>
         </footer>
         {copyStatus && <p role="status">{copyStatus}</p>}

@@ -9,7 +9,7 @@ import type { ClosingTransaction } from "../../monthly-closing";
 import { openFinanceReport } from "./ai-operations";
 import { materialPurchaseBills, materialLines, materialOrdersFromNotes, materialTotals, splitMaterialOrders } from "../../notes/materials-model";
 import { notePhotoOrderId } from "../../order-photo-sync";
-import { orderStatuses, normalizeOrderStatus } from "../../order-model";
+import { orderStatuses, orderStages, normalizeOrderStatus } from "../../order-model";
 import { restockTasks, restockBills, restockPrefix } from "../../notes/restock-model";
 import { readSewing, sewingBalances, sewingBills, sewingEntriesForPeriod, sewingEntryTotals, sewingNoteId, sewingOrderBalances, sewingInCustody } from "../../sewing-model";
 import { millis, readDocument, toDraft, type NoteMaterial } from "../../notes-model";
@@ -578,6 +578,7 @@ const updateOrderStatus: ToolDefinition = {
     if (!orderStatuses.some(stage => stage === status)) throw new Error("Etapa inválida.");
     const order = await getUserDocument(context.identity, "orders", id);
     if (!order) throw new Error("Pedido não encontrado.");
+    if (!orderStages(order as Pick<Order, "orderKind">).some(stage => stage === status)) throw new Error("Esta etapa não se aplica a este pedido.");
     return { action: "Alterar etapa do pedido", currentValue: text(order.status), newValue: status, reason: text(args.reason), impact: text(order.customer) };
   },
   execute: async (context, args) => {
@@ -585,6 +586,7 @@ const updateOrderStatus: ToolDefinition = {
     if (!orderStatuses.some(stage => stage === status)) throw new Error("Etapa inválida.");
     const previous = await getUserDocument(context.identity, "orders", orderId);
     if (!previous) throw new Error("Pedido não encontrado.");
+    if (!orderStages(previous as Pick<Order, "orderKind">).some(stage => stage === status)) throw new Error("Esta etapa não se aplica a este pedido.");
     const updated = await patchUserDocument(context.identity, "orders", orderId, { status, deliveredAt: status === "Entregue" ? previous.deliveredAt || (previous.status === "Entregue" ? null : today()) : null });
     await logAIAudit({ identity: context.identity, conversationId: context.conversationId, tool: "update_order_status", action: "update", entity: "order", entityId: orderId, arguments: { status, reason: text(args.reason) }, previousValue: { status: previous.status }, newValue: { status }, status: "success", riskLevel: 2 });
     return { success: true, orderId, previousStatus: previous.status, status: updated.status };

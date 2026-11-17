@@ -35,7 +35,7 @@ export function sewingInCustody(movements: SewingMovement[], orderId: string, pe
 
 export function validateSewingMovement(ledger: SewingLedger, orders: Order[], movement: SewingMovement, today: string) {
   const order = orders.find(item => item.id === movement.orderId);
-  if (!order || order.status === "Orçamento" || !ledger.people.includes(movement.person) || !Number.isInteger(movement.quantity) || movement.quantity < 1 || !["sent", "returned"].includes(movement.kind) || !/^\d{4}-\d{2}-\d{2}$/.test(movement.date) || movement.date > today)
+  if (!order || order.orderKind || order.status === "Orçamento" || !ledger.people.includes(movement.person) || !Number.isInteger(movement.quantity) || movement.quantity < 1 || !["sent", "returned"].includes(movement.kind) || !/^\d{4}-\d{2}-\d{2}$/.test(movement.date) || movement.date > today)
     throw new Error("Confira o pedido, a data e as peças.");
   if (movement.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(movement.deadline)) throw new Error("Confira o prazo.");
   const previous = ledger.movements ?? [];
@@ -85,7 +85,7 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
   const hidden = new Set(ledger.hiddenOrderIds);
   return ledger.people.map((person) => {
     const rows = orders.filter(
-      (order) => order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person,
+      (order) => !order.orderKind && order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person,
     );
     const total = rows.reduce(
       (sum, order) =>
@@ -116,7 +116,7 @@ export function sewingOrderBalances(
 ) {
   const hidden = new Set(ledger.hiddenOrderIds);
   const rows = orders
-    .filter((order) => order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person)
+    .filter((order) => !order.orderKind && order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person)
     .sort(
       (a, b) =>
         millis(a.createdAt) - millis(b.createdAt) || a.id.localeCompare(b.id),

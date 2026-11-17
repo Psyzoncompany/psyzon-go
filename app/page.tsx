@@ -4,6 +4,9 @@ import { CountUp, ProgressBar } from "./MotionValue";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import type { BusinessNote } from "./NotesWorkspace";
+import { OrderKindPicker, SpecialOrderFields } from "./OrderKindFields";
+import { readSpecialOrder } from "./special-order";
+import { orderStages, specialOrderLabels, type SpecialOrderKind } from "./order-model";
 import OrderPricingFields from "./OrderPricingFields";
 import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
@@ -873,7 +876,7 @@ export default function HomePage() {
   const nextPayables = view === "inicio" ? nextMonthPayables(allPayables, calendarDate.slice(0, 7)) : undefined;
   const orderBalances = orderReceivables(balances, orders);
   const productionOrders = orders.map(order => ({ ...order, receivable: orderBalances.get(order.id) ?? 0 }));
-  const activeOrders = productionOrders.filter(order => order.status !== "Entregue");
+  const activeOrders = productionOrders.filter(order => order.status !== "Entregue" && order.orderKind !== "collection");
   const confirmedOrders = activeOrders.filter(order => order.status !== "Orçamento");
   const overdue = confirmedOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = confirmedOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
@@ -995,44 +998,41 @@ export default function HomePage() {
 
     try {
       if (kind === "pedido" || kind === "orcamento") {
-        const nextOrder: Omit<Order, "id"> = {
-          customer: String(form.get("customer")).trim(),
-          phone: String(form.get("phone") || ""),
-          product: String(form.get("product")),
-          quantity: Number(form.get("quantity")),
-          unitPrice:
-            form.get("pricingMode") === "quantity"
-              ? suggestedShirtPrice(Number(form.get("quantity")))
-              : Number(form.get("unitPrice")),
-          pricingMode:
-            form.get("pricingMode") === "quantity" ? "quantity" : "manual",
-          childQuantity: Number(form.get("childQuantity")),
-          childUnitPrice: String(form.get("childUnitPrice") ?? "") === "" ? null : Number(form.get("childUnitPrice")),
-          shirtType: form.get("shirtType") === "polo" ? "polo" : "standard",
-          total: Number(form.get("total")),
+        const requestedKind = form.get("orderKind");
+        const special = kind === "pedido" && (requestedKind === "repair" || requestedKind === "collection") ? requestedKind : undefined;
+        if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+        const db = getFirestore(getApps()[0]);
+        const customer = String(form.get("customer") ?? "").trim();
+        if (!customer || customer.length > 120) throw new Error("Confira o nome do cliente.");
+        const existingCustomer = customers.find(item => customerNameKey(item.name) === customerNameKey(customer));
+        const common = {
+          customer,
+          phone: String(form.get("phone") || (special ? existingCustomer?.phone : "") || ""),
           paid: Number(form.get("paid")),
-          dueDate: String(form.get("dueDate")),
-          status: kind === "orcamento" ? "Orçamento" : "Aguardando material",
-          dtfStatus: String(form.get("dtfStatus")) as OrderDtfStatus,
           notes: String(form.get("notes") || ""),
           photoData: String(form.get("photoData") || ""),
           createdAt: serverTimestamp(),
         };
-        if (firebaseState !== "live")
-          throw new Error("Firestore ainda não está conectado");
-        const db = getFirestore(getApps()[0]);
-        validateShirtPrice(
-          nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
-          nextOrder.quantity,
-          nextOrder.childQuantity!,
-          nextOrder.childUnitPrice,
-        );
-        nextOrder.total = shirtTotal(
-          nextOrder.unitPrice! + poloExtra(nextOrder.shirtType),
-          nextOrder.quantity,
-          nextOrder.childQuantity!,
-          nextOrder.childUnitPrice,
-        );
+        let nextOrder: Omit<Order, "id">;
+        if (special) {
+          nextOrder = { ...common, ...readSpecialOrder(form, special), status: special === "repair" ? "Produção" : "Pronto" };
+        } else {
+          const quantity = Number(form.get("quantity"));
+          const pricingMode = form.get("pricingMode") === "quantity" ? "quantity" : "manual";
+          const unitPrice = pricingMode === "quantity" ? suggestedShirtPrice(quantity) : Number(form.get("unitPrice"));
+          const childQuantity = Number(form.get("childQuantity"));
+          const childUnitPrice = String(form.get("childUnitPrice") ?? "") === "" ? null : Number(form.get("childUnitPrice"));
+          const shirtType = form.get("shirtType") === "polo" ? "polo" : "standard";
+          const price = unitPrice + poloExtra(shirtType);
+          validateShirtPrice(price, quantity, childQuantity, childUnitPrice);
+          nextOrder = {
+            ...common, quantity, pricingMode, unitPrice, childQuantity, childUnitPrice, shirtType,
+            product: String(form.get("product")), dueDate: String(form.get("dueDate")),
+            total: shirtTotal(price, quantity, childQuantity, childUnitPrice),
+            status: kind === "orcamento" ? "Orçamento" : "Aguardando material",
+            dtfStatus: String(form.get("dtfStatus")) as OrderDtfStatus,
+          };
+        }
         if (
           !Number.isFinite(nextOrder.paid) ||
           nextOrder.paid < 0 ||
@@ -1050,11 +1050,6 @@ export default function HomePage() {
             .replace(/^-|-$/g, "") || orderKey;
         const batch = writeBatch(db);
         batch.set(orderReference, nextOrder);
-        const existingCustomer = customers.find(
-          (customer) =>
-            customerNameKey(customer.name) ===
-            customerNameKey(nextOrder.customer),
-        );
         batch.set(
           userDocument(uid, "customers", existingCustomer?.id ?? customerKey),
           {
@@ -1139,6 +1134,7 @@ export default function HomePage() {
 
   const updateStatus = async (order: Order, status: OrderStatus) => {
     if (firebaseState !== "live") throw new Error("Aguarde a conexão para atualizar a etapa.");
+    if (!orderStages(order).some(stage => stage === status)) throw new Error("Esta etapa não se aplica a este pedido.");
     const forward=orderStatuses.indexOf(status)>orderStatuses.indexOf(order.status);
     if(forward)preparePaymentSound(uid);
     try {
@@ -1441,6 +1437,12 @@ export default function HomePage() {
       notes: String(form.get("notes") || ""),
       photoData: String(form.get("photoData") || ""),
     };
+    if (editingOrder.orderKind) {
+      Object.assign(updatedOrder, readSpecialOrder(form, editingOrder.orderKind));
+      if (editingOrder.orderKind === "collection") updatedOrder.status = "Pronto";
+      if (!orderStages(editingOrder).some(stage => stage === updatedOrder.status)) throw new Error("Confira a etapa do pedido.");
+    }
+    if (!updatedOrder.customer || updatedOrder.customer.length > 120) throw new Error("Confira o nome do cliente.");
     if (updatedOrder.paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(updatedOrder.paymentDueDate)) throw new Error("Confira a data combinada para pagamento.");
     if (updatedOrder.unitPrice !== undefined) {
       validateShirtPrice(
@@ -1797,6 +1799,7 @@ export default function HomePage() {
   };
 
   const openProductionList = async (order: Order) => {
+    if (order.orderKind === "collection") return;
     if (firebaseState !== "live") return showToast("Aguarde a conexão para abrir a lista.");
     const linked = notes.filter(note => { const document = readDocument(note.content); return document.orderId === order.id && document.status !== "trash"; })
       .sort((a, b) => Number(!!readDocument(b.content).productionChecklist) - Number(!!readDocument(a.content).productionChecklist) || millis(b.updatedAt) - millis(a.updatedAt))[0];
@@ -1892,7 +1895,7 @@ export default function HomePage() {
   const firstName = accountFirstName || "";
   const initials = userName.split(" ").map((part) => part[0]).slice(0, 2).join("").toUpperCase();
   const floatingActive = floatingHost !== null;
-  const photoOrders = synchronizedOrderPhotos(orders, notes, dtfOrders, visibleCustomers);
+  const photoOrders = synchronizedOrderPhotos(orders.filter(order => order.orderKind !== "collection"), notes, dtfOrders, visibleCustomers);
   const photoProductionOrders = productionOrders.map(order => photoOrders.find(item => item.id === order.id) ?? order);
 
   return (
@@ -1934,11 +1937,11 @@ export default function HomePage() {
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
           {nextPayables && (atelier ? <AtelierDashboard
             name={firstName} today={calendarDate} orders={activeOrders}
-            deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)}
+            deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)}
             alerts={alerts} tasks={orderTasks} balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />}
             payable={payable} pending={pending} sewingTotal={sewingTotal} nextPayables={nextPayables} dtfAlertCount={dtfAlertCount}
             money={displayTotal} navigate={setView} create={setModal} openChecklist={order => void openProductionList(order)}
-          /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
+          /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}
@@ -1978,7 +1981,7 @@ export default function HomePage() {
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
-      {modal && <CreateModalV2 kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
+      {modal && <CreateModalV2 customers={visibleCustomers} kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal busy={savingOrder} order={editingOrder} close={() => {if(!savingOrderRef.current)setEditingOrder(null);}} onSubmit={(event) => {event.preventDefault();if(savingOrderRef.current)return;savingOrderRef.current=true;setSavingOrder(true);void saveOrder(event).catch((error:unknown)=>showToast(error instanceof Error && !error.name.startsWith("Firebase")?error.message:"Não foi possível salvar o pedido. Confira os dados e tente novamente.")).finally(()=>{savingOrderRef.current=false;setSavingOrder(false);});}} />}
 
 
@@ -2053,10 +2056,10 @@ function Dashboard({ balanceCard, alerts, orderTasks, today, sewingTotal, userNa
             const action = nextOrderAction(order, items, (orderTasks as ReadonlyMap<string, Task[]>).get(order.id) ?? []);
             const urgent = urgentOrder(order,today);
             return <div className="today-row" data-urgent={urgent} key={order.id}>
-              <div><b>{order.customer}</b><small>{order.product} · {order.quantity} un.</small>
+              <div><b>{order.customer}</b><small>{order.product}{order.orderKind !== "collection" && ` · ${order.quantity} un.`}</small>
                 {action && <div className="today-alerts"><button type="button" title={"detail" in action ? action.detail : undefined} onClick={() => setView(action.view, "id" in action ? action.id : undefined)}>{action.title}{"pending" in action && " · " + displayTotal(action.pending)} <ChevronRight size={13} aria-hidden="true" /></button></div>}
               </div>
-              <span className={`due ${urgent ? "danger" : dueTone(order.dueDate,order.status)}`}>{dueLabel(order.dueDate,order.status)}</span>
+              <span className={`due ${urgent ? "danger" : dueTone(order.dueDate,order.status)}`}>{order.orderKind === "collection" ? "Só cobrança" : dueLabel(order.dueDate,order.status)}</span>
             </div>;
           })}{!priorityOrders.length && <p className="finance-empty">Nenhuma próxima ação.</p>}</div>
         </section>
@@ -2089,13 +2092,28 @@ function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {
   return <label className="full">DTF<select name="dtfStatus" aria-label="DTF" defaultValue={value}>{Object.entries(orderDtfStatus).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label>;
 }
 
-function CreateModalV2({ kind, setKind, close, onSubmit }: { kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function CreateModalV2({ customers, kind, setKind, close, onSubmit }: { customers: Customer[]; kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void> }) {
   const [photoBusy, setPhotoBusy] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={onSubmit}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /><OrderPhotoField onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy}><Check size={17} /> Salvar</button></footer></form></aside></div>;
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const dismiss = () => { if (!saving.current) close(); };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    try { await onSubmit(event); } finally { saving.current = false; setBusy(false); }
+  };
+  const [orderKind, setOrderKind] = useState<SpecialOrderKind>();
+  const special = kind === "pedido" ? orderKind : undefined;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && dismiss()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={dismiss} disabled={busy} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={submit} aria-busy={busy}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} list="order-customers" /></label><datalist id="order-customers">{customers.map(customer => <option key={customer.id} value={customer.name} />)}</datalist><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label>{kind === "pedido" && <OrderKindPicker kind={special} change={setOrderKind} />}
+  {special ? <><input type="hidden" name="orderKind" value={special} /><SpecialOrderFields key={special} kind={special} defaultDeadline={isoOffset(7)} /></> : <>
+  <label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /></>}{special !== "collection" && <OrderPhotoField onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={dismiss} disabled={busy}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy || busy}><Check size={17} /> {busy ? "Salvando…" : "Salvar"}</button></footer></form></aside></div>;
 }
 
 function OrderEditModal({ order, close, onSubmit, busy=false }: { busy?: boolean; order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [addingPayment, setAddingPayment] = useState(false);
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2></div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit} aria-busy={busy}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div>{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}<label className="full">Status<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>{order.status !== "Orçamento" && <label className="full">Data combinada para pagamento<input name="paymentDueDate" type="date" defaultValue={order.paymentDueDate ?? ""} /></label>}<OrderDtfField value={order.dtfStatus} />{order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}{order.status !== "Orçamento" && <label className="full"><span><input name="customerMaterial" type="checkbox" defaultChecked={order.customerMaterial} /> Material fornecido pelo cliente (sem custo)</span></label>}<OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} /><label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy||busy}><Check size={17} /> {busy?"Salvando…":"Salvar alterações"}</button></footer></form></aside></div>;
+  const special = order.orderKind;
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && close()}><aside className="modal edit-order-modal"><header><div><span className="eyebrow">CORRIGIR PEDIDO</span><h2>Editar pedido</h2>{special && <small>{specialOrderLabels[special]}</small>}</div><button onClick={close} aria-label="Fechar"><X size={20} /></button></header><form onSubmit={onSubmit} aria-busy={busy}><label className="full">Cliente<input name="customer" required autoFocus defaultValue={order.customer} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" defaultValue={order.phone ?? ""} /></label>{special ? <SpecialOrderFields kind={special} order={order} /> : <><label className="full">Produto<input name="product" required defaultValue={order.product} /></label><OrderPricingFields order={order} /><div className="form-row"><label>Prazo<input name="dueDate" type="date" required defaultValue={order.dueDate} /></label><label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue={order.paid} /></label></div></>}{order.status !== "Orçamento" && <div className="full">{addingPayment ? <label>Novo pagamento<input name="partialPayment" type="number" min="0.01" step="0.01" required autoFocus /></label> : <button type="button" className="secondary" onClick={() => setAddingPayment(true)}><Plus size={16} /> Adicionar pagamento</button>}</div>}{special !== "collection" && <label className="full">Status<select name="status" defaultValue={order.status}>{orderStages(order).map((status) => <option key={status}>{status}</option>)}</select></label>}{!special && order.status !== "Orçamento" && <label className="full">Data combinada para pagamento<input name="paymentDueDate" type="date" defaultValue={order.paymentDueDate ?? ""} /></label>}{!special && <OrderDtfField value={order.dtfStatus} />}{!special && order.status !== "Orçamento" && <div className="form-row"><label>Custo de DTF (R$)<input name="dtfCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.dtfCost ?? ""} /></label><label>Outros custos avulsos (R$)<input name="otherCost" type="number" min="0" max="100000000" step="0.01" defaultValue={order.otherCost ?? ""} /></label></div>}{!special && order.status !== "Orçamento" && <label className="full"><span><input name="customerMaterial" type="checkbox" defaultChecked={order.customerMaterial} /> Material fornecido pelo cliente (sem custo)</span></label>}{special !== "collection" && <OrderPhotoField initialValue={order.photoData} onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} defaultValue={order.notes ?? ""} /></label><footer><button type="button" className="secondary" onClick={close}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy||busy}><Check size={17} /> {busy?"Salvando…":"Salvar alterações"}</button></footer></form></aside></div>;
 }

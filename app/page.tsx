@@ -1297,7 +1297,13 @@ export default function HomePage() {
           return confirmMaterialPurchase(forecastMaterial(material, sourceOrder?.orderKind ? undefined : sourceOrder?.quantity), input, date);
         }
         if (mode === "reopen") {
-          const { actualCost, actualQuantities, purchaseFreight, purchaseDate, linkedExpenseIds, linkedExpenseAmount, ...plan } = material;
+          const plan = { ...material };
+          delete plan.actualCost;
+          delete plan.actualQuantities;
+          delete plan.purchaseFreight;
+          delete plan.purchaseDate;
+          delete plan.linkedExpenseIds;
+          delete plan.linkedExpenseAmount;
           return plan;
         }
         return material;

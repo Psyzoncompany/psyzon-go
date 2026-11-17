@@ -1,12 +1,48 @@
 import { customerNameKey, type Customer } from "./finance-model";
 import { documentPrefix, millis, readDocument, type BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
+import { dtfForCustomer, readDtfPrints, type DtfOrder } from "./dtf-model";
 
 export type DtfCustomerLink = { noteId?: string; deadline?: string; orderId?: string; photoData?: string; checklistQuantity?: number };
 
 export function dtfDeadline(delivery: string) {
   const date = Date.parse(`${delivery}T00:00:00Z`);
   return Number.isFinite(date) ? new Date(date - 7 * 86400000).toISOString().slice(0, 10) : undefined;
+}
+
+const productionDtfPrefix = "production-";
+export const productionDtfId = (orderId: string) => productionDtfPrefix + orderId;
+export const dtfSourceOrderId = (dtfId: string) => dtfId.startsWith(productionDtfPrefix) ? dtfId.slice(productionDtfPrefix.length) : "";
+
+export function dtfCanBeQueued(order: Order) {
+  return !order.orderKind && order.dtfStatus === "pending" && order.status !== "Orçamento" && order.status !== "Entregue";
+}
+
+export function missingProductionDtf(orders: Order[], customers: Customer[], notes: BusinessNote[], saved: DtfOrder[]): DtfOrder[] {
+  const savedIds = new Set(saved.map(order => order.id));
+  const missing = orders.filter(order => dtfCanBeQueued(order) && !savedIds.has(productionDtfId(order.id)));
+  if (!missing.length) return [];
+  const links = indexDtfCustomerLinks(customers, orders, notes);
+  const activeByCustomer = new Map<string, number>();
+  for (const order of orders) {
+    if (order.orderKind || order.status === "Orçamento" || order.status === "Entregue") continue;
+    const key = customerNameKey(order.customer);
+    activeByCustomer.set(key, (activeByCustomer.get(key) ?? 0) + 1);
+  }
+  return missing.flatMap(order => {
+    const id = productionDtfId(order.id);
+    const key = customerNameKey(order.customer);
+    const customer = customers.find(item => customerNameKey(item.name) === key);
+    if (customer && saved.some(dtf => !dtfSourceOrderId(dtf.id) && [dtf, ...readDtfPrints(dtf.printsData)].some(item =>
+      dtfForCustomer(item, customer) && (customerNameKey(item.title) === customerNameKey(order.product) ||
+        (dtf.stage !== "Entregue" && activeByCustomer.get(key) === 1 && links.get(customer.id)?.orderId === order.id))))) return [];
+    return [{
+      id, title: order.product.trim().slice(0, 160), customerId: customer?.id ?? `legacy-${encodeURIComponent(key)}`, customerName: order.customer.slice(0, 120),
+      phone: (order.phone || customer?.phone || "").slice(0, 40), dueDate: dtfDeadline(order.dueDate) ?? "",
+      stage: "Aguardando arte", quantity: Math.min(order.quantity, 10000), lengthCm: 0, widthCm: 0,
+      priceCents: 0, paidCents: 0, artworkUrl: "", notes: "", photoData: "",
+    }];
+  });
 }
 
 export function indexDtfCustomerLinks(customers: Customer[], productionOrders: Order[], notes: BusinessNote[]) {

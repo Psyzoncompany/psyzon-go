@@ -2,7 +2,7 @@ import type { Order } from "./order-model";
 import { readDocument, type BusinessNote } from "./notes-model";
 import { notePhotoOrderId } from "./order-photo-sync";
 import { dtfForCustomer, readDtfPrints, type DtfOrder } from "./dtf-model";
-import { indexDtfCustomerLinks } from "./dtf-links";
+import { dtfSourceOrderId, indexDtfCustomerLinks } from "./dtf-links";
 import { customerNameKey, type Customer } from "./finance-model";
 import { sewingOrderBalances, type SewingLedger } from "./sewing-model";
 import { extraFabricKg } from "./material-forecast";
@@ -51,14 +51,17 @@ export function orderAlerts(orders: Order[], notes: BusinessNote[], customers: C
     }
     const client = customers.find(customer => !customer.archived && links.get(customer.id)?.orderId === order.id);
     const destination = client ?? customers.find(customer => !customer.archived && customerNameKey(customer.name) === customerNameKey(order.customer));
-    const linked = client ? prints.filter(({ items }) => items.some(item => dtfForCustomer(item, client))) : [];
-    if (order.dtfStatus === "pending" && !linked.length) {
+    const linked = prints.filter(({ dtf, items }) => {
+      const sourceId = dtfSourceOrderId(dtf.id);
+      return sourceId ? sourceId === order.id : client && items.some(item => dtfForCustomer(item, client));
+    });
+    if (order.dtfStatus === "pending" && linked.every(({ dtf }) => !!dtfSourceOrderId(dtf.id) && dtf.stage === "Aguardando arte")) {
       add(order.id, { title: "Pedir estampa DTF", detail: "O pedido está marcado como Precisa pedir DTF.", view: "dtf", id: destination?.id });
     } else if (order.dtfStatus !== "none" && linked.some(({ dtf }) => !["Pronto", "Entregue"].includes(dtf.stage))) {
-      add(order.id, { title: "Acompanhar estampa DTF", detail: "Há DTF vinculado aguardando conclusão.", view: "dtf", id: client?.id });
-    } else if (client && order.dtfStatus !== "none" && linked.some(({ dtf, items }) => dtf.stage === "Pronto" &&
-      items.some(item => dtfForCustomer(item, client) && item.separated !== true))) {
-      add(order.id, { title: "Separar estampa DTF", detail: "Há estampas prontas ainda por separar.", view: "dtf", id: client.id });
+      add(order.id, { title: "Acompanhar estampa DTF", detail: "Há DTF vinculado aguardando conclusão.", view: "dtf", id: destination?.id });
+    } else if (order.dtfStatus !== "none" && linked.some(({ dtf, items }) => dtf.stage === "Pronto" &&
+      items.some(item => (dtfSourceOrderId(dtf.id) || (client && dtfForCustomer(item, client))) && item.separated !== true))) {
+      add(order.id, { title: "Separar estampa DTF", detail: "Há estampas prontas ainda por separar.", view: "dtf", id: destination?.id });
     }
   }
   for (const person of sewing.people) {

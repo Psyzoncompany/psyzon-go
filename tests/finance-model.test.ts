@@ -4,7 +4,7 @@ import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlement
 import { noteFromHash, viewFromHash } from "../app/useViewHistory";
 import { dtfAlertDays, nextOrderStatus, normalizeOrderStatus, orderStatuses, type Order } from "../app/order-model";
 import { changeDtfPrints, dtfForCustomer, dtfOverdue, dtfPending, dtfPhotos, dtfTitle, dtfTotal, packDtfPhotos, readDtfPrints, validateDtf, type DtfInput, type DtfPrint } from "../app/dtf-model";
-import { dtfDeadline, indexDtfCustomerLinks } from "../app/dtf-links";
+import { dtfDeadline, dtfSourceOrderId, indexDtfCustomerLinks, missingProductionDtf } from "../app/dtf-links";
 import { synchronizedOrderPhotos, notePhotoOrderId } from "../app/order-photo-sync";
 import { synchronizedOrderQuantities } from "../app/order-quantity-sync";
 import { customerRefund } from "../app/finance-model";
@@ -235,6 +235,23 @@ test("DTF orders round fractional meters in cents and retain customer identity",
   assert.equal(dtfOverdue({ ...input, stage: "Entregue" }, "2026-11-06"), false);
   assert.throws(() => validateDtf({ ...input, paidCents: 129 }));
   assert.throws(() => validateDtf({ ...input, artworkUrl: "javascript:alert(1)" }));
+});
+
+test("confirmed production requests queue one DTF per order and leave existing DTF intact", () => {
+  const customer = { id: "ana", name: "Ana", phone: "" };
+  const order: Order = { id: "one", customer: "Ana", product: "Camisas gicana", quantity: 103, total: 4500, paid: 0, dueDate: "2026-11-30", status: "Produção", dtfStatus: "pending" };
+  const quote = { ...order, id: "quote", status: "Orçamento" as const };
+  const delivered = { ...order, id: "delivered", status: "Entregue" as const };
+  const [queued] = missingProductionDtf([order, quote, delivered], [customer], [], []);
+  assert.deepEqual([dtfSourceOrderId(queued.id), queued.customerId, queued.quantity, queued.dueDate, queued.stage], ["one", "ana", 103, "2026-11-23", "Aguardando arte"]);
+  validateDtf(queued);
+  assert.deepEqual(missingProductionDtf([order], [customer], [], [queued]), []);
+  const manual = { ...queued, id: "manual", title: "Estampa já aberta" };
+  assert.deepEqual(missingProductionDtf([order], [customer], [], [manual]), []);
+  const old = { ...manual, stage: "Entregue" as const };
+  assert.equal(missingProductionDtf([order], [customer], [], [old]).length, 1);
+  const second = { ...order, id: "two", product: "Camisas escolares" };
+  assert.deepEqual(missingProductionDtf([order, second], [customer], [], [queued]).map(dtf => dtfSourceOrderId(dtf.id)), ["two"]);
 });
 
 test("quick DTF orders support blank inputs and multiple photos alongside legacy covers", () => {

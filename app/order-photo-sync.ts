@@ -1,4 +1,4 @@
-import { indexDtfCustomerLinks } from "./dtf-links";
+import { dtfSourceOrderId, indexDtfCustomerLinks } from "./dtf-links";
 import { customerNameKey, type Customer } from "./finance-model";
 import type { DtfOrder } from "./dtf-model";
 import { millis, readDocument, type BusinessNote } from "./notes-model";
@@ -18,7 +18,7 @@ export function synchronizedOrderPhotos(orders: Order[], notes: BusinessNote[], 
   return orders.map(order => {
     if (typeof order.photoData === "string") return order;
     const note = legacy.find(note => { const document = readDocument(note.content); return notePhotoOrderId(document, orders, customers) === order.id && document.status !== "trash" && typeof note.productionPhotoData === "string"; });
-    const dtf = dtfOrders.find(dtf => links.get(dtf.customerId)?.orderId === order.id && dtf.photoData);
+    const dtf = dtfOrders.find(dtf => (dtfSourceOrderId(dtf.id) || links.get(dtf.customerId)?.orderId) === order.id && dtf.photoData);
     return { ...order, photoData: note?.productionPhotoData ?? dtf?.photoData ?? "" };
   });
 }

@@ -32,7 +32,7 @@ import type { SewingChange } from "./SewingWorkspace";
 import { readSewing, sewingBalances, validateSewingMovement, sewingBills, sewingNoteId, sewingOrderBalances, sewingPerson } from "./sewing-model";
 import { notePhotoOrderId, synchronizedOrderPhotos } from "./order-photo-sync";
 import { synchronizedOrderQuantities } from "./order-quantity-sync";
-import { indexDtfCustomerLinks } from "./dtf-links";
+import { dtfCanBeQueued, dtfSourceOrderId, indexDtfCustomerLinks, missingProductionDtf } from "./dtf-links";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
 import { dtfAlertDays, dueLabel, dueTone, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
@@ -444,9 +444,9 @@ export default function HomePage() {
           setNotes(toList<BusinessNote>(snapshot));
           markReady("notes",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
-        onSnapshot(collection(db, "users", nextUser.uid, "dtfOrders"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "dtfOrders"), { includeMetadataChanges: true }, (snapshot) => {
           setDtfOrders(toList<DtfOrder>(snapshot));
-          setDtfConnection("live");
+          setDtfConnection(snapshot.metadata.fromCache ? "connecting" : "live");
         }, (error) => {
           console.error("DTF synchronization failed", error);
           setDtfConnection("error");
@@ -857,6 +857,20 @@ export default function HomePage() {
   };
 
   const balances = useMemo(() => customerBalances(customers, orders), [customers, orders]);
+  const queuedDtf = useMemo(() => missingProductionDtf(orders, customers, notes, dtfOrders), [orders, customers, notes, dtfOrders]);
+  useEffect(() => {
+    if (!uid || !dataReady || firebaseState !== "live" || dtfConnection !== "live" || !queuedDtf.length) return;
+    const db = getFirestore(getApps()[0]);
+    for (const { id, ...input } of queuedDtf) {
+      const sourceRef = userDocument(uid, "orders", dtfSourceOrderId(id));
+      const dtfRef = userDocument(uid, "dtfOrders", id);
+      void runTransaction(db, async transaction => {
+        const [source, existing] = await Promise.all([transaction.get(sourceRef), transaction.get(dtfRef)]);
+        if (!source.exists() || existing.exists() || !dtfCanBeQueued({ ...source.data(), id: source.id } as Order)) return;
+        transaction.set(dtfRef, { ...input, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      }).catch(() => console.warn("Não foi possível sincronizar um pedido da Produção com DTF."));
+    }
+  }, [uid, dataReady, firebaseState, dtfConnection, queuedDtf]);
   const dtfLinks = useMemo(() => dtfOrders.map(order => [order, ...readDtfPrints(order.printsData)]), [dtfOrders]);
   const stockItems = useMemo(() => restockTasks(notes), [notes]);
   const stockPayables = useMemo(() => restockBills(stockItems), [stockItems]);
@@ -1173,8 +1187,9 @@ export default function HomePage() {
       if(includeBalance) batch.set(balanceReference,balanceMovement(balanceDelta,"Pagamento DTF · "+(input.customerName||input.title||"Avulso")));
       if (previous) batch.update(reference, data);
       else batch.set(reference, { ...data, createdAt: serverTimestamp() });
-      const linked = indexDtfCustomerLinks(visibleCustomers, orders, notes).get(input.customerId);
-      if (linked?.orderId && (previous ? input.photoData !== previous.photoData : !!input.photoData)) batch.update(userDocument(uid, "orders", linked.orderId), { photoData: input.photoData });
+      const sourceId = previous && dtfSourceOrderId(previous.id);
+      const linkedId = sourceId ? orders.find(order => order.id === sourceId)?.id : indexDtfCustomerLinks(visibleCustomers, orders, notes).get(input.customerId)?.orderId;
+      if (linkedId && (previous ? input.photoData !== previous.photoData : !!input.photoData)) batch.update(userDocument(uid, "orders", linkedId), { photoData: input.photoData });
       });
       showToast(previous ? "Pedido DTF atualizado" : "Pedido DTF cadastrado");
     } catch { throw new Error("Não foi possível salvar o pedido DTF. Confira a conexão e tente novamente."); }
@@ -1189,7 +1204,17 @@ export default function HomePage() {
 
   const deleteDtf = async (id: string) => {
     if (!uid || dtfConnection !== "live") throw new Error("Aguarde a sincronização dos pedidos DTF.");
-    try { await deleteDoc(userDocument(uid, "dtfOrders", id)); }
+    try {
+      const ref = userDocument(uid, "dtfOrders", id);
+      const sourceId = dtfSourceOrderId(id);
+      if (!sourceId) await deleteDoc(ref);
+      else await runTransaction(getFirestore(getApps()[0]), async transaction => {
+        const sourceRef = userDocument(uid, "orders", sourceId);
+        const source = await transaction.get(sourceRef);
+        if (source.exists() && source.data().dtfStatus === "pending") transaction.update(sourceRef, { dtfStatus: "none" });
+        transaction.delete(ref);
+      });
+    }
     catch { throw new Error("Não foi possível excluir o pedido DTF."); }
     showToast("Pedido DTF excluído");
   };

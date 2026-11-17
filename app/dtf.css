@@ -8,26 +8,23 @@
 .dtf-customer-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 11px; margin-bottom: 12px; border-radius: 9px; background: var(--blue-soft); color: var(--blue); font-size: 12px; }
 .dtf-customer-scope button { margin-left: auto; display: flex; align-items: center; gap: 6px; border: 0; background: none; color: inherit; cursor: pointer; }
 .dtf-connection { color: var(--muted); font-size: 13px; }
-.dtf-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-.dtf-metrics article { display: flex; align-items: flex-start; gap: 10px; padding: 13px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
-.dtf-metrics article > svg { flex-shrink: 0; color: var(--blue); margin-top: 1px; }
-.dtf-metrics article[data-alert="true"] > svg, .dtf-metrics article[data-alert="true"] strong { color: var(--red); }
-.dtf-metrics article > div { display: grid; gap: 4px; min-width: 0; }
-.dtf-metrics span { font-size: 11px; font-weight: 650; color: var(--muted); }
-.dtf-metrics strong { font-size: clamp(16px, 2.2vw, 23px); line-height: 1.15; overflow-wrap: anywhere; }
-.dtf-metrics small { font-size: 10px; color: var(--muted); }
+.dtf-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.dtf-summary > span { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 8px; background: var(--card-subtle); color: var(--muted); font-size: 12px; }
+.dtf-summary svg { flex-shrink: 0; color: var(--blue); }
+.dtf-summary strong { color: var(--text); white-space: nowrap; }
+.dtf-summary [data-alert="true"] :is(svg, strong) { color: var(--red); }
 .dtf-pipeline { background: var(--card); border: 1px solid var(--border); border-radius: 14px; }
-.dtf-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px 8px; }
+.dtf-list-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 14px 0; }
+.dtf-list-tabs button { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 7px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 650; cursor: pointer; }
+.dtf-list-tabs button[aria-pressed="true"] { color: var(--blue); background: var(--blue-soft); }
+.dtf-list-tabs button span { min-width: 20px; padding: 2px 5px; border-radius: 999px; background: var(--card-subtle); text-align: center; font-size: 11px; }
+.dtf-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
 .dtf-search { min-width: 150px; flex: 1 1 210px; max-width: 420px; display: flex; align-items: center; gap: 7px; padding: 0 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--muted); }
 .dtf-search:focus-within { border-color: var(--blue); }
 .dtf-search svg { flex-shrink: 0; }
 .dtf-search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: none; background: transparent; color: var(--text); font-size: 12px; }
 .dtf-tools select { min-height: 38px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 11px; }
 .dtf-results { margin-left: auto; color: var(--muted); font-size: 11px; }
-.dtf-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 14px 11px; border-bottom: 1px solid var(--border); }
-.dtf-filters button { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: var(--card-subtle); color: var(--muted); border: 1px solid var(--border); border-radius: 7px; font-size: 11px; cursor: pointer; }
-.dtf-filters button[aria-pressed="true"] { border-color: var(--blue); background: var(--blue-soft); color: var(--blue); font-weight: 700; }
-.dtf-filters button span { min-width: 14px; text-align: center; font-size: 10px; }
 .dtf-orders { padding: 0 14px; }
 .dtf-order { display: grid; grid-template-columns: 52px minmax(135px, 2fr) minmax(90px, .55fr) minmax(90px, .85fr) minmax(100px, .95fr) minmax(152px, auto); gap: 11px; align-items: center; padding: 12px 0; }
 .dtf-order + .dtf-order { border-top: 1px solid var(--border); }
@@ -41,11 +38,7 @@
 .dtf-stage[data-stage="3"], .dtf-stage[data-stage="4"] { background: var(--green-soft); color: var(--green); }
 .dtf-order-description h2 { margin: 4px 0; font-size: 14px; line-height: 1.2; overflow-wrap: anywhere; }
 .dtf-order-description p, .dtf-order-specs span, .dtf-order-money span { margin: 0; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
-.dtf-order-description .dtf-order-notes { margin-top: 7px; padding: 7px 9px; border-left: 2px solid var(--blue); border-radius: 0 5px 5px 0; background: var(--card-subtle); color: var(--text); font-size: 12px; line-height: 1.45; }
-.dtf-order-notes b { display: block; margin-bottom: 2px; color: var(--muted); font-size: 10px; }
-.dtf-order-notes span { white-space: pre-wrap; }
-.dtf-link-tag { color: var(--blue); font-size: 9px; white-space: nowrap; }
-.dtf-link-tag::before { content: ' · '; }
+.dtf-order-description .dtf-order-notes { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; margin-top: 4px; white-space: pre-line; }
 .dtf-client-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
 .dtf-names-link, .dtf-add-print { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0; border: 0; background: transparent; color: var(--blue); text-decoration: none; font-size: 11px; font-weight: 650; cursor: pointer; }
 .dtf-names-link:hover, .dtf-add-print:hover { text-decoration: underline; }
@@ -115,7 +108,6 @@
 .dtf-ticket > .dtf-ticket-photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr)); }
 .dtf-print-frame { position: fixed; inset: auto 0 0 auto; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 @container (width < 720px) {
-  .dtf-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dtf-order { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; }
   .dtf-order-description { grid-column: 2 / -1; }
   .dtf-order-specs { grid-column: 1 / 2; }
@@ -128,6 +120,4 @@
   .dtf-title-icon { display: none; }
   .dtf-title p { font-size: 11px; }
   .dtf-header .primary { gap: 4px; padding-inline: 8px; }
-  .dtf-metrics article { padding: 9px; gap: 7px; }
-  .dtf-metrics small { display: none; }
 }

@@ -75,7 +75,7 @@
   .app-shell :is(.panel,.metric-card,.customer-card,.dtf-pipeline,.materials-order,.settings-card) { border-radius: 20px; border-color: color-mix(in srgb, var(--border) 70%, transparent); box-shadow: var(--shadow); }
   .app-shell .section-title { padding: 18px; gap: 12px; flex-wrap: wrap; }
   .app-shell .section-title h2 { font-size: 18px; font-weight: 650; letter-spacing: -.02em; }
-  .app-shell :is(.metric-grid,.dtf-metrics,.history-metrics) { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-bottom: 22px; }
+  .app-shell :is(.metric-grid,.history-metrics) { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin-bottom: 22px; }
   .app-shell .metric-card { min-height: 146px; padding: 16px; }
   .app-shell .metric-top { gap: 7px; }
   .app-shell .metric-top small { font-size: 11px; text-transform: none; letter-spacing: 0; }
@@ -136,18 +136,11 @@
   .app-shell .dtf-header > div:first-child { flex: auto; }
   .app-shell .dtf-header > .primary { align-self: flex-start; padding-inline: 16px; gap: 8px; }
   .app-shell .dtf-title-icon { display: none; }
-  .app-shell .dtf-metrics article { padding: 15px 12px; gap: 9px; border-radius: 18px; }
-  .app-shell .dtf-metrics article > svg { width: 19px; height: 19px; }
-  .app-shell .dtf-metrics span { font-size: 12px; font-weight: 500; line-height: 1.35; }
-  .app-shell .dtf-metrics strong { font-size: calc(24px * var(--ui-zoom)); margin-top: 4px; }
-  .app-shell .dtf-tools { padding: 16px 16px 8px; gap: 10px; }
+  .app-shell .dtf-tools { padding: 8px 12px; gap: 8px; }
   .app-shell .dtf-search { flex-basis: 100%; max-width: none; min-height: 46px; border: 0; border-radius: 12px; }
   .app-shell .dtf-search input { font-size: 16px; min-width: 0; }
-  .app-shell .dtf-tools select { min-height: 44px; font-size: 16px; border-radius: 12px; max-width: 100%; }
-  .app-shell .dtf-filters { flex-wrap: nowrap; overflow-x: auto; padding: 8px 16px 16px; scrollbar-width: none; }
-  .app-shell .dtf-filters button { flex: 0 0 auto; min-height: 44px; padding: 9px 14px; border-radius: 12px; font-size: 13px; border-color: transparent; }
-  .app-shell .dtf-filters button[aria-pressed="true"] { border-color: transparent; }
-  .app-shell .dtf-filters button span { font-size: 12px; }
+  .app-shell .dtf-tools select { flex: 1 1 120px; min-width: 0; min-height: 44px; font-size: 16px; border-radius: 12px; max-width: 100%; }
+  .app-shell .dtf-tools .dtf-results { display: none; }
   .app-shell .dtf-orders { padding: 0 16px; }
   .app-shell .dtf-order { grid-template-columns: 44px minmax(0,1fr) auto; grid-template-areas: "photo description description" "specs specs money" "deadline deadline deadline" "actions actions actions"; gap: 6px 8px; padding: 12px 0; min-width: 0; }
   .app-shell .dtf-order > .dtf-thumb { grid-area: photo; width: 48px; height: 48px; }

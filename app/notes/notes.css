@@ -1,7 +1,23 @@
 /* Notes uses its own restrained, Apple Notes-inspired surface. Other workspaces keep their layout. */
 .an-editor-modes { display: flex; gap: 6px; margin-bottom: 12px; }
-.apple-notes .an-editor-modes button { padding: 8px 10px; border-radius: 7px; color: var(--muted); font-size: 11px; }
-.apple-notes .an-editor-modes .active { background: var(--blue-soft); color: var(--blue); }
+:root[data-ui-theme] .apple-notes .an-editor-modes button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-width: 0; min-height: 40px; padding: 7px 11px; border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--text) 25%, var(--card));
+  background: var(--card); color: var(--text); font-size: .76rem; font-weight: 680;
+  text-align: center; line-height: 1.2; box-shadow: 0 2px 4px #0002; cursor: pointer;
+}
+.apple-notes .an-editor-modes button svg { flex: none; }
+:root[data-ui-theme] .apple-notes .an-editor-modes button[aria-pressed="true"] {
+  background: var(--blue-soft); color: var(--blue); border-color: var(--blue);
+  box-shadow: inset 0 -2px 0 var(--blue);
+}
+:root[data-ui-theme] .apple-notes .an-editor-modes button:hover { border-color: var(--blue); }
+:root[data-ui-theme] .apple-notes .an-editor-modes button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (max-width: 760px) {
+  :root[data-ui-theme] .apple-notes .an-editor-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root[data-ui-theme] .apple-notes .an-editor-modes button { min-height: 44px; padding-inline: 6px; gap: 5px; }
+}
 .an-production-mode .an-format-toolbar, .an-production-mode .an-blocks, .an-production-mode .an-new-line, .an-production-mode .an-materials, .an-production-mode .an-material-empty, .an-production-mode .an-document-footer { display: none; }
 .apple-notes .production-checklist .primary { background: var(--blue); color: white; border: 1px solid var(--blue); }
 .apple-notes .production-checklist .secondary { background: var(--card); border: 1px solid var(--border); }

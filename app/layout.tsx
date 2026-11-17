@@ -15,6 +15,7 @@ import "./interface-motion.css";
 import "./studio-glass.css";
 import "./compact-cards.css";
 import "./motion-design.css";
+import "./atelier.css";
 import { appearanceBootstrap } from "./interface-appearance";
 import AutoUpdate from "./AutoUpdate";
 

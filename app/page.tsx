@@ -164,6 +164,7 @@ const ProductionBoard = dynamic(() => import("./ProductionBoard"), { ssr: false 
 const SewingWorkspace = dynamic(() => import("./SewingWorkspace"), { ssr: false });
 const MonthlyClosingWorkspace = dynamic(() => import("./MonthlyClosingWorkspace"), { ssr: false });
 const AppearanceSettings = dynamic(() => import("./AppearanceSettings"), { ssr: false });
+const AtelierDashboard = dynamic(() => import("./AtelierDashboard"), { ssr: false });
 const OrderPhotoField = dynamic(() => import("./OrderPhotoField"), { ssr: false });
 const PhotoOptimization = dynamic(() => import("./PhotoOptimization"), { ssr: false });
 const PSYZONAI = dynamic(() => import("./PSYZONAIWorkspace"), { ssr: false });
@@ -321,6 +322,7 @@ export default function HomePage() {
   const [standardSidebarCollapsed, setStandardSidebarCollapsed] = useState(false);
   const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
   const studio = interfaceAppearance.appearance.theme === "studio-glass";
+  const atelier = interfaceAppearance.appearance.theme === "atelier";
   const sidebarCollapsed = studio ? studioSidebarCollapsed : standardSidebarCollapsed;
   const setSidebarCollapsed = studio ? setStudioSidebarCollapsed : setStandardSidebarCollapsed;
   const searchRef = useRef<HTMLInputElement>(null);
@@ -1894,7 +1896,7 @@ export default function HomePage() {
   const photoProductionOrders = productionOrders.map(order => photoOrders.find(item => item.id === order.id) ?? order);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium" data-design="motion">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`} data-view={view} data-layout="premium" data-design={atelier ? "atelier" : "motion"}>
       {firebaseState==="live"&&<PhotoOptimization key={uid} uid={uid} orders={storedOrders} notes={notes} dtfOrders={dtfOrders}/>}
       <aside className="sidebar">
         <div className="sidebar-brand-row">
@@ -1930,7 +1932,13 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
-          {nextPayables && <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />}
+          {nextPayables && (atelier ? <AtelierDashboard
+            name={firstName} today={calendarDate} orders={activeOrders}
+            deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)}
+            alerts={alerts} tasks={orderTasks} balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />}
+            payable={payable} pending={pending} sewingTotal={sewingTotal} nextPayables={nextPayables} dtfAlertCount={dtfAlertCount}
+            money={displayTotal} navigate={setView} create={setModal} openChecklist={order => void openProductionList(order)}
+          /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => order.status === "Entregue" && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, completed) => updateMaterialPurchase(id, ids, completed ? "complete" : "reopen")} />}

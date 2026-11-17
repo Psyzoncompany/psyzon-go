@@ -5,6 +5,7 @@ import type { InterfaceAppearance } from "./interface-appearance";
 import { contentAnimationMs } from "./animation-timing";
 
 const revealTargets = [
+  "[data-reveal-card]",
   ".metric-card", ".panel", ".kanban-order-card", ".dtf-order",
   ".customer-card", ".finance-list-card", ".finance-premium-summary > article",
   ".an-note-row", ".materials-order", ".task-row", ".restock-items li",

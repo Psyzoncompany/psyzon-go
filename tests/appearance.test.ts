@@ -31,6 +31,7 @@ test("Studio Glass and iOS Premium are selectable and old themes retain their se
   assert.deepEqual(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "studio-glass", transparency: "reduced" })),
     { ...defaultAppearance, theme: "studio-glass", transparency: "reduced" });
   assert.equal(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "ios-premium" })).theme, "ios-premium");
+  assert.equal(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "atelier" })).theme, "atelier");
   assert.equal(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "liquid-glass-card" })).theme, "liquid-glass-card");
   assert.deepEqual(readAppearance(JSON.stringify({ ...defaultAppearance, theme: "psyzon-flow" })), defaultAppearance);
   assert.deepEqual(readAppearance(null), defaultAppearance);

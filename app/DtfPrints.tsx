@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FileImage, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileImage, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import DtfNamesLink from "./DtfNamesLink";
 import OrderPhotoField from "./OrderPhotoField";
@@ -20,6 +20,7 @@ export default function DtfPrints({ order, prints, customers, links, live, onCha
   const names = new Map(customers.map(customer => [customer.id, customer.name]));
   const customerName = (print: DtfPrint) => names.get(print.customerId) || print.customerName || "Sem cliente";
   const selectedLink = links.get(clientId);
+  const savedLink = Boolean(clientId && selected?.customerId === clientId);
 
   function openEditor(next: DtfPrint | "new") {
     setError("");
@@ -58,7 +59,7 @@ export default function DtfPrints({ order, prints, customers, links, live, onCha
       {error && !editor && <p role="alert" className="form-error">{error}</p>}
       {editor && <form key={selected?.id ?? "new"} className="dtf-print-form" onSubmit={save}>
         <h3>{selected ? "Editar estampa" : "Nova estampa"}</h3>
-        <div className="dtf-client-field"><label>Vincular cliente<select value={clientId} onChange={event => setClientId(event.target.value)}><option value="">Avulso / nome livre</option>{clientId && !names.has(clientId) && <option value={clientId}>{selected?.customerName || order.customerName}</option>}{customers.map(customer => <option value={customer.id} key={customer.id}>{customer.name}</option>)}</select></label><DtfNamesLink noteId={selectedLink?.noteId} /></div>
+        <div className="dtf-client-field"><label>{savedLink ? "Vinculado" : "Vincular cliente"}<select aria-label="Cliente da estampa" value={clientId} onChange={event => setClientId(event.target.value)}><option value="">Avulso / nome livre</option>{clientId && !names.has(clientId) && <option value={clientId}>{selected?.customerName || order.customerName}</option>}{customers.map(customer => <option value={customer.id} key={customer.id}>{customer.name}</option>)}</select></label><DtfNamesLink noteId={selectedLink?.noteId} /></div>
         {selectedLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(selectedLink.deadline)}</p>}
         {!clientId && <label>Nome do cliente<input name="customerName" maxLength={120} defaultValue={selected?.customerName ?? order.customerName} placeholder="Opcional para uso próprio" /></label>}
         <div className="form-row"><label>Nome da estampa<input name="title" required maxLength={160} defaultValue={selected?.title} placeholder="Ex.: Logo frontal" /></label><label>Quantidade<input name="quantity" type="number" required min="1" max="10000" defaultValue={selected?.quantity ?? 1} /></label></div>
@@ -71,7 +72,15 @@ export default function DtfPrints({ order, prints, customers, links, live, onCha
           const clientLink = links.get(print.customerId);
           return <li key={print.id}>
           <div className="dtf-thumb">{print.photoData ? <Image src={print.photoData} width={52} height={52} alt={`Referência de ${print.title}`} unoptimized /> : <FileImage size={19} aria-hidden="true" />}</div>
-          <div><div className="dtf-client-line"><small>{customerName(print)}</small><DtfNamesLink noteId={clientLink?.noteId} openNote={openNote} /></div><b>{print.title} · {print.quantity} un.</b>{clientLink?.deadline && <small>Prazo DTF: {dtfDate(clientLink.deadline)}</small>}</div>
+          <div>
+            <div className="dtf-client-line">
+              <small>{customerName(print)}</small>
+              {print.customerId && <span className="dtf-link-status"><Link2 size={12} aria-hidden="true" /> Vinculado</span>}
+              <DtfNamesLink noteId={clientLink?.noteId} openNote={openNote} />
+            </div>
+            <b>{print.title} · {print.quantity} un.</b>
+            {clientLink?.deadline && <small>Prazo DTF: {dtfDate(clientLink.deadline)}</small>}
+          </div>
           <label className="dtf-separated"><input type="checkbox" checked={print.separated} disabled={blocked || !!editor} aria-label={`Separada: ${print.title}`} onChange={event => void change({ type: "separate", id: print.id, separated: event.target.checked })} />Separada</label>
           <div className="dtf-order-actions"><button type="button" disabled={blocked || !!editor} aria-label={`Editar estampa ${print.title}`} onClick={() => openEditor(print)}><Pencil size={15} /></button><button type="button" disabled={blocked || !!editor} aria-label={`Excluir estampa ${print.title}`} onClick={() => { if (window.confirm(`Excluir a estampa “${print.title}”?`)) void change({ type: "delete", id: print.id }); }}><Trash2 size={15} /></button></div>
         </li>;

@@ -38,7 +38,8 @@ export default function MaterialEntryDialog({ uid, targets, orders, customers, i
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar os materiais."); }
     finally { setBusy(false); }
   }
-  return <NoteDialog title={bindingOnly ? "Vincular materiais" : material ? "Editar material" : "Adicionar materiais"} close={() => { if (!busy) close(); }} wide>
+  const bindingTitle = initial?.orderId || initial?.customerId ? "Editar vínculo" : "Vincular materiais";
+  return <NoteDialog title={bindingOnly ? bindingTitle : material ? "Editar material" : "Adicionar materiais"} close={() => { if (!busy) close(); }} wide>
     <fieldset className="material-entry" disabled={busy}>
       {!initialId && <label>Planejamento<select aria-label="Planejamento" value={noteId} onChange={event => selectTarget(event.target.value)}><option value="">Novo planejamento</option>{targets.map(target => <option key={target.id} value={target.id}>{target.title}</option>)}</select></label>}
       <label>Nome do planejamento<input maxLength={200} value={title} onChange={event => setTitle(event.target.value)} required /></label>

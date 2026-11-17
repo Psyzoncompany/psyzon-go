@@ -140,7 +140,12 @@ export default function DtfWorkspace({ orders: storedOrders, customers, producti
             </div>
             <div className="dtf-order-description">
               <div><span className="dtf-stage" data-stage={dtfStages.indexOf(order.stage)}>{order.stage}</span></div>
-              <h2>{title}</h2><div className="dtf-client-line"><p>{nameFor(order)}</p><DtfNamesLink noteId={linksByDtf.get(order.id)?.noteId} openNote={openNote} /></div>
+              <h2>{title}</h2>
+              <div className="dtf-client-line">
+                <p>{nameFor(order)}</p>
+                {order.customerId && <span className="dtf-link-status"><Link2 size={12} aria-hidden="true" /> Vinculado</span>}
+                <DtfNamesLink noteId={linksByDtf.get(order.id)?.noteId} openNote={openNote} />
+              </div>
               {order.notes?.trim() && <p className="dtf-order-notes">{order.notes}</p>}
             </div>
             <div className="dtf-order-specs"><b>{order.quantity ? `${order.quantity} un.` : order.lengthCm ? meterLabel(order.lengthCm) : "—"}</b>{order.quantity && order.lengthCm ? <span>{meterLabel(order.lengthCm)}</span> : order.widthCm > 0 && <span>{widthLabel(order.widthCm)}</span>}<label className="dtf-separated dtf-order-separated"><input type="checkbox" checked={order.separated === true} disabled={!live || !!workingId} aria-label={`Separada: ${title}`} onChange={event => { const checked = event.target.checked; void run(order.id, () => onSeparate(order.id, checked)); }} />Separada</label></div>
@@ -181,6 +186,7 @@ function DtfEditor({ order, sourceLink, customers, links, customer, displayMoney
   const paidCents = Math.round(Number(paid) * 100);
   const total = dtfTotal({ lengthCm, priceCents });
   const entries = [...customers].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  const savedLink = Boolean(selectedId && order?.customerId === selectedId);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -223,7 +229,7 @@ function DtfEditor({ order, sourceLink, customers, links, customer, displayMoney
 
         <DtfPhotoField photos={photos} setPhotos={setPhotos} onBusyChange={setPhotoBusy} />
         <label>Nome do pedido<input name="title" maxLength={160} placeholder="Ex.: Estampas para uniformes" defaultValue={order?.title} /></label>
-        <div className="dtf-client-field"><label>Cliente vinculado<select value={selectedId} disabled={!!order && !!dtfSourceOrderId(order.id)} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><DtfNamesLink noteId={clientLink?.noteId} /></div>
+        <div className="dtf-client-field"><label>{savedLink ? "Vinculado" : "Vincular cliente"}<select aria-label="Cliente do pedido DTF" value={selectedId} disabled={!!order && !!dtfSourceOrderId(order.id)} onChange={event => setSelectedId(event.target.value)}><option value="">Pedido avulso</option>{selectedId && !linked && <option value={selectedId}>{order?.customerName} (cadastro indisponível)</option>}{entries.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><DtfNamesLink noteId={clientLink?.noteId} /></div>
         {clientLink?.deadline && <p className="form-help">Prazo DTF: {dtfDate(clientLink.deadline)}</p>}
         <label>Quantidade<input name="quantity" type="number" min="1" max="10000" step="1" placeholder="Opcional" readOnly={clientLink?.checklistQuantity !== undefined} title={clientLink?.checklistQuantity !== undefined ? "Quantidade definida pelo checklist de produção" : undefined} value={clientLink?.checklistQuantity ?? quantity} onChange={event => setQuantity(event.target.value)} /></label>
         <label>Observações<textarea name="notes" rows={3} maxLength={4000} placeholder="Detalhes para preparar e conferir a impressão" defaultValue={order?.notes} /></label>

@@ -95,6 +95,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
     <div className="materials-orders">
       {filtered.map(order => {
         const lines = materialLines(order);
+        const linked = Boolean(order.productionOrderId || order.client);
         return <article className="materials-order" key={order.id}>
           <header><div><h2>{order.title}</h2>{order.client && <p>{order.client}</p>}</div><strong>{completed ? order.materials.some(item => item.actualCost === undefined) ? "Custo a conferir" : currency(actualTotal(order.materials)) : currency(materialTotals(lines).cost)}</strong><button className="materials-note-link" type="button" aria-label={`Abrir anotação ${order.title}`} onClick={() => openNote(order.id)}><ArrowUpRight size={16} /></button></header>
           {!completed && order.purchaseDueDate && <p className="materials-purchase-deadline" data-overdue={order.purchaseDueDate < localDateValue()}>Comprar até {order.purchaseDueDate.split("-").reverse().join("/")}</p>}
@@ -104,7 +105,7 @@ export default function MaterialsWorkspace({ uid, targets, productionOrders, cus
           <footer>
             <div className="materials-order-actions">
               <button type="button" className="secondary" onClick={() => setEntry({id:order.id})}><Plus size={14} /> Adicionar material</button>
-              <button type="button" className="secondary" onClick={() => setEntry({id:order.id,bindingOnly:true})}><Link2 size={14} /> Vincular pedido / cliente</button>
+              <button type="button" className="secondary" title={linked ? "Editar vínculo" : undefined} aria-haspopup="dialog" onClick={() => setEntry({id:order.id,bindingOnly:true})}><Link2 size={14} aria-hidden="true" /> {linked ? "Vinculado" : "Vincular pedido / cliente"}</button>
               {completed
                 ? <button type="button" className="secondary" disabled={!!busy} onClick={() => void reopen(order)}>{busy === order.id ? "Salvando…" : "Reabrir pedido"}</button>
                 : <button type="button" className="primary" onClick={() => setPurchaseOrder(order)}><PackageCheck size={15} /> Concluir compra</button>}

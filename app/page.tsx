@@ -9,6 +9,8 @@ import { readSpecialOrder } from "./special-order";
 import { orderStages, specialOrderLabels, type SpecialOrderKind } from "./order-model";
 import OrderPricingFields from "./OrderPricingFields";
 import Modal from "./Modal";
+import { acceptFirestoreWrite } from "./local-firestore-write";
+import { FinanceIntentConflict, financeConnectionFailure, queueFinanceIntent, readFinanceIntents, receiptOrderState, updateFinanceIntent, type FinanceIntent } from "./offline-finance";
 import { readShirtMix, poloPieces, shirtOrderPrice, suggestedShirtPrice, validateShirtOrderPrice } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import type { BillInput } from "./FinanceWorkspace";
@@ -83,6 +85,8 @@ import {
   onSnapshot,
   runTransaction,
   serverTimestamp,
+  Timestamp,
+  type SnapshotOptions,
   setDoc,
   updateDoc,
   writeBatch,
@@ -122,7 +126,7 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 type CreateKind = "pedido" | "cliente" | "orcamento";
 type UISize = "compact" | "comfortable" | "large" | "extra-large";
@@ -186,7 +190,7 @@ const firebaseConfig = {
 };
 
 const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes", "balanceEntries"] as const;
-type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks" | "monthlyClosings";
+type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks" | "monthlyClosings" | "financeIntentReceipts";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 let appCheckInitialized = false;
@@ -287,6 +291,11 @@ export default function HomePage() {
   const [notes, setNotes] = useState<BusinessNote[]>([]);
   const orders = useMemo(() => synchronizedOrderQuantities(storedOrders,notes,customers),[storedOrders,notes,customers]);
   const [firebaseState, setFirebaseState] = useState<"connecting" | "live" | "error" | "unconfigured">("connecting");
+  const [online, setOnline] = useState(true);
+  const [pendingLocalWrites, setPendingLocalWrites] = useState(false);
+  const [pendingNoteIds, setPendingNoteIds] = useState<Set<string>>(() => new Set());
+  const [financeQueue, setFinanceQueue] = useState<FinanceIntent[]>([]);
+  const processingFinance = useRef(false);
   const [uid, setUid] = useState("");
   const interfaceAppearance = useInterfaceAppearance(uid);
   const [user, setUser] = useState<User | null>(null);
@@ -342,10 +351,17 @@ export default function HomePage() {
 
   useEffect(()=>{
     if(!uid)return;
-    const prepare=(event:Event)=>(event as CustomEvent<PrepareReload>).detail.waitUntil(waitForPendingWrites(getFirestore(getApps()[0])).then(()=>true,()=>false));
+    const prepare=(event:Event)=>(event as CustomEvent<PrepareReload>).detail.waitUntil(waitForPendingWrites(getFirestore(getApps()[0])).then(()=>!readFinanceIntents(uid).some(intent => !intent.error),()=>false));
     window.addEventListener(prepareReloadEvent,prepare);
     return()=>window.removeEventListener(prepareReloadEvent,prepare);
   },[uid]);
+
+  useEffect(() => {
+    const refresh = () => setFinanceQueue(readFinanceIntents(uid));
+    refresh();
+    window.addEventListener("storage", refresh);
+    return () => window.removeEventListener("storage", refresh);
+  }, [uid]);
 
 
 
@@ -355,7 +371,11 @@ export default function HomePage() {
     const storedSize = localStorage.getItem("psy-ui-size") as UISize | null;
     if (["compact", "comfortable", "large", "extra-large"].includes(storedSize ?? "")) setUiSize(storedSize!);
     setNotificationsEnabled(localStorage.getItem("psy-notifications") !== "off");
-    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).then((registration) => registration.update()).catch(() => undefined);
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
+      .then(async registration => {
+        await registration.update().catch(() => {});
+        (await navigator.serviceWorker.ready).active?.postMessage("PREPARE_OFFLINE");
+      }).catch(() => {});
 
     if (!isFirebaseConfigured) {
       setFirebaseState("unconfigured");
@@ -367,10 +387,11 @@ export default function HomePage() {
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
     ensureAppCheck(app);
     const auth = clientAuth(app);
-    let db;
-    try{db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});}catch{db=getFirestore(app);}
-    const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: () => unknown }> }) =>
-      snapshot.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<T, "id">) } as T));
+    try { initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
+    catch { /* Reuse the existing instance after a remount. */ }
+    const db = getFirestore(app);
+    const toList = <T extends { id: string }>(snapshot: { docs: Array<{ id: string; data: (options?: SnapshotOptions) => unknown }> }) =>
+      snapshot.docs.map((item) => ({ id: item.id, ...(item.data({ serverTimestamps: "estimate" }) as Omit<T, "id">) } as T));
     let unsubscribers: Array<() => void> = [];
     const unsubscribeAuth = onAuthStateChanged(auth, (nextUser) => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -382,6 +403,8 @@ export default function HomePage() {
       setAuthReady(true);
       setAuthError("");
       setDataReady(false);
+      setPendingLocalWrites(false);
+      setPendingNoteIds(new Set());
       setDtfOrders([]);
       setDtfConnection("connecting");
       setHistoryEntries([]);
@@ -401,13 +424,19 @@ export default function HomePage() {
       }
 
       const initialized = new Set<string>();
+      const pendingWrites = new Set<string>();
+      const trackLocalWrites = (name: string, pending: boolean) => {
+        if (pending) pendingWrites.add(name);
+        else pendingWrites.delete(name);
+        setPendingLocalWrites(pendingWrites.size > 0);
+      };
       const serverReady=new Set<string>();
       const cacheKey="psy-data-cache-ready-v1:"+nextUser.uid;
       let knownCounts:Record<string,number>={};try{const value=JSON.parse(localStorage.getItem(cacheKey)||"null");if(value&&typeof value==="object")knownCounts=value;}catch{}
       const serverCounts:Record<string,number>={};
       const markReady = (name: string, fromCache=false, count=0) => {
         if(!fromCache){serverReady.add(name);serverCounts[name]=count;}else serverReady.delete(name);
-        if(knownCounts[name]===count||!fromCache)initialized.add(name);
+        if (!fromCache || (name === "notes" ? count >= knownCounts[name] : knownCounts[name] === count)) initialized.add(name);
         if (initialized.size === FIRESTORE_COLLECTIONS.length) {
           setDataReady(true);
         }
@@ -443,6 +472,8 @@ export default function HomePage() {
         }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "notes"), {includeMetadataChanges:true}, (snapshot) => {
           setNotes(toList<BusinessNote>(snapshot));
+          setPendingNoteIds(new Set(snapshot.docs.filter(note => note.metadata.hasPendingWrites).map(note => note.id)));
+          trackLocalWrites("notes", snapshot.metadata.hasPendingWrites);
           markReady("notes",snapshot.metadata.fromCache,snapshot.docs.length);
         }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "dtfOrders"), { includeMetadataChanges: true }, (snapshot) => {
@@ -459,8 +490,9 @@ export default function HomePage() {
           console.error("History synchronization failed", error);
           setHistoryConnection("error");
         }),
-        onSnapshot(collection(db, "users", nextUser.uid, "tasks"), (snapshot) => {
+        onSnapshot(collection(db, "users", nextUser.uid, "tasks"), { includeMetadataChanges: true }, (snapshot) => {
           setTasks(toList<Task>(snapshot));
+          trackLocalWrites("tasks", snapshot.metadata.hasPendingWrites);
           setTaskConnection("live");
         }, (error) => {
           console.error("Task synchronization failed", error);
@@ -474,6 +506,42 @@ export default function HomePage() {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
+
+  useEffect(() => {
+    const connected = () => {
+      setOnline(true);
+      void navigator.serviceWorker?.getRegistration().then(registration => registration?.active?.postMessage("PREPARE_OFFLINE")).catch(() => {});
+    };
+    const disconnected = () => setOnline(false);
+    setOnline(navigator.onLine);
+    window.addEventListener("online", connected);
+    window.addEventListener("offline", disconnected);
+    return () => {
+      window.removeEventListener("online", connected);
+      window.removeEventListener("offline", disconnected);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!online || !navigator.serviceWorker) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const prepareWorkspaces = () => {
+      if (!navigator.serviceWorker.controller) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        void Promise.allSettled([
+          import("./FinanceWorkspace"), import("./ProductionBoard"), import("./NotesWorkspace"),
+          import("./notes/TasksWorkspace"), import("./AtelierDashboard"),
+        ]);
+      }, 1200);
+    };
+    prepareWorkspaces();
+    navigator.serviceWorker.addEventListener("controllerchange", prepareWorkspaces);
+    return () => {
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener("controllerchange", prepareWorkspaces);
+    };
+  }, [online]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
@@ -1265,21 +1333,25 @@ export default function HomePage() {
     const clean = title.trim();
     if (!clean || clean.length > 200) throw new Error("Escreva uma tarefa de até 200 caracteres.");
     if (customerId && !customers.some(customer => customer.id === customerId && !customer.archived) && !tasks.some(task => task.id === id && task.customerId === customerId)) throw new Error("Cliente indisponível.");
-    if (id) await updateDoc(userDocument(uid, "tasks", id), { title: clean, customerId: customerId || deleteField() });
-    else await addDoc(userCollection(uid, "tasks"), { title: clean, ...(customerId ? { customerId } : {}), completed: false, createdAt: serverTimestamp(), completedAt: null });
+    const ref = id ? userDocument(uid, "tasks", id) : doc(userCollection(uid, "tasks"));
+    const write = id ? updateDoc(ref, { title: clean, customerId: customerId || deleteField() })
+      : setDoc(ref, { title: clean, ...(customerId ? { customerId } : {}), completed: false, createdAt: serverTimestamp(), completedAt: null });
+    await acceptFirestoreWrite(ref, write, () => showToast("O servidor não aceitou a alteração do afazer."));
   };
 
   const toggleTask = async (id: string, completed: boolean) => {
     if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
     if(completed)preparePaymentSound(uid);
-    await updateDoc(userDocument(uid, "tasks", id), { completed, completedAt: completed ? serverTimestamp() : null });
+    const ref = userDocument(uid, "tasks", id);
+    await acceptFirestoreWrite(ref, updateDoc(ref, { completed, completedAt: completed ? Timestamp.now() : null }), () => showToast("O servidor não aceitou a alteração do afazer."));
     const task=tasks.find(item=>item.id===id);
     if(completed && task && !task.completed){const allDone=tasks.every(item=>item.id===id||item.completed);const periodTasks=tasks.filter(item=>!item.completed||taskCompletionMonth(item)===calendarDate.slice(0,7));activitySucceeded({uid,title:allDone?"Afazeres em dia!":"Afazer concluído",description:task.title,kind:allDone?"milestone":"tick",progress:Math.round(periodTasks.filter(item=>item.id===id||item.completed).length/periodTasks.length*100),previousProgress:Math.round(periodTasks.filter(item=>item.completed).length/periodTasks.length*100)});}
   };
 
   const deleteTask = async (id: string) => {
     if (!uid || taskConnection !== "live") throw new Error("Aguarde a sincronização dos afazeres.");
-    await deleteDoc(userDocument(uid, "tasks", id));
+    const ref = userDocument(uid, "tasks", id);
+    await acceptFirestoreWrite(ref, deleteDoc(ref), () => showToast("O servidor não aceitou a exclusão do afazer."), true);
   };
 
   const saveHistory = async (input: HistoryInput, id?: string) => {
@@ -1725,17 +1797,35 @@ export default function HomePage() {
   const receiveCustomer = async (customer: CustomerBalance, refund = false) => {
     const amount = refund ? customer.credit ?? 0 : customer.pending;
     if (amount <= 0 || !window.confirm(refund ? "Registrar devolução de " + displayMoney(amount) + " para " + customer.name + "?" : "Confirmar o recebimento de " + displayMoney(amount) + " de " + customer.name + "?")) return;
-    if (firebaseState !== "live")
-      throw new Error("Firestore ainda não está conectado");
+    const includeBalance = refund || window.confirm("Adicionar "+displayMoney(amount)+" ao saldo da empresa?");
+    const date = localDateValue();
+    const intent: Extract<FinanceIntent, { kind: "receipt" | "refund" }> = {
+      id: crypto.randomUUID(), kind: refund ? "refund" : "receipt", label: (refund ? "Devolução · " : "Recebimento · ") + customer.name,
+      amount, date, includeBalance, customerId: customer.id, orderState: receiptOrderState(orders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name))),
+    };
+    if (firebaseState !== "live" || !navigator.onLine) {
+      savePendingFinance(intent);
+      return;
+    }
+    if (readFinanceIntents(uid).some(item => item.kind !== "bill" && item.customerId === customer.id))
+      throw new FinanceIntentConflict("Confira o lançamento pendente deste cliente.");
+    try { await commitCustomerReceipt(customer, { amount, date, includeBalance, refund, intent }); }
+    catch (cause) { if (financeConnectionFailure(cause)) savePendingFinance(intent); else throw cause; }
+  };
+
+  const commitCustomerReceipt = async (customer: CustomerBalance, { amount, date, includeBalance, refund, intent }: {
+    amount: number; date: string; includeBalance: boolean; refund: boolean;
+    intent?: Extract<FinanceIntent, { kind: "receipt" | "refund" }>;
+  }) => {
     const related = orders.filter(
       (order) =>
         customerNameKey(order.customer) === customerNameKey(customer.name),
     );
-    if (related.length > 180)
-      throw new Error("Receba os pedidos em lotes menores.");
-    const includeBalance=refund || window.confirm("Adicionar "+displayMoney(amount)+" ao saldo da empresa?");
+    if (related.length > 180) throw new FinanceIntentConflict("Receba os pedidos em lotes menores.");
     const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
+      const marker = intent && userDocument(uid, "financeIntentReceipts", intent.id);
+      if (marker && (await transaction.get(marker)).exists()) return;
       const customerRef = userDocument(uid, "customers", customer.id);
       const customerSnapshot = await transaction.get(customerRef);
       const orderSnapshots = await Promise.all(
@@ -1770,24 +1860,27 @@ export default function HomePage() {
       const current = customerSnapshot.exists()
         ? ({ ...customerSnapshot.data(), id: customerSnapshot.id } as Customer)
         : customer;
-      if(includeBalance) transaction.set(balanceRef,balanceMovement(refund?-amount:amount,(refund?"Devolução · ":"Recebimento · ")+customer.name));
+      if (intent && (current.archived || receiptOrderState(currentOrders) !== intent.orderState))
+        throw new FinanceIntentConflict("Os pedidos do cliente mudaram. Confira o saldo antes de lançar novamente.");
+      if (marker) transaction.set(marker, { createdAt: serverTimestamp() });
+      if(includeBalance) transaction.set(balanceRef,{ ...balanceMovement(refund?-amount:amount,(refund?"Devolução · ":"Recebimento · ")+customer.name), date });
       if (refund) {
         const credit = customerBalances([current], currentOrders)[0]?.credit ?? 0;
-        if (current.archived || credit !== amount) throw new Error("O crédito mudou. Confira o saldo atualizado.");
+        if (current.archived || credit !== amount) throw new FinanceIntentConflict("O crédito mudou. Confira o saldo atualizado.");
         for (const update of customerRefund(credit, currentOrders)) {
           transaction.update(userDocument(uid,"orders",update.id), {paid:update.paid});
           transaction.set(doc(userCollection(uid,"transactions")), {
             description:"Devolução · "+current.name, amount:update.amount, type:"expense", account:"business",
-            category:"Devoluções", source:"customer_refund", orderId:update.id, customerId:current.id, transactionDate:localDateValue(), createdAt:serverTimestamp(),
+            category:"Devoluções", source:"customer_refund", orderId:update.id, customerId:current.id, transactionDate:date, createdAt:serverTimestamp(),
           });
         }
         return;
       }
-      const receipt = customerReceipt(current, currentOrders);
-      if (roundMoney(receipt.amount) !== roundMoney(customer.pending))
-        throw new Error(
+      if ((customerBalances([current], currentOrders)[0]?.pending ?? 0) !== roundMoney(amount))
+        throw new FinanceIntentConflict(
           "O saldo mudou. Confira o valor atualizado e tente novamente.",
         );
+      const receipt = customerReceipt(current, currentOrders);
       for (const payment of receipt.payments) {
         transaction.update(userDocument(uid, "orders", payment.orderId), {
           paid: payment.paid,
@@ -1803,7 +1896,7 @@ export default function HomePage() {
           source: "customer_receipt",
           customerId: current.id,
           orderId: payment.orderId,
-          transactionDate: localDateValue(),
+          transactionDate: date,
           createdAt: serverTimestamp(),
         });
       }
@@ -1816,7 +1909,7 @@ export default function HomePage() {
           category: "Vendas",
           source: "customer_receipt",
           customerId: current.id,
-          transactionDate: localDateValue(),
+          transactionDate: date,
           createdAt: serverTimestamp(),
         });
       transaction.set(
@@ -1848,10 +1941,10 @@ export default function HomePage() {
 
   const openProductionList = async (order: Order) => {
     if (order.orderKind === "collection") return;
-    if (firebaseState !== "live") return showToast("Aguarde a conexão para abrir a lista.");
     const linked = notes.filter(note => { const document = readDocument(note.content); return document.orderId === order.id && document.status !== "trash"; })
       .sort((a, b) => Number(!!readDocument(b.content).productionChecklist) - Number(!!readDocument(a.content).productionChecklist) || millis(b.updatedAt) - millis(a.updatedAt))[0];
     if (linked) { setProductionList({ order, noteId: linked.id }); return; }
+    if (firebaseState !== "live") return showToast("Conecte-se para criar a lista deste pedido.");
     try {
       const noteId = `production-${order.id}`;
       await runTransaction(getFirestore(getApps()[0]), async transaction => {
@@ -1872,32 +1965,98 @@ export default function HomePage() {
     } catch (cause) { showToast(cause instanceof Error && !cause.name.startsWith("Firebase") ? cause.message : "Não foi possível abrir a lista. Tente novamente."); }
   };
 
-  const payBill = async (bill: Bill) => {
-    if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
+  const savePendingFinance = (intent: FinanceIntent) => {
+    if (!uid) throw new Error("Entre na sua conta para salvar a alteração.");
+    if (!queueFinanceIntent(uid, intent)) throw new Error("Já existe um lançamento local para este registro. Confira no Financeiro.");
+    setFinanceQueue(readFinanceIntents(uid));
+    showToast("Lançamento aguardando confirmação");
+  };
+
+  const payBill = async (bill: Bill): Promise<boolean | "queued"> => {
     if (billIsSettled(bill)) return false;
     const receiving = bill.direction === "receivable";
     if (!receiving) preparePaymentSound(uid);
     if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return false;
     const paymentDate = localDateValue();
     const includeBalance = bill.account === "business" && (!receiving || window.confirm("Adicionar "+displayMoney(bill.amount)+" ao saldo da empresa?"));
-    const month = paymentDate.slice(0, 7);
-    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
-      const reference = userDocument(uid, "bills", bill.id);
-      const snapshot = await transaction.get(reference);
-      if (!snapshot.exists()) throw new Error("Esta conta foi excluída. Atualize a página.");
-      const current = { ...snapshot.data(), id: snapshot.id } as Bill;
-      if (billIsSettled(current, month)) throw new Error("Esta conta já foi concluída.");
-      if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType || current.account !== bill.account) {
-        throw new Error("A conta mudou. Confira os dados atualizados antes de confirmar.");
-      }
-      transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
-      if(includeBalance) transaction.set(userDocument(uid,"balanceEntries",billPaymentId(bill.id,current.billingType === "once"?"once":month)),balanceMovement(receiving?current.amount:-current.amount,current.description));
-      transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
-    });
+    const { id, amount, account, billingType, direction, dueDate, dueDay, paidInstallments, lastPaidMonth } = bill;
+    const intent: Extract<FinanceIntent, { kind: "bill" }> = { id: crypto.randomUUID(), kind: "bill", label: bill.description, amount, date: paymentDate, includeBalance,
+      bill: { id, amount, account, billingType, direction, dueDate, dueDay, paidInstallments, lastPaidMonth } };
+    if (firebaseState !== "live" || !navigator.onLine) {
+      savePendingFinance(intent);
+      return "queued";
+    }
+    if (readFinanceIntents(uid).some(item => item.kind === "bill" && item.bill.id === bill.id))
+      throw new FinanceIntentConflict("Confira o lançamento pendente desta conta.");
+    try { await commitBillPayment(bill, paymentDate, includeBalance, intent.id); }
+    catch (cause) {
+      if (!financeConnectionFailure(cause)) throw cause;
+      savePendingFinance(intent);
+      return "queued";
+    }
     if (receiving) showToast("Recebimento registrado");
     else paymentSucceeded({ uid, title: "Pagamento registrado", description: bill.description, amount: bill.amount });
     return true;
   };
+
+  const commitBillPayment = async (bill: Extract<FinanceIntent, { kind: "bill" }>["bill"], paymentDate: string, includeBalance: boolean, intentId?: string) => {
+    const month = paymentDate.slice(0, 7);
+    await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
+      const marker = intentId && userDocument(uid, "financeIntentReceipts", intentId);
+      if (marker && (await transaction.get(marker)).exists()) return;
+      const reference = userDocument(uid, "bills", bill.id);
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new FinanceIntentConflict("Esta conta foi excluída. Confira o Financeiro.");
+      const current = { ...snapshot.data(), id: snapshot.id } as Bill;
+      if (billIsSettled(current, month)) throw new FinanceIntentConflict("Esta conta já foi concluída.");
+      if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType || current.account !== bill.account) {
+        throw new FinanceIntentConflict("A conta mudou. Confira os dados atualizados antes de confirmar.");
+      }
+      if (intentId && (current.dueDate !== bill.dueDate || current.dueDay !== bill.dueDay ||
+        current.lastPaidMonth !== bill.lastPaidMonth || (current.paidInstallments ?? 0) !== (bill.paidInstallments ?? 0)))
+        throw new FinanceIntentConflict("A data ou as parcelas da conta mudaram. Confira antes de lançar novamente.");
+      if (marker) transaction.set(marker, { createdAt: serverTimestamp() });
+      transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
+      if(includeBalance) transaction.set(userDocument(uid,"balanceEntries",billPaymentId(bill.id,current.billingType === "once"?"once":month)),{ ...balanceMovement(current.direction === "receivable"?current.amount:-current.amount,current.description), date: paymentDate });
+      transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
+    });
+  };
+
+  const syncPendingFinance = useEffectEvent(async () => {
+    if (!uid || firebaseState !== "live" || !navigator.onLine || processingFinance.current) return;
+    const pending = readFinanceIntents(uid).filter(intent => !intent.error);
+    if (!pending.length) return;
+    processingFinance.current = true;
+    try {
+      for (const intent of pending) {
+        if (!navigator.onLine || clientAuth(getApps()[0]).currentUser?.uid !== uid) break;
+        try {
+          if (intent.kind === "bill") await commitBillPayment(intent.bill, intent.date, intent.includeBalance, intent.id);
+          else {
+            const customer = balances.find(item => item.id === intent.customerId && !item.archived);
+            if (!customer) throw new FinanceIntentConflict("Cliente indisponível. Confira o cadastro e os pedidos.");
+            await commitCustomerReceipt(customer, { ...intent, refund: intent.kind === "refund", intent });
+          }
+          updateFinanceIntent(uid, intent);
+        } catch (cause) {
+          if (cause instanceof FinanceIntentConflict) updateFinanceIntent(uid, intent, cause.message);
+          else if (cause && typeof cause === "object" && "code" in cause && ["permission-denied", "invalid-argument", "failed-precondition"].includes(String(cause.code)))
+            updateFinanceIntent(uid, intent, "O servidor recusou este lançamento. Confira os dados e registre novamente.");
+        }
+      }
+    } finally {
+      processingFinance.current = false;
+      if (clientAuth(getApps()[0]).currentUser?.uid === uid) setFinanceQueue(readFinanceIntents(uid));
+    }
+  });
+
+  const hasQueuedFinance = financeQueue.some(item => !item.error);
+  useEffect(() => {
+    if (!uid || firebaseState !== "live" || !online || !hasQueuedFinance) return;
+    void syncPendingFinance();
+    const timer = setInterval(() => void syncPendingFinance(), 10000);
+    return () => clearInterval(timer);
+  }, [uid, firebaseState, online, hasQueuedFinance]);
 
   const undoBillPayment = async (bill: Bill) => {
     if (firebaseState !== "live") throw new Error("Firestore ainda não está conectado");
@@ -1937,6 +2096,7 @@ export default function HomePage() {
   if (!isFirebaseConfigured) return <ConnectionErrorScreen message="Confira as variáveis NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID e NEXT_PUBLIC_FIREBASE_APP_ID." />;
   if (!user) return <AuthScreenV2 error={authError} onSignIn={signInGoogle} />;
   const accountFirstName = user.displayName?.trim().split(/\s+/)[0];
+  if (!dataReady && !online) return <ConnectionErrorScreen message="Conecte-se uma vez para baixar os dados desta conta neste aparelho." />;
   if (!dataReady || !interfaceAppearance.ready) return <StartupLoading firstName={accountFirstName} />;
 
   const userName = user.displayName || "Usuário PSYZON";
@@ -1983,6 +2143,18 @@ export default function HomePage() {
         </header>
 
         <section ref={contentRef} className={`content ${view === "notas" ? "notes-content" : ""}`}>
+          {(!online || pendingLocalWrites) && <p className="offline-status" role="status">{online ? "Sincronizando alterações…" : pendingLocalWrites ? "Sem internet · alterações salvas neste aparelho" : "Sem internet · mostrando os dados deste aparelho"}</p>}
+          {view === "financeiro" && financeQueue.length > 0 && <section className="offline-finance-queue panel" aria-label="Lançamentos pendentes">
+            <h2>Lançamentos pendentes</h2>
+            <ul>{financeQueue.map(intent => <li key={intent.id}>
+              <div><b>{intent.label}</b><small>{intent.error || "Aguardando confirmação"}</small></div>
+              <strong>{displayTotal(intent.amount)}</strong>
+              {intent.error && <button type="button" className="secondary" onClick={() => {
+                updateFinanceIntent(uid, intent);
+                setFinanceQueue(readFinanceIntents(uid));
+              }}>Remover da fila</button>}
+            </li>)}</ul>
+          </section>}
           {nextPayables && (atelier ? <AtelierDashboard
             name={firstName} today={calendarDate} orders={activeOrders}
             deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)}
@@ -1992,7 +2164,7 @@ export default function HomePage() {
           /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
-          {(view === "notas" || view === "materiais") && <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} />}
+          {(view === "notas" || view === "materiais") && <NotesWorkspace pendingNoteIds={pendingNoteIds} online={online} expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} />}
           {view === "afazeres" && <TasksWorkspace key={uid} customers={customers} tasks={tasks} connection={taskConnection} today={historyDate(Date.now())} back={() => setView("notas")} onSave={saveTask} onToggle={toggleTask} onDelete={deleteTask} />}
           {view === "reposicao" && <RestockWorkspace key={uid} items={stockItems} connection={firebaseState === "live" ? "live" : firebaseState === "error" ? "error" : "connecting"} today={calendarDate} displayMoney={displayMoney} openFinance={() => setView("financeiro")} onSave={saveRestock} onToggle={(id, completed) => updateRestock(id, { type: "toggle", completed })} onDelete={id => updateRestock(id, { type: "remove" })} />}
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
@@ -2025,7 +2197,7 @@ export default function HomePage() {
 
       <MobileNavigation view={view} navigate={setView} /><SiteTypewriter page={view} />
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
-        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} /> : <p role="status">Carregando lista vinculada…</p>}
+        {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace pendingNoteIds={pendingNoteIds} online={online} expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
       {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 

@@ -65,6 +65,19 @@ before(async () => {
 beforeEach(async () => environment.clearFirestore());
 after(async () => environment.cleanup());
 
+test("offline finance receipts can only be read and created once by their owner", async () => {
+  const path = "users/offline-user/financeIntentReceipts/af65a360-0305-41ec-8eb1-81fa505eeee2";
+  const owner = doc(environment.authenticatedContext("offline-user").firestore(), path);
+  const other = doc(environment.authenticatedContext("another-user").firestore(), path);
+  await assertSucceeds(getDoc(owner));
+  await assertFails(getDoc(other));
+  await assertFails(setDoc(other, { createdAt: serverTimestamp() }));
+  await assertFails(setDoc(owner, { createdAt: serverTimestamp(), amount: 100 }));
+  await assertSucceeds(setDoc(owner, { createdAt: serverTimestamp() }));
+  await assertFails(setDoc(owner, { createdAt: serverTimestamp() }));
+  await assertFails(deleteDoc(owner));
+});
+
 test("orders accept unit pricing and reject invalid child counts", async () => {
  const db=environment.authenticatedContext("pricing-user").firestore();
  const reference=doc(db,"users/pricing-user/orders/a");

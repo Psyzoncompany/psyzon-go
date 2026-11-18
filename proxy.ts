@@ -37,6 +37,9 @@ export function proxy(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", policy);
+  if (request.method === "GET" && request.nextUrl.pathname === "/" && !request.nextUrl.search && request.headers.get("x-psyzon-shell") === "1" && !request.headers.has("cookie") && !request.headers.has("authorization")) {
+    response.headers.set("x-psyzon-shell", "1");
+  }
   return response;
 }
 

@@ -1351,6 +1351,13 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 .compact-modal .form-error { margin: 0; }
 .compact-modal form footer { margin: 0; padding: 0; border: 0; }
 .create-balance-actions { flex-wrap: wrap; }
+.offline-status { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--card-subtle); color: var(--muted); font-size: 12px; }
+.offline-finance-queue { padding: 14px; margin-bottom: 14px; }
+.offline-finance-queue h2 { margin: 0 0 8px; font-size: 15px; }
+.offline-finance-queue ul { padding: 0; margin: 0; list-style: none; }
+.offline-finance-queue li { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 8px 0; border-top: 1px solid var(--border); }
+.offline-finance-queue li > div { flex: 1 1 140px; display: grid; gap: 4px; min-width: 0; }
+.offline-finance-queue small { color: var(--muted); }
 .order-photo-field { padding: 12px; border: 1px dashed var(--border); border-radius: 10px; }
 .order-photo-field label > span { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .order-photo-field input[type="file"] { height: auto; padding: 8px; }

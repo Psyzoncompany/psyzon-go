@@ -26,7 +26,7 @@ type Props = {
   displayTotal: (value: number) => string;
   displayMoney: (value: number) => string;
   onSaveBill: (bill: Bill | null, input: BillInput) => Promise<void>;
-  onSettleBill: (bill: Bill) => Promise<boolean>;
+  onSettleBill: (bill: Bill) => Promise<boolean | "queued">;
   onUndoPayment: (bill: Bill) => Promise<void>;
   onDeleteBill: (bill: Bill, confirmed?: boolean) => Promise<void>;
   onReceive: (customer: CustomerBalance) => Promise<void>;
@@ -75,7 +75,11 @@ export default function FinanceWorkspace({ balanceCard, today = localDateValue()
   const undatedIds = new Set(restock.filter(bill => !bill.dueDate).map(bill => bill.id));
   const openDetails = (kind: "bill" | "customer" | "expense", id: string, period=currentMonth) => { setError(""); setConfirmDelete(false); setSelected({ kind, id, period }); };
   const editBill = (bill: Bill) => { setSelected(null); setError(""); setEditor({ bill }); };
-  const settle = (bill: Bill) => void run(async () => { if (await onSettleBill(bill)) { setShowSettled(true); setSelected(null); } });
+  const settle = (bill: Bill) => void run(async () => {
+    const result = await onSettleBill(bill);
+    if (result === true) setShowSettled(true);
+    if (result) setSelected(null);
+  });
   const toBillItems = (items: Bill[], period=currentMonth): FinanceListItem[] => sortedBills(items, period, undatedIds).map(bill => {
     const stock = stockIds.has(bill.id), settled = billIsSettled(bill, period);
     return { id: bill.id, title: bill.description, detail: `${undatedIds.has(bill.id) ? (bill.category === "Costura" ? "Prazo a definir" : "Data da compra a definir") : financeDate(billDueDate(bill, period))} · ${stock ? bill.category + (bill.category === "Materiais dos pedidos" ? " · Estimativa" : "") : recurrenceLabel(bill, period)}${bill.account === "personal" ? " · Pessoal" : ""}`, amount: displayMoney(bill.amount), status: financeStatus(bill, today, period, undatedIds.has(bill.id)), open: () => openDetails("bill", bill.id, period), quick: stock ? [{ label: bill.category === "Costura" ? "Costureiras" : bill.category === "Materiais dos pedidos" ? "Materiais" : "Reposição", icon: <ArrowUpRight size={18}/>, action: () => openRestock(bill) }] : [{ label: settled || (period !== currentMonth && bill.billingType !== "once") ? "Detalhes" : bill.direction === "receivable" ? "Receber" : "Pagar", icon: <Check size={18}/>, action: () => settled || (period !== currentMonth && bill.billingType !== "once") ? openDetails("bill", bill.id, period) : settle(bill) }, { label: "Editar", icon: <Pencil size={18}/>, action: () => editBill(bill) }] };

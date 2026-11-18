@@ -57,7 +57,7 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(worker, /url\.pathname\.startsWith\("\/api\/"\)/);
   assert.match(worker, /request\.headers\.has\("authorization"\)/);
   assert.match(worker, /cacheControl\.includes\("no-store"\)/);
-  assert.doesNotMatch(worker, /PUBLIC_ASSETS = \[[\s\S]*?"\/"/);
+  assert.doesNotMatch(worker, /PUBLIC_ASSETS = \[[^\]]*"\/"/);
   assert.match(worker, /self\.clients\.claim\(\)/);
   assert.match(worker, /Promise\.allSettled/);
   assert.match(page, /navigator\.serviceWorker\.register\("\/sw\.js"/);
@@ -135,6 +135,48 @@ test("service worker clones only a public static response before its body is con
   releaseCache({ put: async (_key, cachedResponse) => { cachedBody = await cachedResponse.text(); } });
   await cachePromise;
   assert.equal(cachedBody, "fresh asset");
+});
+
+test("the offline app shell needs an anonymous response and all of its scripts", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const events = new Map();
+  const stored = new Map();
+  let offline = false, marked = false, available = false;
+  const origin = "https://psyzon.test";
+  const cache = { match: async key => stored.get(key)?.clone(), put: async (key, value) => { stored.set(key, value); } };
+  vm.runInNewContext(worker, {
+    URL, Response, Promise, caches: { open: async () => cache, match: cache.match, keys: async () => [] },
+    fetch: async (request, init) => {
+      if (offline) throw new Error("offline");
+      if (request === "/") {
+        assert.equal(init.credentials, "omit");
+        assert.equal(init.headers["x-psyzon-shell"], "1");
+        return new Response('<script src="/_next/static/app.js"></script><p>PSYZON</p>', {
+          headers: { "content-type": "text/html", "content-security-policy": "default-src 'self'", "x-psyzon-shell": marked ? "1" : "0" },
+        });
+      }
+      return new Response("", { status: available ? 200 : 503 });
+    },
+    self: { location: { origin }, addEventListener: (name, handler) => events.set(name, handler) },
+  });
+  const prepare = () => new Promise(resolve => events.get("message")({ data: "PREPARE_OFFLINE", waitUntil: resolve }));
+  await prepare();
+  assert.equal(stored.size, 0);
+  marked = true;
+  await prepare();
+  assert.equal(stored.has("/__psyzon-offline-shell"), false);
+  available = true;
+  await prepare();
+  assert.equal(stored.has("/_next/static/app.js"), true);
+  offline = true;
+  const fetchAs = pathname => {
+    let response;
+    events.get("fetch")({ request: { mode: "navigate", url: origin + pathname, method: "GET", headers: new Headers() }, respondWith: value => { response = value; } });
+    return response;
+  };
+  assert.match(await (await fetchAs("/")).text(), /PSYZON/);
+  assert.equal(fetchAs("/api/version"), undefined);
+  assert.equal(fetchAs("/?code=private"), undefined);
 });
 
 test("removes AI and bank widgets from the app while preserving secured server integrations", async () => {

@@ -16,6 +16,13 @@ export class NoteSaveQueue<T> {
     this.timers.set(id, setTimeout(() => { void this.flush(id); }, this.delay));
   }
   isPending(id: string) { return this.pending.has(id); }
+  holdRejected(id: string, value: T) {
+    if (this.pending.has(id)) return;
+    this.recovery(id, value);
+    this.pending.set(id, { value, version: ++this.version });
+    this.statuses.set(id, "error");
+    this.report(id, "error");
+  }
   pendingValues() { return [...this.pending.entries()].map(([id, record]) => ({ id, value: record.value })); }
   getStatuses() { return Object.fromEntries(this.statuses); }
   flush(id: string): Promise<void> {

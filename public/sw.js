@@ -1,4 +1,5 @@
-const CACHE = "psyzon-go-v6-security";
+const CACHE = "psyzon-go-v7-offline";
+const SHELL_KEY = "/__psyzon-offline-shell";
 const PUBLIC_ASSETS = [
   "/manifest.webmanifest",
   "/icon-192-v3.png",
@@ -14,10 +15,34 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim()),
+    prepareShell().catch(() => {}).then(() => self.clients.claim()),
   );
+});
+
+let preparingShell;
+async function prepareShell() {
+  const response = await fetch("/", { credentials: "omit", redirect: "error", cache: "no-store", headers: { "x-psyzon-shell": "1" } });
+  if (!response.ok || response.headers.get("x-psyzon-shell") !== "1" || response.headers.has("set-cookie") ||
+    !response.headers.get("content-type")?.includes("text/html") || !response.headers.has("content-security-policy")) return;
+  const html = await response.clone().text();
+  const assets = [...new Set([...html.matchAll(/(?:src|href)=["'](\/_next\/static\/[^"']+)["']/g)].map(match => match[1].replaceAll("&amp;", "&")))];
+  if (!assets.some(asset => /\.js(?:\?|$)/.test(asset))) return;
+  const cache = await caches.open(CACHE);
+  await Promise.all(assets.map(async asset => {
+    if (await cache.match(asset)) return;
+    const file = await fetch(asset, { credentials: "omit", redirect: "error" });
+    if (!mayCacheResponse(file)) throw new Error("Offline asset unavailable");
+    await cache.put(asset, file);
+  }));
+  await cache.put(SHELL_KEY, response);
+  const oldCaches = (await caches.keys()).filter(key => key.startsWith("psyzon-go-") && key !== CACHE);
+  await Promise.allSettled(oldCaches.map(key => caches.delete(key)));
+}
+
+self.addEventListener("message", event => {
+  if (event.data !== "PREPARE_OFFLINE") return;
+  preparingShell ??= prepareShell().catch(() => {}).finally(() => { preparingShell = undefined; });
+  event.waitUntil(preparingShell);
 });
 
 function isPublicStaticRequest(request, url) {
@@ -38,6 +63,15 @@ function mayCacheResponse(response) {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
+  if (event.request.mode === "navigate" && event.request.method === "GET" && !event.request.headers.has("authorization") &&
+      url.origin === self.location.origin && url.pathname === "/" && !url.search) {
+    event.respondWith(fetch(event.request).catch(async () => {
+      return await caches.match(SHELL_KEY) ?? new Response("Abra o Psyzon GO com internet para preparar o acesso offline.", {
+        status: 503, headers: { "content-type": "text/plain; charset=utf-8" },
+      });
+    }));
+    return;
+  }
   if (!isPublicStaticRequest(event.request, url)) return;
 
   event.respondWith(

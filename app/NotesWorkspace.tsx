@@ -14,6 +14,7 @@ import { block, categories, currency, decimal, exportNote, makeId, millis, newDr
 import { NoteSaveQueue, type Recovery, type SaveStatus } from "./notes-save-queue";
 import { checklistCompletion } from "./completion-feedback";
 import { changedFields } from "./changed-fields";
+import { acceptFirestoreWrite } from "./local-firestore-write";
 import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import { activitySucceeded, preparePaymentSound } from "./payment-feedback";
 import NoteDialog from "./notes/NoteDialog";
@@ -27,7 +28,7 @@ import ProductionChecklist from "./ProductionChecklist";
 import { notePhotoOrderId } from "./order-photo-sync";
 export type { BusinessNote, NoteMaterial } from "./notes-model";
 
-type Props = { expenses: LinkedExpense[]; reviewPurchase: (input: PurchaseCostInput) => Promise<void>; productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], purchase?: MaterialPurchaseInput[]) => Promise<void> };
+type Props = { pendingNoteIds?: ReadonlySet<string>; online?: boolean; expenses: LinkedExpense[]; reviewPurchase: (input: PurchaseCostInput) => Promise<void>; productionOnly?: boolean; uid: string; notes: BusinessNote[]; orders?: { id: string; customer: string; product: string; quantity?: number; status?: string; dueDate?: string; photoData?: string }[]; customers?: { id: string; name: string }[]; initialNoteId?: string; materialsOpen: boolean; openMaterials: () => void; openTasks: () => void; openNote: (id?: string) => void; onCompleteMaterials: (id: string, materialIds: string[], purchase?: MaterialPurchaseInput[]) => Promise<void> };
 type Filter = "all" | "pinned" | "ready" | "archive" | "trash";
 type Overlay = { draft: NoteDraft; time: number };
 const recoveryKey = (uid: string) => `psyzon:notes:drafts:${uid}`;
@@ -38,7 +39,7 @@ const materialDisplayCost = (item: NoteMaterial) => item.actualCost === undefine
 type QueueEntry = { queue: NoteSaveQueue<StoredNote>; report?: (id: string, status: SaveStatus) => void; recover?: (id: string, value: StoredNote | null) => void; beforeWrite?: (id: string) => StoredNote | undefined; completionBase?: Map<string,StoredNote> };
 const queues = new Map<string, QueueEntry>();
 
-export default function NotesWorkspace({ productionOnly = false, uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials, expenses, reviewPurchase }: Props) {
+export default function NotesWorkspace({ productionOnly = false, pendingNoteIds, online = true, uid, notes, orders = [], customers = [], initialNoteId = "", materialsOpen, openMaterials, openTasks, openNote, onCompleteMaterials, expenses, reviewPurchase }: Props) {
   const readyOrderIds = useMemo(() => new Set(orders.filter(order => order.status === "Pronto" || order.status === "Entregue").map(order => order.id)), [orders]);
   const isReady = (document: { orderId: string; customerId: string }) => readyOrderIds.has(notePhotoOrderId(document,orders,customers) ?? "");
   const initialNote = notes.find(note => note.id === initialNoteId);
@@ -88,7 +89,14 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
         async (id, value) => {
           const before=created.completionBase?.get(id) ?? created.beforeWrite?.(id);
           const patch=changedFields(before??{},value);
-          if(Object.keys(patch).length)await updateDoc(doc(getFirestore(getApps()[0]), "users", uid, "notes", id), { ...patch, updatedAt: serverTimestamp() });
+          if (Object.keys(patch).length) {
+            const ref = doc(getFirestore(getApps()[0]), "users", uid, "notes", id);
+            await acceptFirestoreWrite(ref, updateDoc(ref, { ...patch, updatedAt: serverTimestamp() }), () => {
+              if (created.completionBase?.get(id) !== value) return;
+              created.completionBase.delete(id);
+              created.queue.holdRejected(id, value);
+            });
+          }
           created.completionBase?.set(id,value);
           const progress=checklistCompletion(before?readDocument(before.content,before.materials):undefined,readDocument(value.content,value.materials));
           if(progress)activitySucceeded({uid,title:progress.complete?"Checklist concluído":"Item conferido",description:value.title+" · "+progress.done+" de "+progress.total,kind:progress.complete?"milestone":"tick",progress:progress.progress,previousProgress:progress.previousProgress});
@@ -159,6 +167,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
     else change(d => ({ ...d, productionPhotoData: photo }));
   };
   const status = statuses[selectedId] || "saved";
+  const savedLocally = pendingNoteIds?.has(selectedId);
   const purchasedIds = new Set(notes.find(note => note.id === selectedId)?.purchasedMaterialIds);
   const locked = draft?.document.status === "trash";
   const showChecklist = productionOnly || (editorMode ?? (draft?.document.productionChecklist ? "production" : "text")) === "production";
@@ -208,7 +217,13 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
       const next = newDraft(templateIndex ? template.title : "Nova anotação"); next.category = template.category;
       if (template.lines.length) next.document = readDocument(template.lines.join("\n"));
       const id = makeId();
-      await setDoc(doc(collection(getFirestore(getApps()[0]), "users", uid, "notes"), id), { ...serializeDraft(next), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      const ref = doc(collection(getFirestore(getApps()[0]), "users", uid, "notes"), id);
+      await acceptFirestoreWrite(ref, setDoc(ref, { ...serializeDraft(next), createdAt: serverTimestamp(), updatedAt: serverTimestamp() }), () => {
+        const remaining = { ...overlaysRef.current };
+        delete remaining[id];
+        overlaysRef.current = remaining;
+        if (alive.current) { setOverlays(remaining); notify("O servidor não aceitou a nova anotação."); }
+      });
       const updated = { ...overlaysRef.current, [id]: { draft: next, time: Date.now() } }; overlaysRef.current = updated; setOverlays(updated);
       setFilter("all"); setSearch(""); setCategory("Todas"); setSelectedId(id); setMobileEditor(true); setModal(null); setActiveBlock("");
     } catch { notify("Não foi possível criar a anotação. Confira a conexão e tente novamente."); }
@@ -290,7 +305,7 @@ export default function NotesWorkspace({ productionOnly = false, uid, notes, ord
       <footer><button className={filter === "ready" ? "selected" : ""} onClick={() => section("ready")}><CheckCheck size={17} />Prontos<span>{readyCount || ""}</span></button><button className={filter === "archive" ? "selected" : ""} onClick={() => section("archive")}><Archive size={17} />Arquivo<span>{allNotes.filter(n => n.draft.document.status === "archive").length || ""}</span></button><button className={filter === "trash" ? "selected" : ""} onClick={() => section("trash")}><Trash2 size={17} />Lixeira<span>{allNotes.filter(n => n.draft.document.status === "trash").length || ""}</span></button></footer>
     </aside>
     <section className="an-editor-panel" aria-label="Editor da anotação">
-      <header className="an-editor-topbar"><div><button className="an-icon an-mobile-back" aria-label="Voltar às anotações" onClick={() => { setMobileEditor(false); void queueRef.current?.flushAll(); }}><ArrowLeft size={19} /></button><button className="an-icon an-desktop-toggle" aria-label={sidebar ? "Recolher lista de notas" : "Mostrar lista de notas"} onClick={() => setSidebar(!sidebar)}><PanelLeft size={19} /></button><button className="an-icon" onClick={openMaterials} aria-label="Abrir página Materiais" title="Materiais"><Layers size={17} /></button><span className="an-breadcrumb">Anotações <span>›</span> <b>{draft?.category || "Todas"}</b></span></div><div>{draft && <><span className={`an-save-status ${status}`} role="status"><i />{status === "saved" ? "Salvo" : status === "saving" ? "Salvando…" : "Falha ao salvar"}</span>{status === "error" && <button className="an-link" onClick={() => { setStatuses(v => ({ ...v, [selectedId]: "saving" })); void queueRef.current?.flush(selectedId); }}>Tentar novamente</button>}<button className="an-icon" onClick={() => setModal("export")} aria-label="Exportar anotação" title="Exportar"><Download size={19} /></button><div className="an-menu-wrap"><button className="an-icon" onClick={() => setMenu(!menu)} aria-label="Mais ações da anotação" aria-expanded={menu}><MoreHorizontal size={21} /></button>{menu && <><button className="an-menu-dismiss" aria-label="Fechar menu" onClick={() => setMenu(false)} /><div className="an-menu">{!locked && <><button onClick={() => { change(d => ({ ...d, pinned: !d.pinned })); setMenu(false); }}><Pin size={16} />{draft.pinned ? "Desafixar" : "Fixar anotação"}</button><button onClick={() => { change(d => ({ ...d, document: { ...d.document, status: d.document.status === "archive" ? "active" : "archive" } })); setMenu(false); }}><Archive size={16} />{draft.document.status === "archive" ? "Desarquivar" : "Arquivar"}</button><button onClick={() => { setModal("link"); setMenu(false); }} aria-haspopup="dialog" title={linkTitle}><Link2 size={16} aria-hidden="true" />{hasLink ? "Vinculado" : "Vincular cliente ou pedido"}</button><button className="danger" onClick={() => { change(d => ({ ...d, document: { ...d.document, status: "trash" } })); setMenu(false); notify("Anotação movida para a lixeira. Você pode restaurá-la."); }}><Trash2 size={16} />Mover para a lixeira</button></>}{locked && <button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}><RotateCcw size={16} />Restaurar anotação</button>}</div></>}</div></>}</div></header>
+      <header className="an-editor-topbar"><div><button className="an-icon an-mobile-back" aria-label="Voltar às anotações" onClick={() => { setMobileEditor(false); void queueRef.current?.flushAll(); }}><ArrowLeft size={19} /></button><button className="an-icon an-desktop-toggle" aria-label={sidebar ? "Recolher lista de notas" : "Mostrar lista de notas"} onClick={() => setSidebar(!sidebar)}><PanelLeft size={19} /></button><button className="an-icon" onClick={openMaterials} aria-label="Abrir página Materiais" title="Materiais"><Layers size={17} /></button><span className="an-breadcrumb">Anotações <span>›</span> <b>{draft?.category || "Todas"}</b></span></div><div>{draft && <><span className={`an-save-status ${status}`} role="status"><i />{status === "error" ? "Falha ao salvar" : savedLocally ? (online ? "Sincronizando…" : "Salvo no aparelho") : status === "saved" ? "Sincronizado" : "Salvando…"}</span>{status === "error" && <button className="an-link" onClick={() => { setStatuses(v => ({ ...v, [selectedId]: "saving" })); void queueRef.current?.flush(selectedId); }}>Tentar novamente</button>}<button className="an-icon" onClick={() => setModal("export")} aria-label="Exportar anotação" title="Exportar"><Download size={19} /></button><div className="an-menu-wrap"><button className="an-icon" onClick={() => setMenu(!menu)} aria-label="Mais ações da anotação" aria-expanded={menu}><MoreHorizontal size={21} /></button>{menu && <><button className="an-menu-dismiss" aria-label="Fechar menu" onClick={() => setMenu(false)} /><div className="an-menu">{!locked && <><button onClick={() => { change(d => ({ ...d, pinned: !d.pinned })); setMenu(false); }}><Pin size={16} />{draft.pinned ? "Desafixar" : "Fixar anotação"}</button><button onClick={() => { change(d => ({ ...d, document: { ...d.document, status: d.document.status === "archive" ? "active" : "archive" } })); setMenu(false); }}><Archive size={16} />{draft.document.status === "archive" ? "Desarquivar" : "Arquivar"}</button><button onClick={() => { setModal("link"); setMenu(false); }} aria-haspopup="dialog" title={linkTitle}><Link2 size={16} aria-hidden="true" />{hasLink ? "Vinculado" : "Vincular cliente ou pedido"}</button><button className="danger" onClick={() => { change(d => ({ ...d, document: { ...d.document, status: "trash" } })); setMenu(false); notify("Anotação movida para a lixeira. Você pode restaurá-la."); }}><Trash2 size={16} />Mover para a lixeira</button></>}{locked && <button onClick={() => change(d => ({ ...d, document: { ...d.document, status: "active" } }))}><RotateCcw size={16} />Restaurar anotação</button>}</div></>}</div></>}</div></header>
       {storageError && <div className="an-banner error" role="alert">O navegador não conseguiu guardar o rascunho local. Aguarde a confirmação “Salvo” antes de fechar.</div>}
       {Object.entries(recoveries).map(([id, record]) => { const remote = notes.find(n => n.id === id); const conflict = remote && record.base && JSON.stringify(rawNote(remote)) !== record.base; return <div className="an-banner" role="status" key={id}><span><b>Rascunho disponível: {record.value.title || "Sem título"}</b><small>{conflict ? "A versão online também mudou. Escolha qual conteúdo manter." : "Uma edição anterior ficou pendente de salvamento."}</small></span><button onClick={() => recover(id, true)}>Recuperar rascunho</button><button onClick={() => recover(id, false)}>Manter versão online</button></div>; })}
       {draft ? <div className="an-document-scroll" ref={editorRef}><article className="an-document" key={selectedId}>

@@ -11,6 +11,37 @@ import { customerRefund } from "../app/finance-model";
 import { urgentOrder } from "../app/order-model";
 import { forecastMaterial, extraFabricKg } from "../app/material-forecast";
 import type { NoteMaterial } from "../app/notes-model";
+import { queueFinanceIntent, readFinanceIntents, receiptOrderState, updateFinanceIntent, type FinanceIntent } from "../app/offline-finance";
+
+test("the offline financial queue survives reads, isolates accounts and keeps conflicts for review", () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const records: Record<string, string> = Object.create(null);
+  const storage = Object.defineProperties(records, {
+    getItem: { value: (key: string) => records[key] ?? null },
+    setItem: { value: (key: string, value: string) => { records[key] = value; } },
+    removeItem: { value: (key: string) => { delete records[key]; } },
+  });
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
+  try {
+    const order = { id: "a", total: 50, paid: 20, status: "Produção" } as Order;
+    const intent: FinanceIntent = { id: "one", kind: "receipt", customerId: "client", amount: 30, includeBalance: true,
+      date: "2026-11-18", label: "Recebimento", orderState: receiptOrderState([order]) };
+    const duplicate = { ...intent, id: "two" };
+    assert.equal(queueFinanceIntent("owner", intent), true);
+    assert.equal(queueFinanceIntent("owner", duplicate), false);
+    assert.deepEqual(readFinanceIntents("another-owner"), []);
+    updateFinanceIntent("owner", duplicate);
+    assert.deepEqual(readFinanceIntents("owner"), [intent]);
+    assert.notEqual(intent.orderState, receiptOrderState([{ ...order, paid: 25 }]));
+    updateFinanceIntent("owner", intent, "O saldo mudou.");
+    assert.equal(readFinanceIntents("owner")[0].error, "O saldo mudou.");
+    updateFinanceIntent("owner", intent);
+    assert.deepEqual(readFinanceIntents("owner"), []);
+  } finally {
+    if (original) Object.defineProperty(globalThis, "localStorage", original);
+    else Reflect.deleteProperty(globalThis, "localStorage");
+  }
+});
 
 test("credit compensates new orders and refunds only unused funds", () => {
   const customer={id:"c",name:"Ana",phone:""};

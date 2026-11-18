@@ -233,6 +233,13 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    match /users/{uid}/financeIntentReceipts/{intentId} {
+      allow get: if owns(uid);
+      allow create: if owns(uid) && intentId.matches("^[a-f0-9-]{36}$")
+        && request.resource.data.keys().hasOnly(["createdAt"])
+        && request.resource.data.createdAt == request.time;
+    }
+
     match /users/{uid}/orders/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validOrder(request.resource.data);

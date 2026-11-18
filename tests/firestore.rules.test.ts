@@ -74,6 +74,12 @@ test("orders accept unit pricing and reject invalid child counts", async () => {
  await assertFails(updateDoc(reference,{unitPrice:-1}));
  await assertFails(updateDoc(reference,{childQuantity:11}));
  await assertFails(updateDoc(reference,{childQuantity:1.5}));
+ await assertSucceeds(updateDoc(reference,{shirtType:"mixed",poloQuantity:9}));
+ await assertFails(updateDoc(reference,{poloQuantity:9.5}));
+ await assertFails(updateDoc(reference,{poloQuantity:-1}));
+ await assertFails(updateDoc(reference,{poloQuantity:null}));
+ await assertFails(updateDoc(reference,{shirtType:"standard"}));
+ await assertSucceeds(updateDoc(reference,{shirtType:"standard",poloQuantity:null}));
 });
 
 test("a reduced paid order keeps previous receipts and allows a refund", async () => {

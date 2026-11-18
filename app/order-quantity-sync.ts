@@ -5,9 +5,8 @@ import type { Order } from "./order-model";
 import { validateProductionChecklist } from "./production-checklist";
 import {
   isChildShirt,
-  shirtTotal,
+  shirtOrderPrice,
   suggestedShirtPrice,
-  poloExtra,
 } from "./order-pricing";
 
 export function synchronizedOrderQuantities(
@@ -56,12 +55,7 @@ export function synchronizedOrderQuantities(
     return {
       ...effective,
       unitPrice,
-      total: shirtTotal(
-        unitPrice + poloExtra(effective.shirtType, effective.product),
-        effective.quantity,
-        Math.min(effective.childQuantity || 0, effective.quantity),
-        effective.childUnitPrice,
-      ),
+      total: shirtOrderPrice({ ...effective, unitPrice, childQuantity: Math.min(effective.childQuantity || 0, effective.quantity) }).total,
     };
   });
 }

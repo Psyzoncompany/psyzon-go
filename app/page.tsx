@@ -8,7 +8,7 @@ import { OrderKindPicker, SpecialOrderFields } from "./OrderKindFields";
 import { readSpecialOrder } from "./special-order";
 import { orderStages, specialOrderLabels, type SpecialOrderKind } from "./order-model";
 import OrderPricingFields from "./OrderPricingFields";
-import { validateShirtPrice, shirtTotal, suggestedShirtPrice, poloExtra } from "./order-pricing";
+import { readShirtMix, poloPieces, shirtOrderPrice, suggestedShirtPrice, validateShirtOrderPrice } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import type { BillInput } from "./FinanceWorkspace";
 import { materialPurchaseBills } from "./notes/materials-model";
@@ -775,11 +775,12 @@ export default function HomePage() {
         if (ledger.hiddenOrderIds?.includes(operation.orderId)) throw new Error("Este pedido foi removido da lista de costura.");
         if (
           !ledger.people.includes(operation.person) ||
-          ![4, 7].includes(operation.rate)
+          (operation.rate !== null && ![4, 7].includes(operation.rate))
         )
           throw new Error("Costureira ou tarifa inválida.");
         ledger.assignments[operation.orderId] = operation.person;
-        ledger.rates[operation.orderId] = operation.rate;
+        if (operation.rate === null) delete ledger.rates[operation.orderId];
+        else ledger.rates[operation.orderId] = operation.rate;
       } else if (operation.type === "entry") {
         const entry = operation.entry;
         if (
@@ -1036,13 +1037,12 @@ export default function HomePage() {
           const unitPrice = pricingMode === "quantity" ? suggestedShirtPrice(quantity) : Number(form.get("unitPrice"));
           const childQuantity = Number(form.get("childQuantity"));
           const childUnitPrice = String(form.get("childUnitPrice") ?? "") === "" ? null : Number(form.get("childUnitPrice"));
-          const shirtType = form.get("shirtType") === "polo" ? "polo" : "standard";
-          const price = unitPrice + poloExtra(shirtType);
-          validateShirtPrice(price, quantity, childQuantity, childUnitPrice);
+          const shirtPricing = { ...readShirtMix(form), unitPrice, quantity, childQuantity, childUnitPrice };
+          validateShirtOrderPrice(shirtPricing);
           nextOrder = {
-            ...common, quantity, pricingMode, unitPrice, childQuantity, childUnitPrice, shirtType,
+            ...common, ...shirtPricing, pricingMode,
             product: String(form.get("product")), dueDate: String(form.get("dueDate")),
-            total: shirtTotal(price, quantity, childQuantity, childUnitPrice),
+            total: shirtOrderPrice(shirtPricing).total,
             status: kind === "orcamento" ? "Orçamento" : "Aguardando material",
             dtfStatus: String(form.get("dtfStatus")) as OrderDtfStatus,
           };
@@ -1458,10 +1458,7 @@ export default function HomePage() {
       customerMaterial: form.get("customerMaterial") === "on",
       dtfCost: readCost("dtfCost"),
       otherCost: readCost("otherCost"),
-      shirtType:
-        form.get("shirtType") === "polo"
-          ? ("polo" as const)
-          : ("standard" as const),
+      ...readShirtMix(form),
       customer: String(form.get("customer")).trim(),
       phone: String(form.get("phone") || ""),
       product: String(form.get("product")),
@@ -1495,19 +1492,11 @@ export default function HomePage() {
     }
     if (!updatedOrder.customer || updatedOrder.customer.length > 120) throw new Error("Confira o nome do cliente.");
     if (updatedOrder.paymentDueDate && !/^\d{4}-\d{2}-\d{2}$/.test(updatedOrder.paymentDueDate)) throw new Error("Confira a data combinada para pagamento.");
+    if (updatedOrder.shirtType === "mixed" && updatedOrder.unitPrice === undefined) throw new Error("Informe o preço base da camisa.");
     if (updatedOrder.unitPrice !== undefined) {
-      validateShirtPrice(
-        updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
-        updatedOrder.quantity,
-        updatedOrder.childQuantity || 0,
-        updatedOrder.childUnitPrice,
-      );
-      updatedOrder.total = shirtTotal(
-        updatedOrder.unitPrice + poloExtra(updatedOrder.shirtType),
-        updatedOrder.quantity,
-        updatedOrder.childQuantity || 0,
-        updatedOrder.childUnitPrice,
-      );
+      const pricing = { ...updatedOrder, unitPrice: updatedOrder.unitPrice };
+      validateShirtOrderPrice(pricing);
+      updatedOrder.total = shirtOrderPrice(pricing).total;
     }
     const partialPayment = Number(form.get("partialPayment") || 0);
     const previousPaid = updatedOrder.paid;
@@ -1551,6 +1540,8 @@ export default function HomePage() {
         (effective.otherCost ?? null) !== (editingOrder.otherCost ?? null) ||
         (latestRaw.paymentDueDate ?? null) !== (editingOrder.paymentDueDate ?? null) ||
         (effective.childUnitPrice ?? null) !== (editingOrder.childUnitPrice ?? null) ||
+        effective.shirtType !== editingOrder.shirtType ||
+        (effective.poloQuantity ?? null) !== (editingOrder.poloQuantity ?? null) ||
         (partialPayment > 0 && effective.status === "Orçamento") ||
         effective.total !== editingOrder.total ||
         effective.quantity !== editingOrder.quantity
@@ -1565,6 +1556,8 @@ export default function HomePage() {
       if(includeBalance) transaction.set(balanceRef,balanceMovement(balanceDelta,"Pagamento · "+updatedOrder.customer));
       const orderPatch=changedFields(current.data(),{
         ...updatedOrder,
+        ...(effective.checklistQuantity !== undefined && latestRaw.shirtType === "mixed" && updatedOrder.shirtType === "mixed"
+          && updatedOrder.poloQuantity === poloPieces(effective) ? { poloQuantity: latestRaw.poloQuantity ?? updatedOrder.poloQuantity } : {}),
         deliveredAt: updatedOrder.status === "Entregue" ? (latestRaw.deliveredAt ?? (latestRaw.status === "Entregue" ? null : calendarDate)) : null,
         quantity:
           effective.checklistQuantity !== undefined

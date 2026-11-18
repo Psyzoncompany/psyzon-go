@@ -1,6 +1,6 @@
 import type { BusinessNote } from "./notes-model";
 import type { Order } from "./order-model";
-import { poloExtra } from "./order-pricing";
+import { poloPieces } from "./order-pricing";
 import type { Bill } from "./finance-model";
 import { millis } from "./notes-model";
 export const sewingNoteId = "psyzon-sewing-ledger";
@@ -80,6 +80,11 @@ export function sewingEntryTotals(entries: SewingEntry[]) {
   }
   return { paid: Math.round(paid * 100) / 100, printCredit: Math.round((printCredit - offsets) * 100) / 100, offsets: Math.round(offsets * 100) / 100 };
 }
+function sewingOrderCost(order: Order, ledger: SewingLedger) {
+  if (ledger.excludedOrderIds?.includes(order.id)) return 0;
+  const rate = ledger.rates[order.id];
+  return rate == null ? order.quantity * 4 + poloPieces(order) * 3 : order.quantity * rate;
+}
 export function sewingBalances(orders: Order[], ledger: SewingLedger) {
   const confirmed = confirmedEntries(orders, ledger);
   const hidden = new Set(ledger.hiddenOrderIds);
@@ -87,14 +92,7 @@ export function sewingBalances(orders: Order[], ledger: SewingLedger) {
     const rows = orders.filter(
       (order) => !order.orderKind && order.status !== "Orçamento" && !hidden.has(order.id) && sewingPerson(ledger, order.id) === person,
     );
-    const total = rows.reduce(
-      (sum, order) =>
-        sum +
-        (ledger.excludedOrderIds?.includes(order.id) ? 0 : order.quantity) *
-          (ledger.rates[order.id] ??
-            (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
-      0,
-    );
+    const total = rows.reduce((sum, order) => sum + sewingOrderCost(order, ledger), 0);
     const entries = confirmed.filter((entry) => entry.person === person);
     const { paid, printCredit, offsets } = sewingEntryTotals(entries);
     return {
@@ -124,10 +122,7 @@ export function sewingOrderBalances(
     .map((order) => ({
       order,
       excluded: ledger.excludedOrderIds?.includes(order.id) ?? false,
-      cost:
-        (ledger.excludedOrderIds?.includes(order.id) ? 0 : order.quantity) *
-        (ledger.rates[order.id] ??
-          (poloExtra(order.shirtType, order.product) > 0 ? 7 : 4)),
+      cost: sewingOrderCost(order, ledger),
       paid: 0,
       offset: 0,
     }));

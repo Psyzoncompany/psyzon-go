@@ -7,7 +7,7 @@ import { roundMoney } from "./finance-model";
 import type { OrderAlert } from "./order-alerts";
 import type { Task } from "./notes/task-model";
 import { TypedHeading } from "./Typewriter";
-import { poloExtra } from "./order-pricing";
+import { poloPieces, poloSurcharge, shirtOrderPrice } from "./order-pricing";
 import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
@@ -278,7 +278,8 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
   const result = orderResult(order, costs, sewingCost);
   const phone = (order.phone ?? "").replace(/\D/g, "");
   const children = order.childQuantity ?? 0;
-  const adultPrice = order.unitPrice === undefined ? null : order.unitPrice + poloExtra(order.shirtType, order.product);
+  const pricing = order.unitPrice === undefined ? null : shirtOrderPrice({ ...order, unitPrice: order.unitPrice });
+  const polos = order.shirtType === "mixed" ? poloPieces(order) : 0;
   const pending = order.receivable ?? Math.max(0, order.total - order.paid);
   return <ProductionChecklistWindow title="Detalhes do pedido" customer={order.customer} close={close}>
     <div className="order-details-layout" data-has-photo={!!order.photoData}>
@@ -301,8 +302,9 @@ function OrderDetails({ order, busy, edit, remove, move, openChecklist, displayM
           {!collection && <button className="secondary" onClick={openChecklist}><ClipboardList size={16} /> Abrir lista</button>}
         </div>
         <dl className="order-details-specs">
-          {adultPrice !== null && order.quantity > children && <div><dt>Adultas</dt><dd>{order.quantity - children} un. × {displayMoney(adultPrice)}</dd></div>}
-          {adultPrice !== null && children > 0 && <div><dt>Infantis</dt><dd>{children} un. × {displayMoney(order.childUnitPrice ?? Math.max(0, adultPrice - 5))}</dd></div>}
+          {pricing && order.quantity > children && <div><dt>Adultas</dt><dd>{order.quantity - children} un. × {displayMoney(pricing.adult)}</dd></div>}
+          {pricing && children > 0 && <div><dt>Infantis</dt><dd>{children} un. × {displayMoney(pricing.child)}</dd></div>}
+          {pricing && order.shirtType === "mixed" && <div><dt>Golas</dt><dd>{order.quantity - polos} comuns · {polos} polos{polos > 0 && ` (+${displayMoney(poloSurcharge)} por polo)`}</dd></div>}
           {order.dtfStatus && order.dtfStatus !== "none" && <div><dt>DTF</dt><dd>{orderDtfStatus[order.dtfStatus]}</dd></div>}
           {order.paymentDueDate && <div><dt>Pagamento combinado</dt><dd>{order.paymentDueDate.split("-").reverse().join("/")}</dd></div>}{order.lastChargedAt && <div><dt>Última cobrança</dt><dd>{order.lastChargedAt.split("-").reverse().join("/")}</dd></div>}{order.phone && <div><dt>Contato</dt><dd>{order.phone}</dd></div>}
         </dl>

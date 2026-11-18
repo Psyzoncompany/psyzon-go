@@ -42,7 +42,7 @@ service cloud.firestore {
     }
 
     function validOrder(data) {
-      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "paymentDueDate", "lastChargedAt", "costsConfirmedAt", "costsFingerprint", "customerMaterial", "childQuantity", "pricingMode", "shirtType", "orderKind"])
+      return data.keys().hasOnly(["customer", "phone", "product", "quantity", "total", "paid", "dueDate", "status", "notes", "createdAt", "photoData", "dtfStatus", "unitPrice", "childUnitPrice", "dtfCost", "otherCost", "deliveredAt", "paymentDueDate", "lastChargedAt", "costsConfirmedAt", "costsFingerprint", "customerMaterial", "childQuantity", "pricingMode", "shirtType", "poloQuantity", "orderKind"])
         && data.keys().hasAll(["customer", "product", "quantity", "total", "paid", "dueDate", "status"])
         && text(data.customer, 1, 120)
         && optionalText(data, "phone", 40)
@@ -52,7 +52,10 @@ service cloud.firestore {
         && data.get("orderKind", "") in ["", "repair", "collection"]
         && (data.get("orderKind", "") != "repair" || data.status in ["Produção", "Pronto", "Entregue"])
         && (data.get("orderKind", "") == "" || (data.get("dtfStatus", "none") == "none" && !("unitPrice" in data)))
-        && (!("shirtType" in data) || data.shirtType in ["standard","polo"])
+        && (!("shirtType" in data) || data.shirtType in ["standard","polo","mixed"])
+        && (data.get("shirtType", "standard") == "mixed"
+          ? (("unitPrice" in data) && data.get("poloQuantity", null) is int && data.poloQuantity >= 0 && data.poloQuantity <= 1000000)
+          : data.get("poloQuantity", null) == null)
         && money(data.total, true)
         && (!("paymentDueDate" in data) || data.paymentDueDate == null || calendarDate(data.paymentDueDate))
         && (!("lastChargedAt" in data) || data.lastChargedAt == null || calendarDate(data.lastChargedAt))

@@ -3,6 +3,7 @@ export const orderStatuses = [...productionStages, "Entregue"] as const;
 export type OrderStatus = (typeof orderStatuses)[number];
 export const orderDtfStatus = { none: "Não precisa de DTF", pending: "Precisa pedir DTF", requested: "DTF já pedido" } as const;
 export type OrderDtfStatus = keyof typeof orderDtfStatus;
+export type ShirtType = "standard" | "polo" | "mixed";
 export type SpecialOrderKind = "repair" | "collection";
 export const specialOrderLabels = { repair: "Só conserto", collection: "Só cobrança" } as const;
 
@@ -34,7 +35,8 @@ export type Order = {
   dtfCost?: number | null;
   otherCost?: number | null;
   pricingMode?: "quantity" | "manual";
-  shirtType?: "standard" | "polo";
+  shirtType?: ShirtType;
+  poloQuantity?: number | null;
   childQuantity?: number;
   checklistChildQuantity?: number;
   checklistQuantity?: number;

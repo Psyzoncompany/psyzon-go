@@ -1,6 +1,42 @@
 import type { ProductionRow } from "./production-checklist";
+import type { Order, ShirtType } from "./order-model";
+
+export const poloSurcharge = 15;
+
 export function poloExtra(type: string | undefined, product = "") {
-  return (type ? type === "polo" : /\bpolo\b/i.test(product)) ? 15 : 0;
+  return (type ? type === "polo" : /\bpolo\b/i.test(product)) ? poloSurcharge : 0;
+}
+
+type ShirtMix = Pick<Order, "shirtType" | "poloQuantity" | "quantity"> & { product?: string };
+type ShirtPricing = ShirtMix & Pick<Order, "childQuantity" | "childUnitPrice"> & { unitPrice: number };
+
+export function poloPieces(order: ShirtMix) {
+  if (order.shirtType === "mixed") return Math.min(order.quantity, Math.max(0, order.poloQuantity ?? 0));
+  return poloExtra(order.shirtType, order.product) ? order.quantity : 0;
+}
+
+export function readShirtMix(form: FormData): { shirtType: ShirtType; poloQuantity: number | null } {
+  const type = form.get("shirtType");
+  if (type === "mixed") {
+    const quantity = form.get("poloQuantity");
+    return { shirtType: type, poloQuantity: quantity === null || quantity === "" ? null : Number(quantity) };
+  }
+  return { shirtType: type === "polo" ? "polo" : "standard", poloQuantity: null };
+}
+
+export function shirtOrderPrice(order: ShirtPricing) {
+  const adult = order.unitPrice + poloExtra(order.shirtType, order.product);
+  const child = order.childUnitPrice ?? Math.max(0, adult - 5);
+  const extra = order.shirtType === "mixed" ? poloPieces(order) * poloSurcharge : 0;
+  const base = shirtTotal(adult, order.quantity, order.childQuantity ?? 0, order.childUnitPrice);
+  return { adult, child, total: Math.round((base + extra) * 100) / 100 };
+}
+
+export function validateShirtOrderPrice(order: ShirtPricing) {
+  if (order.shirtType === "mixed" && (order.poloQuantity == null || !Number.isInteger(order.poloQuantity) || order.poloQuantity < 0 || order.poloQuantity > order.quantity))
+    throw new Error("Informe quantas peças têm gola polo, dentro da quantidade total.");
+  validateShirtPrice(order.unitPrice + poloExtra(order.shirtType, order.product), order.quantity, order.childQuantity ?? 0, order.childUnitPrice);
+  if (shirtOrderPrice(order).total > 100000000) throw new Error("Confira o valor total do pedido.");
 }
 export function suggestedShirtPrice(quantity: number) {
   if (quantity <= 2) return 55;

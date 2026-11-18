@@ -2,15 +2,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isChildShirt,
+  poloPieces,
+  readShirtMix,
+  shirtOrderPrice,
   shirtTotal,
   validateShirtPrice,
+  validateShirtOrderPrice,
 } from "../app/order-pricing";
 import { synchronizedOrderQuantities } from "../app/order-quantity-sync";
 import { customerBalances, customerReceipt } from "../app/finance-model";
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import type { Order } from "../app/order-model";
 import { suggestedShirtPrice } from "../app/order-pricing";
-import { sewingBalances, readSewing } from "../app/sewing-model";
+import { sewingBalances, readSewing, sewingOrderBalances } from "../app/sewing-model";
 test("custom child prices preserve the default discount and support free items", () => {
   assert.equal(shirtTotal(45, 17, 3), 750);
   assert.equal(shirtTotal(45, 17, 3, 35), 735);
@@ -129,6 +133,30 @@ test("polo adds fifteen to adult and child prices and uses the seven-real sewing
   const polo = { ...order, unitPrice: 45, shirtType: "polo" as const };
   assert.equal(synchronizedOrderQuantities([polo], [], [])[0].total, 590);
   assert.equal(sewingBalances([polo], readSewing([]))[0].total, 70);
+});
+
+test("mixed orders price each polo separately and apply the matching sewing rates", () => {
+  const form = new FormData();
+  form.set("shirtType", "mixed");
+  form.set("poloQuantity", "13");
+  const pricing = { ...order, ...readShirtMix(form), unitPrice: 45, quantity: 14, childQuantity: 0 };
+  validateShirtOrderPrice(pricing);
+  assert.equal(shirtOrderPrice(pricing).total, 825);
+  assert.equal(shirtOrderPrice({ ...pricing, childQuantity: 2, childUnitPrice: 35 }).total, 805);
+  const effective = synchronizedOrderQuantities([pricing], [], [])[0];
+  assert.equal(effective.total, 825);
+  const ledger = readSewing([]);
+  assert.equal(sewingBalances([effective], ledger)[0].total, 95);
+  assert.equal(sewingOrderBalances([effective], ledger, "Zefa")[0].cost, 95);
+  assert.equal(sewingBalances([effective], { ...ledger, rates: { [order.id]: 4 } })[0].total, 56);
+  const smaller = synchronizedOrderQuantities([pricing], [note(Array(12).fill("M"))], [])[0];
+  assert.equal(poloPieces(smaller), 12);
+  assert.equal(smaller.total, 720);
+  const expanded = synchronizedOrderQuantities([pricing], [note(Array(15).fill("M"))], [])[0];
+  assert.equal(poloPieces(expanded), 13);
+  assert.equal(expanded.total, 870);
+  assert.throws(() => validateShirtOrderPrice({ ...pricing, poloQuantity: 15 }), /gola polo/);
+  assert.throws(() => validateShirtOrderPrice({ ...pricing, poloQuantity: null }), /gola polo/);
 });
 
 test("repair fees stay manual and collection orders affect receivables without adding sewing costs", async () => {

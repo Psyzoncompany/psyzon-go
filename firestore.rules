@@ -261,6 +261,11 @@ service cloud.firestore {
 
     match /users/{uid}/balanceEntries/{entryId} {
       allow get, list, delete: if owns(uid);
+      allow update: if owns(uid) && entryId.matches('^material-.*$')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["amount", "date"])
+        && request.resource.data.amount is number
+        && request.resource.data.amount >= -100000000 && request.resource.data.amount <= 0
+        && calendarDate(request.resource.data.date);
       allow create: if owns(uid)
         && request.resource.data.keys().hasOnly(["amount", "description", "date", "createdAt"])
         && request.resource.data.amount is number

@@ -1416,10 +1416,17 @@ export default function HomePage() {
 
       for (const [index, material] of targets.entries()) {
         const ref = refs[index];
-        if (mode === "reopen") transaction.delete(ref);
+        const balanceRef = userDocument(uid, "balanceEntries", ref.id);
+        if (mode === "reopen") {
+          transaction.delete(ref);
+          transaction.delete(balanceRef);
+        }
         else if (!existing[index]?.exists()) {
           const entry = fabricHistoryEntry(note, material, date);
           if (entry) transaction.set(ref, entry);
+        }
+        if (mode === "complete") {
+          transaction.set(balanceRef, { ...balanceMovement(-(material.actualCost ?? material.totalCost), `Material · ${note.title} · ${material.color}`), date });
         }
       }
       if (mode !== "date") transaction.update(noteRef, { materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete"), updatedAt: serverTimestamp() });
@@ -1432,10 +1439,14 @@ export default function HomePage() {
     if (![input.amount, input.freight].every(value => Number.isFinite(value) && value >= 0 && value <= 100000000) || input.amount + input.freight > 100000000 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > calendarDate) throw new Error("Confira os valores e a data.");
     await runTransaction(getFirestore(getApps()[0]), async transaction => {
       const ref = userDocument(uid, "notes", input.noteId);
-      const [snapshot, expenseDocs, otherNotes] = await Promise.all([
+      const materialBalanceRef = userDocument(uid, "balanceEntries", materialHistoryId(input.noteId, input.materialId));
+      const expenseIds = [...new Set(input.expenseIds)];
+      const [snapshot, expenseDocs, otherNotes, materialBalance, expenseBalances] = await Promise.all([
         transaction.get(ref),
-        Promise.all([...new Set(input.expenseIds)].map(id => transaction.get(userDocument(uid, "transactions", id)))),
+        Promise.all(expenseIds.map(id => transaction.get(userDocument(uid, "transactions", id)))),
         Promise.all(notes.filter(note => note.id !== input.noteId && note.materials?.length).map(note => transaction.get(userDocument(uid, "notes", note.id)))),
+        transaction.get(materialBalanceRef),
+        Promise.all(expenseIds.map(id => transaction.get(userDocument(uid, "balanceEntries", id)))),
       ]);
       if (!snapshot.exists()) throw new Error("A anotação foi removida.");
       const note = { ...snapshot.data(), id: snapshot.id } as BusinessNote;
@@ -1450,6 +1461,10 @@ export default function HomePage() {
       if (linkedTotal > roundMoney(input.amount + input.freight)) throw new Error("Os pagamentos selecionados ultrapassam o custo real informado.");
       const reviewed = { ...material, actualCost: roundMoney(input.amount), purchaseFreight: roundMoney(input.freight), purchaseDate: input.date, linkedExpenseIds: [...new Set(input.expenseIds)], linkedExpenseAmount: linkedTotal };
       transaction.update(ref, { materials: note.materials!.map(item => item.id === material.id ? reviewed : item), updatedAt: serverTimestamp() });
+      if (materialBalance.exists()) {
+        const alreadyDebited = expenseBalances.reduce((sum, entry, index) => sum + Math.min(expenses[index]?.amount ?? 0, Math.max(0, -(entry.data()?.amount ?? 0))), 0);
+        transaction.update(materialBalanceRef, { amount: -roundMoney(Math.max(0, input.amount + input.freight - alreadyDebited)), date: input.date });
+      }
       if (reviewed.actualQuantities) {
         const entry = fabricHistoryEntry(note, reviewed, input.date);
         if (entry) transaction.set(userDocument(uid, "historyEntries", materialHistoryId(input.noteId, material.id)), entry);

@@ -205,6 +205,16 @@ test("DTF orders support linked and avulso work, exact cent rounding and owner-o
   await assertSucceeds(deleteDoc(ref));
 });
 
+test("material balance movements allow cost corrections only by the owner", async () => {
+  const path = "users/material-owner/balanceEntries/material-test";
+  const ref = doc(environment.authenticatedContext("material-owner").firestore(), path);
+  await assertSucceeds(setDoc(ref, { amount: -80, description: "Material", date: "2026-11-12", createdAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(ref, { amount: -85, date: "2026-11-13" }));
+  await assertFails(updateDoc(ref, { amount: 85 }));
+  await assertFails(updateDoc(ref, { description: "Alterado" }));
+  await assertFails(updateDoc(doc(environment.authenticatedContext("other").firestore(), path), { amount: -90 }));
+});
+
 test("users cannot list the root users collection or query all users through collectionGroup", async () => {
   const db = environment.authenticatedContext("user-a").firestore();
   await assertFails(getDocs(collection(db, "users")));

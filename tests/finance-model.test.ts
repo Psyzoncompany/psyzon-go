@@ -24,7 +24,7 @@ test("the offline financial queue survives reads, isolates accounts and keeps co
   Object.defineProperty(globalThis, "localStorage", { configurable: true, value: storage });
   try {
     const order = { id: "a", total: 50, paid: 20, status: "Produção" } as Order;
-    const intent: FinanceIntent = { id: "one", kind: "receipt", customerId: "client", amount: 30, includeBalance: true,
+    const intent: FinanceIntent = { id: "one", kind: "receipt", customerId: "client", amount: 30,
       date: "2026-11-18", label: "Recebimento", orderState: receiptOrderState([order]) };
     const duplicate = { ...intent, id: "two" };
     assert.equal(queueFinanceIntent("owner", intent), true);
@@ -32,6 +32,9 @@ test("the offline financial queue survives reads, isolates accounts and keeps co
     assert.deepEqual(readFinanceIntents("another-owner"), []);
     updateFinanceIntent("owner", duplicate);
     assert.deepEqual(readFinanceIntents("owner"), [intent]);
+    const storedKey = Object.keys(records)[0];
+    storage.setItem(storedKey, JSON.stringify({ ...intent, includeBalance: true }));
+    assert.equal(readFinanceIntents("owner")[0].id, intent.id);
     assert.notEqual(intent.orderState, receiptOrderState([{ ...order, paid: 25 }]));
     updateFinanceIntent("owner", intent, "O saldo mudou.");
     assert.equal(readFinanceIntents("owner")[0].error, "O saldo mudou.");
@@ -462,16 +465,6 @@ test("legacy bill payments resolve by exact bill link and timestamp without touc
   assert.equal(currentBillExpense(old,expenses)?.id,"random-old");
   assert.equal(billReversal(old,expenses).lastPaidMonth,"2026-07");
   assert.equal(currentBillExpense({...old,lastPaidMonth:"2026-09"},expenses),undefined);
-});
-
-test("company balance counts only explicit ledger movements and reverses removed payments", async () => {
-  const { companyBalance }=await import("../app/company-balance");
-  const item=(id:string,amount:number)=>({id,amount,description:id,date:"2026-11-12"});
-  const entries=[item("opening",500),item("receipt",100),item("bill",-80),item("sewing",-40)];
-  assert.equal(companyBalance(entries),480);
-  assert.equal(companyBalance(entries.filter(item=>item.id!=="bill")),560);
-  assert.equal(companyBalance([]),0);
-  assert.equal(companyBalance([item("a",.1),item("b",.2)]),.3);
 });
 
 test("material purchase deadline stays fifteen days before delivery across months and years", async () => {

@@ -8,7 +8,6 @@ import { OrderKindPicker, SpecialOrderFields } from "./OrderKindFields";
 import { readSpecialOrder } from "./special-order";
 import { orderStages, specialOrderLabels, type SpecialOrderKind } from "./order-model";
 import OrderPricingFields from "./OrderPricingFields";
-import Modal from "./Modal";
 import { acceptFirestoreWrite } from "./local-firestore-write";
 import { FinanceIntentConflict, financeConnectionFailure, queueFinanceIntent, readFinanceIntents, receiptOrderState, updateFinanceIntent, type FinanceIntent } from "./offline-finance";
 import { readShirtMix, poloPieces, shirtOrderPrice, suggestedShirtPrice, validateShirtOrderPrice } from "./order-pricing";
@@ -24,8 +23,6 @@ import { monthlyClosing, type MonthlyClosingReport } from "./monthly-closing";
 import CollectionAgenda from "./CollectionAgenda";
 import { changedFields } from "./changed-fields";
 import { prepareReloadEvent, type PrepareReload } from "./update-events";
-import CompanyBalance from "./CompanyBalance";
-import type { BalanceEntry } from "./company-balance";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
 import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./payment-feedback";
 import { operationCosts } from "./operations-data";
@@ -189,7 +186,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes", "balanceEntries"] as const;
+const FIRESTORE_COLLECTIONS = ["orders", "customers", "transactions", "bills", "notes"] as const;
 type UserCollection = (typeof FIRESTORE_COLLECTIONS)[number] | "dtfOrders" | "historyEntries" | "tasks" | "monthlyClosings" | "financeIntentReceipts";
 const isFirebaseConfigured = [firebaseConfig.apiKey, firebaseConfig.authDomain, firebaseConfig.projectId, firebaseConfig.appId].every(Boolean);
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -330,7 +327,6 @@ export default function HomePage() {
   }, [aiPanelOpen]);
   const [modal, setModal] = useState<CreateKind | null>(null);
   const [toast, setToast] = useState("");
-  const [balanceEntries, setBalanceEntries] = useState<BalanceEntry[]>([]);
   const [floatingHost, setFloatingHost] = useState<Window | null>(null);
   const [standardSidebarCollapsed, setStandardSidebarCollapsed] = useState(false);
   const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
@@ -410,7 +406,6 @@ export default function HomePage() {
       setHistoryEntries([]);
       setHistoryConnection("connecting");
       setTasks([]);
-      setBalanceEntries([]);
       setTaskConnection("connecting");
 
       if (!nextUser) {
@@ -451,7 +446,6 @@ export default function HomePage() {
 
       setFirebaseState("connecting");
       unsubscribers = [
-        onSnapshot(collection(db, "users", nextUser.uid, "balanceEntries"), {includeMetadataChanges:true}, snapshot => { setBalanceEntries(toList<BalanceEntry>(snapshot)); markReady("balanceEntries",snapshot.metadata.fromCache,snapshot.docs.length); }, handleError),
         onSnapshot(collection(db, "users", nextUser.uid, "orders"), {includeMetadataChanges:true}, (snapshot) => {
           setOrders(toList<Order>(snapshot)
             .map(order => ({ ...order, status: normalizeOrderStatus(order.status) }))
@@ -670,7 +664,6 @@ export default function HomePage() {
     try {
       const closings = await getDocs(userCollection(uid, "monthlyClosings"));
       const records = [
-        ...balanceEntries.map(item => ["balanceEntries", item.id] as const),
         ...closings.docs.map(item => ["monthlyClosings", item.id] as const),
         ...orders.map((item) => ["orders", item.id] as const),
         ...dtfOrders.map((item) => ["dtfOrders", item.id] as const),
@@ -874,7 +867,6 @@ export default function HomePage() {
         if (ledger.entries.some((item) => item.id === entry.id)) return;
         ledger.entries.push(entry);
         if (entry.kind === "payment") {
-          transaction.set(userDocument(uid,"balanceEntries","sewing-payment-"+entry.id), { amount: -entry.amount, description: "Costura · "+entry.person, date: entry.date, createdAt: serverTimestamp() });
           paymentInfo = { description: "Costura · " + entry.person, amount: entry.amount };
           transaction.set(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
@@ -906,7 +898,6 @@ export default function HomePage() {
           if ((balance?.printCredit ?? 0) < candidate.amount) throw new Error("Desfaça o acerto que utilizou este crédito antes de remover a estampagem.");
         }
         const entry = ledger.entries.find((item) => item.id === operation.id);
-        if (entry?.kind === "payment") transaction.delete(userDocument(uid,"balanceEntries","sewing-payment-"+entry.id));
         if (entry?.kind === "payment")
           transaction.delete(
             userDocument(uid, "transactions", "sewing-payment-" + entry.id),
@@ -1069,13 +1060,7 @@ export default function HomePage() {
 
   const displayMoney = (value: number) => money.format(value);
   const displayTotal = (value: number) => privateValues ? "R$ ••••••" : displayMoney(value);
-  const balanceMovement = (amount: number, description: string) => ({ amount: roundMoney(amount), description: description.slice(0,240), date: localDateValue(), createdAt: serverTimestamp() });
-  const initializeBalance = async (amount: number) => {
-    if (firebaseState !== "live") throw new Error("Aguarde a sincronização.");
-    await runTransaction(getFirestore(getApps()[0]),async transaction=>{const ref=userDocument(uid,"balanceEntries","opening");const existing=await transaction.get(ref);if(existing.exists())throw new Error("O saldo inicial já foi registrado.");transaction.set(ref,balanceMovement(amount,"Saldo inicial"));});
-  };
-
-  const submitCreate = async (event: FormEvent<HTMLFormElement>, chooseBalance: (amount: number) => Promise<boolean | null>) => {
+  const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const kind = modal;
@@ -1123,8 +1108,6 @@ export default function HomePage() {
           nextOrder.paid > nextOrder.total
         )
           throw new Error("O recebido excede o total do pedido.");
-        const includeBalance = nextOrder.paid > 0 ? await chooseBalance(nextOrder.paid) : false;
-        if (includeBalance === null) return;
         const orderReference = doc(userCollection(uid, "orders"));
         const orderKey = orderReference.id;
         const customerKey =
@@ -1157,7 +1140,6 @@ export default function HomePage() {
           { merge: true },
         );
         if (nextOrder.paid > 0) {
-          if (includeBalance) batch.set(doc(userCollection(uid, "balanceEntries")), balanceMovement(nextOrder.paid, "Recebimento · " + nextOrder.customer));
           batch.set(doc(userCollection(uid, "transactions")), {
             description: `Entrada · ${nextOrder.customer}`,
             amount: nextOrder.paid,
@@ -1249,14 +1231,10 @@ export default function HomePage() {
     const original = previous && { ...previous, quantity: previous.quantity ?? 0, referencePhotos: previous.referencePhotos ?? "" };
     const changes = original ? Object.fromEntries(Object.entries(input).filter(([field, value]) => original[field as keyof DtfInput] !== value)) : input;
     const data = { ...changes, updatedAt: serverTimestamp() };
-    const balanceDelta = (input.paidCents - (previous?.paidCents ?? 0))/100;
-    const includeBalance = balanceDelta !== 0 && window.confirm("Atualizar o saldo da empresa em "+displayMoney(balanceDelta)+" pelo pagamento de DTF?");
     const reference=previous?userDocument(uid,"dtfOrders",previous.id):doc(userCollection(uid,"dtfOrders"));
-    const balanceReference=doc(userCollection(uid,"balanceEntries"));
     try {
       await runTransaction(getFirestore(getApps()[0]),async batch=>{
       if(previous){const current=await batch.get(reference);if(!current.exists()||current.data().paidCents!==previous.paidCents)throw new Error("O pagamento DTF mudou. Reabra o pedido.");}
-      if(includeBalance) batch.set(balanceReference,balanceMovement(balanceDelta,"Pagamento DTF · "+(input.customerName||input.title||"Avulso")));
       if (previous) batch.update(reference, data);
       else batch.set(reference, { ...data, createdAt: serverTimestamp() });
       const sourceId = previous && dtfSourceOrderId(previous.id);
@@ -1416,17 +1394,10 @@ export default function HomePage() {
 
       for (const [index, material] of targets.entries()) {
         const ref = refs[index];
-        const balanceRef = userDocument(uid, "balanceEntries", ref.id);
-        if (mode === "reopen") {
-          transaction.delete(ref);
-          transaction.delete(balanceRef);
-        }
+        if (mode === "reopen") transaction.delete(ref);
         else if (!existing[index]?.exists()) {
           const entry = fabricHistoryEntry(note, material, date);
           if (entry) transaction.set(ref, entry);
-        }
-        if (mode === "complete") {
-          transaction.set(balanceRef, { ...balanceMovement(-(material.actualCost ?? material.totalCost), `Material · ${note.title} · ${material.color}`), date });
         }
       }
       if (mode !== "date") transaction.update(noteRef, { materials, purchasedMaterialIds: updatePurchasedMaterials(materials, note.purchasedMaterialIds, materialIds, mode === "complete"), updatedAt: serverTimestamp() });
@@ -1439,14 +1410,11 @@ export default function HomePage() {
     if (![input.amount, input.freight].every(value => Number.isFinite(value) && value >= 0 && value <= 100000000) || input.amount + input.freight > 100000000 || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.date > calendarDate) throw new Error("Confira os valores e a data.");
     await runTransaction(getFirestore(getApps()[0]), async transaction => {
       const ref = userDocument(uid, "notes", input.noteId);
-      const materialBalanceRef = userDocument(uid, "balanceEntries", materialHistoryId(input.noteId, input.materialId));
       const expenseIds = [...new Set(input.expenseIds)];
-      const [snapshot, expenseDocs, otherNotes, materialBalance, expenseBalances] = await Promise.all([
+      const [snapshot, expenseDocs, otherNotes] = await Promise.all([
         transaction.get(ref),
         Promise.all(expenseIds.map(id => transaction.get(userDocument(uid, "transactions", id)))),
         Promise.all(notes.filter(note => note.id !== input.noteId && note.materials?.length).map(note => transaction.get(userDocument(uid, "notes", note.id)))),
-        transaction.get(materialBalanceRef),
-        Promise.all(expenseIds.map(id => transaction.get(userDocument(uid, "balanceEntries", id)))),
       ]);
       if (!snapshot.exists()) throw new Error("A anotação foi removida.");
       const note = { ...snapshot.data(), id: snapshot.id } as BusinessNote;
@@ -1461,10 +1429,6 @@ export default function HomePage() {
       if (linkedTotal > roundMoney(input.amount + input.freight)) throw new Error("Os pagamentos selecionados ultrapassam o custo real informado.");
       const reviewed = { ...material, actualCost: roundMoney(input.amount), purchaseFreight: roundMoney(input.freight), purchaseDate: input.date, linkedExpenseIds: [...new Set(input.expenseIds)], linkedExpenseAmount: linkedTotal };
       transaction.update(ref, { materials: note.materials!.map(item => item.id === material.id ? reviewed : item), updatedAt: serverTimestamp() });
-      if (materialBalance.exists()) {
-        const alreadyDebited = expenseBalances.reduce((sum, entry, index) => sum + Math.min(expenses[index]?.amount ?? 0, Math.max(0, -(entry.data()?.amount ?? 0))), 0);
-        transaction.update(materialBalanceRef, { amount: -roundMoney(Math.max(0, input.amount + input.freight - alreadyDebited)), date: input.date });
-      }
       if (reviewed.actualQuantities) {
         const entry = fabricHistoryEntry(note, reviewed, input.date);
         if (entry) transaction.set(userDocument(uid, "historyEntries", materialHistoryId(input.noteId, material.id)), entry);
@@ -1603,9 +1567,6 @@ export default function HomePage() {
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "") || editingOrder.id;
-    const balanceDelta = roundMoney(updatedOrder.paid - editingOrder.paid);
-    const includeBalance = balanceDelta !== 0 && window.confirm("Atualizar o saldo da empresa em "+displayMoney(balanceDelta)+" pelo pagamento de "+updatedOrder.customer+"?");
-    const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(db, async (transaction) => {
       const orderRef = userDocument(uid, "orders", editingOrder.id);
       const [current,latestNotes] = await Promise.all([transaction.get(orderRef),Promise.all(
@@ -1644,7 +1605,6 @@ export default function HomePage() {
       const linkedPayments = transactions.filter(
         (item) => item.orderId === editingOrder.id,
       );
-      if(includeBalance) transaction.set(balanceRef,balanceMovement(balanceDelta,"Pagamento · "+updatedOrder.customer));
       const orderPatch=changedFields(current.data(),{
         ...updatedOrder,
         ...(effective.checklistQuantity !== undefined && latestRaw.shirtType === "mixed" && updatedOrder.shirtType === "mixed"
@@ -1812,11 +1772,10 @@ export default function HomePage() {
   const receiveCustomer = async (customer: CustomerBalance, refund = false) => {
     const amount = refund ? customer.credit ?? 0 : customer.pending;
     if (amount <= 0 || !window.confirm(refund ? "Registrar devolução de " + displayMoney(amount) + " para " + customer.name + "?" : "Confirmar o recebimento de " + displayMoney(amount) + " de " + customer.name + "?")) return;
-    const includeBalance = refund || window.confirm("Adicionar "+displayMoney(amount)+" ao saldo da empresa?");
     const date = localDateValue();
     const intent: Extract<FinanceIntent, { kind: "receipt" | "refund" }> = {
       id: crypto.randomUUID(), kind: refund ? "refund" : "receipt", label: (refund ? "Devolução · " : "Recebimento · ") + customer.name,
-      amount, date, includeBalance, customerId: customer.id, orderState: receiptOrderState(orders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name))),
+      amount, date, customerId: customer.id, orderState: receiptOrderState(orders.filter(order => customerNameKey(order.customer) === customerNameKey(customer.name))),
     };
     if (firebaseState !== "live" || !navigator.onLine) {
       savePendingFinance(intent);
@@ -1824,12 +1783,12 @@ export default function HomePage() {
     }
     if (readFinanceIntents(uid).some(item => item.kind !== "bill" && item.customerId === customer.id))
       throw new FinanceIntentConflict("Confira o lançamento pendente deste cliente.");
-    try { await commitCustomerReceipt(customer, { amount, date, includeBalance, refund, intent }); }
+    try { await commitCustomerReceipt(customer, { amount, date, refund, intent }); }
     catch (cause) { if (financeConnectionFailure(cause)) savePendingFinance(intent); else throw cause; }
   };
 
-  const commitCustomerReceipt = async (customer: CustomerBalance, { amount, date, includeBalance, refund, intent }: {
-    amount: number; date: string; includeBalance: boolean; refund: boolean;
+  const commitCustomerReceipt = async (customer: CustomerBalance, { amount, date, refund, intent }: {
+    amount: number; date: string; refund: boolean;
     intent?: Extract<FinanceIntent, { kind: "receipt" | "refund" }>;
   }) => {
     const related = orders.filter(
@@ -1837,7 +1796,6 @@ export default function HomePage() {
         customerNameKey(order.customer) === customerNameKey(customer.name),
     );
     if (related.length > 180) throw new FinanceIntentConflict("Receba os pedidos em lotes menores.");
-    const balanceRef=doc(userCollection(uid,"balanceEntries"));
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
       const marker = intent && userDocument(uid, "financeIntentReceipts", intent.id);
       if (marker && (await transaction.get(marker)).exists()) return;
@@ -1878,7 +1836,6 @@ export default function HomePage() {
       if (intent && (current.archived || receiptOrderState(currentOrders) !== intent.orderState))
         throw new FinanceIntentConflict("Os pedidos do cliente mudaram. Confira o saldo antes de lançar novamente.");
       if (marker) transaction.set(marker, { createdAt: serverTimestamp() });
-      if(includeBalance) transaction.set(balanceRef,{ ...balanceMovement(refund?-amount:amount,(refund?"Devolução · ":"Recebimento · ")+customer.name), date });
       if (refund) {
         const credit = customerBalances([current], currentOrders)[0]?.credit ?? 0;
         if (current.archived || credit !== amount) throw new FinanceIntentConflict("O crédito mudou. Confira o saldo atualizado.");
@@ -1993,9 +1950,8 @@ export default function HomePage() {
     if (!receiving) preparePaymentSound(uid);
     if (!window.confirm("Confirmar " + (receiving ? "recebimento" : "pagamento") + " de " + displayMoney(bill.amount) + " · " + bill.description + "?")) return false;
     const paymentDate = localDateValue();
-    const includeBalance = bill.account === "business" && (!receiving || window.confirm("Adicionar "+displayMoney(bill.amount)+" ao saldo da empresa?"));
     const { id, amount, account, billingType, direction, dueDate, dueDay, paidInstallments, lastPaidMonth } = bill;
-    const intent: Extract<FinanceIntent, { kind: "bill" }> = { id: crypto.randomUUID(), kind: "bill", label: bill.description, amount, date: paymentDate, includeBalance,
+    const intent: Extract<FinanceIntent, { kind: "bill" }> = { id: crypto.randomUUID(), kind: "bill", label: bill.description, amount, date: paymentDate,
       bill: { id, amount, account, billingType, direction, dueDate, dueDay, paidInstallments, lastPaidMonth } };
     if (firebaseState !== "live" || !navigator.onLine) {
       savePendingFinance(intent);
@@ -2003,7 +1959,7 @@ export default function HomePage() {
     }
     if (readFinanceIntents(uid).some(item => item.kind === "bill" && item.bill.id === bill.id))
       throw new FinanceIntentConflict("Confira o lançamento pendente desta conta.");
-    try { await commitBillPayment(bill, paymentDate, includeBalance, intent.id); }
+    try { await commitBillPayment(bill, paymentDate, intent.id); }
     catch (cause) {
       if (!financeConnectionFailure(cause)) throw cause;
       savePendingFinance(intent);
@@ -2014,11 +1970,11 @@ export default function HomePage() {
     return true;
   };
 
-  const commitBillPayment = async (bill: Extract<FinanceIntent, { kind: "bill" }>["bill"], paymentDate: string, includeBalance: boolean, intentId?: string) => {
+  const commitBillPayment = async (bill: Extract<FinanceIntent, { kind: "bill" }>["bill"], paymentDate: string, intentId: string) => {
     const month = paymentDate.slice(0, 7);
     await runTransaction(getFirestore(getApps()[0]), async (transaction) => {
-      const marker = intentId && userDocument(uid, "financeIntentReceipts", intentId);
-      if (marker && (await transaction.get(marker)).exists()) return;
+      const marker = userDocument(uid, "financeIntentReceipts", intentId);
+      if ((await transaction.get(marker)).exists()) return;
       const reference = userDocument(uid, "bills", bill.id);
       const snapshot = await transaction.get(reference);
       if (!snapshot.exists()) throw new FinanceIntentConflict("Esta conta foi excluída. Confira o Financeiro.");
@@ -2027,12 +1983,11 @@ export default function HomePage() {
       if (current.amount !== bill.amount || current.direction !== bill.direction || current.billingType !== bill.billingType || current.account !== bill.account) {
         throw new FinanceIntentConflict("A conta mudou. Confira os dados atualizados antes de confirmar.");
       }
-      if (intentId && (current.dueDate !== bill.dueDate || current.dueDay !== bill.dueDay ||
-        current.lastPaidMonth !== bill.lastPaidMonth || (current.paidInstallments ?? 0) !== (bill.paidInstallments ?? 0)))
+      if (current.dueDate !== bill.dueDate || current.dueDay !== bill.dueDay ||
+        current.lastPaidMonth !== bill.lastPaidMonth || (current.paidInstallments ?? 0) !== (bill.paidInstallments ?? 0))
         throw new FinanceIntentConflict("A data ou as parcelas da conta mudaram. Confira antes de lançar novamente.");
-      if (marker) transaction.set(marker, { createdAt: serverTimestamp() });
+      transaction.set(marker, { createdAt: serverTimestamp() });
       transaction.set(userDocument(uid, "transactions", billPaymentId(bill.id, current.billingType === "once" ? "once" : month)), { description: current.description, amount: current.amount, type: current.direction === "receivable" ? "income" : "expense", account: current.account, category: current.category, source: "bill", billId: current.id, transactionDate: paymentDate, createdAt: serverTimestamp() });
-      if(includeBalance) transaction.set(userDocument(uid,"balanceEntries",billPaymentId(bill.id,current.billingType === "once"?"once":month)),{ ...balanceMovement(current.direction === "receivable"?current.amount:-current.amount,current.description), date: paymentDate });
       transaction.update(reference, { lastPaidMonth: month, ...(current.billingType === "once" ? { settled: true } : {}), ...(current.billingType === "installment" ? { paidInstallments: (current.paidInstallments ?? 0) + 1 } : {}) });
     });
   };
@@ -2046,7 +2001,7 @@ export default function HomePage() {
       for (const intent of pending) {
         if (!navigator.onLine || clientAuth(getApps()[0]).currentUser?.uid !== uid) break;
         try {
-          if (intent.kind === "bill") await commitBillPayment(intent.bill, intent.date, intent.includeBalance, intent.id);
+          if (intent.kind === "bill") await commitBillPayment(intent.bill, intent.date, intent.id);
           else {
             const customer = balances.find(item => item.id === intent.customerId && !item.archived);
             if (!customer) throw new FinanceIntentConflict("Cliente indisponível. Confira o cadastro e os pedidos.");
@@ -2093,7 +2048,7 @@ export default function HomePage() {
       if (recorded?.id !== expected?.id || millis(recorded?.createdAt) !== millis(expected?.createdAt)) {
         throw new Error("O pagamento mudou. Confira os dados atualizados antes de desfazer.");
       }
-      if (recorded) { transaction.delete(userDocument(uid, "transactions", recorded.id)); transaction.delete(userDocument(uid,"balanceEntries",recorded.id)); }
+      if (recorded) transaction.delete(userDocument(uid, "transactions", recorded.id));
       const reversal = billReversal(current, livePayments);
       transaction.update(reference, { ...reversal, lastPaidMonth: reversal.lastPaidMonth ?? deleteField() });
     });
@@ -2173,10 +2128,10 @@ export default function HomePage() {
           {nextPayables && (atelier ? <AtelierDashboard
             name={firstName} today={calendarDate} orders={activeOrders}
             deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)}
-            alerts={alerts} tasks={orderTasks} balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />}
+            alerts={alerts} tasks={orderTasks}
             payable={payable} pending={pending} sewingTotal={sewingTotal} nextPayables={nextPayables} dtfAlertCount={dtfAlertCount}
             money={displayTotal} navigate={setView} create={setModal} openChecklist={order => void openProductionList(order)}
-          /> : <Dashboard balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
+          /> : <Dashboard alerts={alerts} orderTasks={orderTasks} today={calendarDate} sewingTotal={sewingTotal} userName={firstName} orders={activeOrders} deliveredReceivables={productionOrders.filter(order => (order.status === "Entregue" || order.orderKind === "collection") && order.receivable > 0)} pending={pending} payable={payable} nextPayables={nextPayables} debtorsCount={debtors.length} overdue={overdue} urgent={urgent} dtfAlertCount={dtfAlertCount} openDtfAlerts={() => { window.scrollTo({ top: 0, behavior: "instant" }); setNotificationsOpen(true); }} displayMoney={displayMoney} displayTotal={displayTotal} setModal={setModal} setView={setView} />)}
           {view === "producao" && <ProductionBoard confirmCosts={confirmOrderCosts} orderCosts={orderCosts} sewingCosts={sewingCosts} orderPayments={orderPayments} today={calendarDate} alerts={alerts} openAlert={alert => setView(alert.view, alert.id)} orderTasks={orderTasks} taskConnection={taskConnection} toggleTask={toggleTask} openTasks={() => setView("afazeres")} openChecklist={order => void openProductionList(order)} orders={photoProductionOrders} displayMoney={displayMoney} updateStatus={updateStatus} onCreate={() => setModal("pedido")} editOrder={setEditingOrder} deleteOrder={deleteOrder} />}
           {view === "dtf" && <DtfWorkspace key={JSON.stringify([uid, dtfCustomerId])} orders={dtfOrders} customers={visibleCustomers} productionOrders={photoOrders} notes={notes} customerId={dtfCustomerId} connection={dtfConnection} today={calendarDate} displayMoney={displayMoney} displayTotal={displayTotal} clearCustomer={() => setView("dtf")} onSave={saveDtf} onMove={moveDtf} onSeparate={separateDtf} onDelete={deleteDtf} onPrintChange={updateDtfPrints} openNote={id => setView("notas", id)} />}
           {(view === "notas" || view === "materiais") && <NotesWorkspace pendingNoteIds={pendingNoteIds} online={online} expenses={transactions} reviewPurchase={reviewPurchaseCost} key={JSON.stringify([uid, noteId])} uid={uid} initialNoteId={noteId} notes={notes.filter(note => note.id !== sewingNoteId && !note.id.startsWith(restockPrefix))} orders={photoOrders} customers={visibleCustomers} materialsOpen={view === "materiais"} openMaterials={() => setView("materiais")} openTasks={() => setView("afazeres")} openNote={id => setView("notas", id)} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} />}
@@ -2186,7 +2141,7 @@ export default function HomePage() {
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
           {view === "ai" && <PSYZONAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
-          {view === "financeiro" && <FinanceWorkspace balanceCard={<CompanyBalance entries={balanceEntries} money={displayTotal} initialize={initializeBalance} />} today={calendarDate} restock={[...stockPayables,...sewingPayables,...materialPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : bill?.category === "Materiais dos pedidos" ? "materiais" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
+          {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables,...materialPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : bill?.category === "Materiais dos pedidos" ? "materiais" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "financeiro" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}
           {view === "historico" && <MonthlyClosingWorkspace uid={uid} today={calendarDate} data={{ orders, notes, customers, transactions, bills }} save={saveMonthlyClosing} money={displayMoney} />}
           {view === "historico" && <HistoryWorkspace
@@ -2260,7 +2215,7 @@ function StartupLoading({ firstName }: { firstName?: string }) {
   </main>;
 }
 
-function Dashboard({ balanceCard, alerts, orderTasks, today, sewingTotal, userName, orders, deliveredReceivables, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView }: any) {
+function Dashboard({ alerts, orderTasks, today, sewingTotal, userName, orders, deliveredReceivables, pending, payable, nextPayables, debtorsCount, overdue, urgent, dtfAlertCount, openDtfAlerts, displayMoney, displayTotal, setModal, setView }: any) {
   const byDeadline = (a: Order, b: Order) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999");
   const priorityOrders = [
     ...orders.filter((order: Order) => order.status !== "Orçamento").sort(byDeadline),
@@ -2273,8 +2228,7 @@ function Dashboard({ balanceCard, alerts, orderTasks, today, sewingTotal, userNa
       <button className="primary" onClick={() => setModal("pedido")}><Plus size={18} /> Novo pedido <kbd>N</kbd></button>
     </div>
     {dtfAlertCount > 0 && <button type="button" className="dashboard-dtf-alert" onClick={openDtfAlerts}><AlertTriangle size={18} /><span><b>DTF a pedir</b><small>{dtfAlertCount} {dtfAlertCount === 1 ? "pedido próximo do prazo ou atrasado" : "pedidos próximos do prazo ou atrasados"}</small></span><ChevronRight size={17} /></button>}
-    <div className="metric-grid sewing-metrics company-metrics">
-      {balanceCard}
+    <div className="metric-grid sewing-metrics">
       <Metric icon={WalletCards} label="A pagar" value={<CountUp value={payable} format={displayTotal} />} detail={<span>Contas pendentes</span>} onClick={() => setView("financeiro")} />
       <Metric icon={CircleDollarSign} label="A receber" value={<CountUp value={pending} format={displayTotal} />} detail={<span className="metric-detail-stack"><span>{debtorsCount} clientes pendentes</span><span className="next-payables"><span>A pagar em {nextPayables.label}</span><b><CountUp value={nextPayables.total} format={displayTotal} /></b></span></span>} onClick={() => setView("financeiro")} />
       <Metric icon={Boxes} label="Produção" value={<><CountUp value={orders.length} /> pedidos</>} detail={<><span>{urgent.length} entregas próximas</span>{overdue.length > 0 && <b className="negative">{overdue.length} atrasado</b>}</>} onClick={() => setView("producao")} />
@@ -2327,43 +2281,25 @@ function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {
   return <label className="full">DTF<select name="dtfStatus" aria-label="DTF" defaultValue={value}>{Object.entries(orderDtfStatus).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label>;
 }
 
-function CreateModalV2({ customers, kind, setKind, close, onSubmit }: { customers: Customer[]; kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, chooseBalance: (amount: number) => Promise<boolean | null>) => Promise<void> }) {
+function CreateModalV2({ customers, kind, setKind, close, onSubmit }: { customers: Customer[]; kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void> }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const saving = useRef(false);
   const [busy, setBusy] = useState(false);
-  const [balanceChoice, setBalanceChoice] = useState<{ amount: number; resolve: (choice: boolean | null) => void }>();
-  const saveButton = useRef<HTMLButtonElement>(null);
   const dismiss = () => { if (!saving.current) close(); };
-  const finishChoice = (choice: boolean | null) => {
-    balanceChoice?.resolve(choice);
-    setBalanceChoice(undefined);
-    if (choice === null) requestAnimationFrame(() => saveButton.current?.focus());
-  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
     try {
-      await onSubmit(event, amount => new Promise(resolve => setBalanceChoice({ amount, resolve })));
+      await onSubmit(event);
     } finally { saving.current = false; setBusy(false); }
   };
   const [orderKind, setOrderKind] = useState<SpecialOrderKind>();
   const special = kind === "pedido" ? orderKind : undefined;
-  return <><div className="modal-backdrop" inert={Boolean(balanceChoice)} onMouseDown={(event) => event.target === event.currentTarget && dismiss()}><aside className="modal" role="dialog" aria-modal="true" aria-busy={busy} aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={dismiss} disabled={busy} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} disabled={busy} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} disabled={busy} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} disabled={busy} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={submit} aria-busy={busy}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} list="order-customers" /></label><datalist id="order-customers">{customers.map(customer => <option key={customer.id} value={customer.name} />)}</datalist><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label>{kind === "pedido" && <OrderKindPicker kind={special} change={setOrderKind} />}
+  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && dismiss()}><aside className="modal" role="dialog" aria-modal="true" aria-busy={busy} aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={dismiss} disabled={busy} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} disabled={busy} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} disabled={busy} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} disabled={busy} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={submit} aria-busy={busy}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} list="order-customers" /></label><datalist id="order-customers">{customers.map(customer => <option key={customer.id} value={customer.name} />)}</datalist><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label>{kind === "pedido" && <OrderKindPicker kind={special} change={setOrderKind} />}
   {special ? <><input type="hidden" name="orderKind" value={special} /><SpecialOrderFields key={special} kind={special} defaultDeadline={isoOffset(7)} /></> : <>
-  <label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /></>}{special !== "collection" && <OrderPhotoField onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={dismiss} disabled={busy}>Cancelar</button><button ref={saveButton} type="submit" className="primary" disabled={photoBusy || busy}><Check size={17} /> {busy ? "Salvando…" : "Salvar"}</button></footer></form></aside></div>
-  {balanceChoice && <Modal titleId="create-balance-title" compact busy={false} close={() => finishChoice(null)}>
-    <header><h2 id="create-balance-title">Adicionar ao saldo da empresa?</h2><button type="button" aria-label="Voltar ao pedido" onClick={() => finishChoice(null)}><X size={18} /></button></header>
-    <form onSubmit={event => { event.preventDefault(); finishChoice(true); }}>
-      <p className="form-help">Valor recebido · <strong>{money.format(balanceChoice.amount)}</strong></p>
-      <footer className="create-balance-actions">
-        <button className="secondary" type="button" onClick={() => finishChoice(false)}>Salvar sem somar</button>
-        <button className="primary" type="submit">Adicionar ao saldo</button>
-      </footer>
-    </form>
-  </Modal>}
-  </>;
+  <label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /></>}{special !== "collection" && <OrderPhotoField onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={dismiss} disabled={busy}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy || busy}><Check size={17} /> {busy ? "Salvando…" : "Salvar"}</button></footer></form></aside></div>;
 }
 
 function OrderEditModal({ order, close, onSubmit, busy=false }: { busy?: boolean; order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

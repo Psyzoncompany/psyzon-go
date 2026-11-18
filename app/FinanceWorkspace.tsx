@@ -3,7 +3,7 @@ import MoneyText from "./MoneyText";
 import { TypedHeading } from "./Typewriter";
 import { CountUp } from "./MotionValue";
 
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Modal from "./Modal";
 import FinanceListCard, { StatusIndicator, type FinanceListItem } from "./finance/FinanceListCard";
 import FinanceDetailSheet from "./finance/FinanceDetailSheet";
@@ -15,7 +15,6 @@ import { customerNameKey } from "./finance-model";
 export type BillInput = Omit<Bill, "id" | "createdAt" | "lastPaidMonth" | "paidInstallments" | "settled">;
 type Expense = { id: string; description: string; amount: number; type: string; transactionDate?: string; createdAt?: unknown; category?: string; source?: string; billId?: string };
 type Props = {
-  balanceCard: ReactNode;
   today?: string;
   bills: Bill[];
   restock: Bill[];
@@ -40,7 +39,7 @@ export function expenseDate(item: Expense) {
   return date && Number.isFinite(date.getTime()) ? localDateValue(date) : "";
 }
 
-export default function FinanceWorkspace({ balanceCard, today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
+export default function FinanceWorkspace({ today = localDateValue(), bills, restock, openRestock, transactions, customers, currentMonth, displayTotal, displayMoney, onSaveBill, onSettleBill, onUndoPayment, onDeleteBill, onReceive, onRefund }: Props) {
   const [selectedMonth, setMonth] = useState<string | null>(null);
   const month = selectedMonth ?? currentMonth;
   const [selectedPayableMonth,setPayableMonth]=useState<string|null>(null);
@@ -100,7 +99,7 @@ export default function FinanceWorkspace({ balanceCard, today = localDateValue()
   return <div className="finance-workspace finance-premium">
     <div className="page-heading compact"><div><TypedHeading>Financeiro</TypedHeading></div><button className="primary" onClick={() => { setError(""); setEditor({ bill: null }); }}><Plus size={17} /> Nova conta</button></div>
     {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="finance-premium-summary company-finance-summary">{balanceCard}<article><small>A pagar</small><strong><CountUp value={current.toPay} format={displayTotal} /></strong><span>{current.payable.length} em aberto no mês</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article><article><small>Pagas em {new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(`${month}-01T12:00:00`))}</small><strong><CountUp value={expenseTotal} format={displayMoney} /></strong><span>Despesas registradas</span></article></div>
+      <div className="finance-premium-summary"><article><small>A pagar</small><strong><CountUp value={current.toPay} format={displayTotal} /></strong><span>{current.payable.length} em aberto no mês</span></article><article><small>A receber</small><strong><CountUp value={pending} format={displayTotal} /></strong><span>Clientes e contas</span></article></div>
       <section className="finance-premium-summary finance-forecast-summary" aria-label="A pagar nos próximos meses">
         <article>
           <small>A pagar nos próximos meses</small>

@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, CalendarDays, ClipboardList, Layers, NotebookPen, Plus, Printer, Shirt, Spool, WalletCards } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { CountUp } from "./MotionValue";
 import MoneyText from "./MoneyText";
 import { nextOrderAction } from "./order-follow-up";
@@ -17,7 +17,6 @@ type Props = {
   deliveredReceivables: Order[];
   alerts: ReadonlyMap<string, OrderAlert[]>;
   tasks: ReadonlyMap<string, Task[]>;
-  balanceCard: ReactNode;
   payable: number;
   pending: number;
   sewingTotal: number;
@@ -119,7 +118,6 @@ export default function AtelierDashboard(props: Props) {
           <div><span className="atelier-caption">FINANCEIRO</span><h2 id="atelier-finance-title">Contas da empresa</h2></div>
           <span className="atelier-symbol"><WalletCards size={21} aria-hidden="true" /></span>
         </header>
-        <div className="atelier-balance">{props.balanceCard}</div>
         <div className="atelier-finance-list">
           {financialRows.map(({ label, value, icon: Icon, view, tone }) => <button type="button" key={label} onClick={() => navigate(view)} data-tone={tone}>
             <Icon size={19} aria-hidden="true" /><span>{label}</span><strong><CountUp value={value} format={money} /></strong><ArrowUpRight size={14} aria-hidden="true" />

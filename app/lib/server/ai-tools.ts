@@ -220,7 +220,6 @@ const getOpenFinance: ToolDefinition = {
     const modelRows = (items: AIFinanceEntry[]) => items.map(({ amount, ...item }) => ({ ...item, amountFormatted: formatMoney(amount) }));
     return {
       financeReport,
-      registeredCompanyBalanceFormatted: formatMoney((await listAllUserCollection(identity,"balanceEntries")).reduce((sum,item)=>sum+number(item.amount),0)),
       asOf: financeReport.asOf,
       payables: modelRows(financeReport.payables),
       receivables: modelRows(financeReport.receivables),
@@ -614,7 +613,7 @@ const updateTransactionCategory: ToolDefinition = {
 const createFinancialAdjustment: ToolDefinition = {
   declaration: { type: "function", name: "create_financial_adjustment", description: "Cria uma entrada ou despesa de ajuste financeiro. Sempre exige confirmação explícita.", parameters: { type: "object", properties: { description: { type: "string" }, amount: { type: "number" }, type: { type: "string", enum: ["income", "expense"] }, account: { type: "string", enum: ["business", "personal"] }, category: { type: "string" }, date: { type: "string", description: "AAAA-MM-DD" }, reason: { type: "string" } }, required: ["description", "amount", "type", "account", "category", "reason"] } },
   riskLevel: 3, requiredPermission: "financial_confirm", requiresConfirmation: true,
-  preview: async (_context, args) => ({ action: "Criar ajuste financeiro", currentValue: "Nenhum lançamento", newValue: `${text(args.type) === "expense" ? "Saída" : "Entrada"} de ${money.format(finiteAmount(args, "amount"))} — ${requiredString(args, "description")}`, reason: requiredString(args, "reason"), impact: `O saldo da conta ${text(args.account) === "personal" ? "pessoal" : "empresarial"} será alterado em ${money.format(finiteAmount(args, "amount"))}.` }),
+  preview: async (_context, args) => ({ action: "Criar ajuste financeiro", currentValue: "Nenhum lançamento", newValue: `${text(args.type) === "expense" ? "Saída" : "Entrada"} de ${money.format(finiteAmount(args, "amount"))} — ${requiredString(args, "description")}`, reason: requiredString(args, "reason"), impact: "O ajuste será registrado no histórico financeiro." }),
   execute: async (context, args) => {
     const amount = finiteAmount(args, "amount"); const description = requiredString(args, "description").slice(0, 160);
     const type = text(args.type) === "expense" ? "expense" : "income"; const account = text(args.account) === "personal" ? "personal" : "business";
@@ -630,7 +629,7 @@ const deleteTransaction: ToolDefinition = {
   preview: async ({ identity }, args) => {
     const transaction = await getUserDocument(identity, "transactions", requiredString(args, "transactionId"));
     if (!transaction) throw new Error("Movimentação não encontrada.");
-    return { action: "Excluir movimentação", currentValue: `${text(transaction.description)} · ${money.format(number(transaction.amount))}`, newValue: "Movimentação removida", reason: requiredString(args, "reason"), impact: `O histórico e o saldo da conta ${text(transaction.account) === "personal" ? "pessoal" : "empresarial"} serão alterados.` };
+    return { action: "Excluir movimentação", currentValue: `${text(transaction.description)} · ${money.format(number(transaction.amount))}`, newValue: "Movimentação removida", reason: requiredString(args, "reason"), impact: "O lançamento será removido do histórico financeiro." };
   },
   execute: async (context, args) => {
     const transactionId = requiredString(args, "transactionId");

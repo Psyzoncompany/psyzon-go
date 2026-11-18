@@ -237,22 +237,6 @@
   .atelier-empty { padding: 22px 18px; color: var(--muted); font-size: .86rem; }
   .atelier-more { margin: 3px 12px 9px; }
 
-  .atelier-balance { margin: 0 15px 4px; }
-  :root[data-ui-theme="atelier"] .app-shell .atelier-balance > .company-balance-card {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    padding: 13px 16px;
-    gap: 8px;
-    min-height: 0;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--card-subtle);
-    box-shadow: none;
-    color: var(--text);
-  }
-  :root[data-ui-theme="atelier"] .atelier-balance .metric-top h2 { font-family: inherit; font-size: .85rem; font-weight: 700; line-height: 1.2; }
-  :root[data-ui-theme="atelier"] .atelier-balance .metric-top > span { display: none; }
-  :root[data-ui-theme="atelier"] .atelier-balance .metric-card > strong { font-size: clamp(1.5rem,3.2vw,2.5rem); min-width: 0; }
   .atelier-finance-list { padding: 3px 15px 0; }
   .atelier-finance-list button {
     width: 100%;

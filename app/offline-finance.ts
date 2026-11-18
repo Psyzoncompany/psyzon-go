@@ -8,7 +8,6 @@ export type FinanceIntent = (Receipt | BillPayment) & {
   label: string;
   date: string;
   amount: number;
-  includeBalance: boolean;
   error?: string;
 };
 

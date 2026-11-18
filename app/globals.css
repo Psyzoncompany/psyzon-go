@@ -1350,7 +1350,6 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 .compact-modal input { font-size: 16px; letter-spacing: .18em; }
 .compact-modal .form-error { margin: 0; }
 .compact-modal form footer { margin: 0; padding: 0; border: 0; }
-.create-balance-actions { flex-wrap: wrap; }
 .offline-status { margin: 0 0 12px; padding: 8px 12px; border-radius: 10px; background: var(--card-subtle); color: var(--muted); font-size: 12px; }
 .offline-finance-queue { padding: 14px; margin-bottom: 14px; }
 .offline-finance-queue h2 { margin: 0 0 8px; font-size: 15px; }

@@ -12,7 +12,7 @@ import { CountUp } from "./MotionValue";
 
 import Image from "next/image";
 import { AlertTriangle, ArrowRight, Camera, Check, ChevronDown, ClipboardList, GripVertical, ImageIcon, CalendarDays, Shirt, MoreHorizontal, PackageOpen, Layers, MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
-import { useRef, useState, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { urgentOrder, dueLabel, dueTone, nextOrderStatus, orderDtfStatus, orderStages, orderStatuses, specialOrderLabels, productionStages, type Order, type OrderStatus } from "./order-model";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
@@ -63,6 +63,18 @@ export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewi
   const selected = orders.find(order => order.id === selectedId);
   const collections = orders.filter(order => order.orderKind === "collection");
   for (const order of orders) if (order.orderKind !== "collection" && (filter !== "late" || dueTone(order.dueDate, order.status) === "danger")) grouped.get(order.status)?.push(order);
+  const occupiedStages = productionStages.map(stage => grouped.get(stage)?.length ? "1" : "0").join("");
+  useLayoutEffect(() => {
+    const scroller = board.current;
+    if (!scroller || scroller.scrollWidth <= scroller.clientWidth || !occupiedStages.includes("1")) return;
+    const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+    const positions = columns.current.map(column => Math.min(column?.offsetLeft ?? 0, maxScroll));
+    const current = positions.reduce((closest, left, index) =>
+      Math.abs(left - scroller.scrollLeft) < Math.abs(positions[closest] - scroller.scrollLeft) ? index : closest, 0);
+    if (occupiedStages[current] === "1") return;
+    const next = occupiedStages.indexOf("1", current + 1);
+    scroller.scrollLeft = positions[next >= 0 ? next : occupiedStages.indexOf("1")];
+  }, [occupiedStages]);
   for (const stage of productionStages) grouped.get(stage)?.sort((a, b) => sort === "customer" ? a.customer.localeCompare(b.customer, "pt-BR") : (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
   const delivered = orders.filter(order => order.status === "Entregue").sort((a, b) => (b.deliveredAt ?? "").localeCompare(a.deliveredAt ?? ""));
   const deliveryMonths = new Map<string, Order[]>();
@@ -109,7 +121,9 @@ export default function ProductionBoard({ orders, confirmCosts, orderCosts, sewi
     <label className="production-stage-jump">Ir para etapa
       <select value="" onChange={event => {
         if (!event.target.value) return;
-        const column = columns.current[Number(event.target.value)];
+        const index = Number(event.target.value);
+        const next = occupiedStages.indexOf("1", index);
+        const column = columns.current[next >= 0 ? next : index];
         if (column) board.current?.scrollTo({ left: column.offsetLeft });
       }}>
         <option value="" disabled>Selecionar etapa</option>

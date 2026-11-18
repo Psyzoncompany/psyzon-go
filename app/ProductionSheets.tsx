@@ -11,11 +11,14 @@ function groups(rows: ProductionRow[], key: "model" | "size") {
 export default function ProductionSheets({ checklist, photoData }: { checklist: ProductionChecklist; photoData?: string }) {
   const unnamedTotals = new Map<string, number>();
   const printedUnnamed = new Set<string>();
+  const defaultCollar = checklist.defaultCollar;
+  const defaultCollarLabel = defaultCollar && `${productionCollarLabels[defaultCollar]} como padrão`;
+  const printPieces = defaultCollar ? checklist.rows.map(row => row.collar === defaultCollar ? { ...row, collar: undefined } : row) : checklist.rows;
   const unnamedKey = (row: ProductionRow) => JSON.stringify([row.model, row.size, row.collar]);
   const isUnnamed = (row: ProductionRow) => !row.name.trim() || row.name.trim().toLocaleLowerCase("pt-BR") === "sem nome";
   const collar = (row: ProductionRow) => row.collar && <small> · {productionCollarLabels[row.collar]}</small>;
-  checklist.rows.filter(isUnnamed).forEach(row => { const key = unnamedKey(row); unnamedTotals.set(key, (unnamedTotals.get(key) ?? 0) + 1); });
-  const printRows = checklist.rows.filter(row => {
+  printPieces.filter(isUnnamed).forEach(row => { const key = unnamedKey(row); unnamedTotals.set(key, (unnamedTotals.get(key) ?? 0) + 1); });
+  const printRows = printPieces.filter(row => {
     if (!isUnnamed(row)) return true;
     const key = unnamedKey(row);
     if (printedUnnamed.has(key)) return false;
@@ -43,7 +46,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   const photoNotes = Boolean(photoData && attention && !extra.length);
   const total = <><strong>{checklist.rows.length} UNIDADES</strong><small>Total do pedido</small></>;
   const header = <header className="production-sheet-header">
-    <div><small>PSYZON · CONTROLE DE PRODUÇÃO</small><h1>LISTA DE CAMISAS</h1><p>{checklist.client || "Pedido"}{checklist.deadline ? ` · Entrega: ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${checklist.deadline}T12:00:00`))}` : ""}</p>
+    <div><small>PSYZON · CONTROLE DE PRODUÇÃO</small><h1>LISTA DE CAMISAS</h1><p>{checklist.client || "Pedido"}{checklist.deadline ? ` · Entrega: ${new Intl.DateTimeFormat("pt-BR").format(new Date(`${checklist.deadline}T12:00:00`))}` : ""}{defaultCollarLabel && ` · ${defaultCollarLabel}`}</p>
       {photoData && <div className="production-inline-total">{total}</div>}
       {photoNotes && <section className="production-photo-notes"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
     </div>
@@ -67,7 +70,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
         <div className="production-additions-totals"><span>Extras: <b /></span><span>Total atualizado: <b /></span></div>
       </section>
     </div>}
-    <p><span>{checklist.client && <b>{checklist.client} · </b>}{checklist.rows.filter(isUnnamed).length} peça(s) sem nome · {checklist.rows.length} peças no total</span><span className="production-page-number">Página {index + 1} de {totalPages}</span></p>
+    <p><span>{checklist.client && <b>{checklist.client} · </b>}{defaultCollarLabel && index > 0 && `${defaultCollarLabel} · `}{checklist.rows.filter(isUnnamed).length} peça(s) sem nome · {checklist.rows.length} peças no total</span><span className="production-page-number">Página {index + 1} de {totalPages}</span></p>
   </footer>;
   return <>{pages.map((columns, pageIndex) => <article className={`production-sheet${sizesOnly ? " production-sizes-only" : ""}`} key={pageIndex}>
     {pageIndex === 0 && header}

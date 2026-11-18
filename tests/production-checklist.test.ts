@@ -255,6 +255,21 @@ test("AI output is validated and invented names trigger fallback", async () => {
   await assert.rejects(organizeProductionWithAI(sampleProductionOrder, []), /PRODUCTION_AI_NOT_CONFIGURED/);
 });
 
+test("a saved collar default applies only to unmarked pieces and the PDF highlights exceptions", () => {
+  const input = parseProductionOrder("Ana — P\nRafik — GG — Polo\nRoberta Melo — G — Gola normal\nSem nome — G\nSem nome — G — Polo");
+  const saved = validateProductionChecklist(JSON.parse(JSON.stringify({ ...input, defaultCollar: "polo" })));
+  assert.equal(saved.defaultCollar, "polo");
+  assert.equal(saved.rows.filter(row => (row.collar ?? saved.defaultCollar) === "polo").length, 4);
+  assert.equal(saved.rows.find(row => row.name === "Roberta Melo")?.collar, "common");
+  assert.equal(saved.rows.find(row => row.name === "Ana")?.collar, undefined);
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist: saved }));
+  assert.match(html, /Gola polo como padrão/);
+  assert.match(html, /Roberta Melo<small> · Gola normal/);
+  assert.doesNotMatch(html, /Rafik<small>/);
+  assert.match(html, /2 un\. sem personalização de nome/);
+  assert.equal(validateProductionChecklist({ ...input, defaultCollar: "invalid" }).defaultCollar, undefined);
+});
+
 
 test("unspecified models default to masculine for every name and the PDF keeps one model", () => {
   const checklist = parseProductionOrder("P\nAna\nJoão\nM\nMaria");

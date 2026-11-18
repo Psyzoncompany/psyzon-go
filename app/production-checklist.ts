@@ -1,8 +1,9 @@
 import { expandProductionShorthand } from "./production-shorthand";
 export const productionCollarLabels = { common: "Gola normal", polo: "Gola polo" } as const;
-type ProductionCollar = keyof typeof productionCollarLabels;
+export type ProductionCollar = keyof typeof productionCollarLabels;
 export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean; collar?: ProductionCollar };
-export type ProductionChecklist = { client: string; deadline: string; notes: string; rows: ProductionRow[]; warnings: string[] };
+export type ProductionChecklist = { client: string; deadline: string; notes: string; rows: ProductionRow[]; warnings: string[]; defaultCollar?: ProductionCollar };
+export const productionCollar = (value: unknown): ProductionCollar | undefined => value === "common" || value === "polo" ? value : undefined;
 
 const sizeCollator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 const standardSizes = ["PP", "P", "M", "G", "GG", "XGG"];
@@ -176,7 +177,8 @@ export function validateProductionChecklist(value: unknown): ProductionChecklist
   const data = value as Record<string, unknown>;
   if (!Array.isArray(data.rows) || data.rows.length < 1 || data.rows.length > 500) throw new Error("A lista deve ter entre 1 e 500 peças.");
   const string = (input: unknown, max: number) => { if (typeof input !== "string" || input.length > max) throw new Error("O checklist contém um campo inválido."); return input.trim(); };
-  return { client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: sortProductionRows(data.rows.map((value, index): ProductionRow => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true, ...(row.collar === "common" || row.collar === "polo" ? { collar: row.collar } : {}) }; })) };
+  const defaultCollar = productionCollar(data.defaultCollar);
+  return { ...(defaultCollar ? { defaultCollar } : {}), client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: sortProductionRows(data.rows.map((value, index): ProductionRow => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true, ...(row.collar === "common" || row.collar === "polo" ? { collar: row.collar } : {}) }; })) };
 }
 
 export function productionSummary(rows: ProductionRow[]) {

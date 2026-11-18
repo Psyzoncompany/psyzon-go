@@ -32,6 +32,7 @@
   .checklist-observation-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .checklist-list-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
   .checklist-list-actions button { min-height: 36px; padding: 6px 9px; font-size: 11px; }
+  .checklist-default-collar { min-height: 36px; max-width: 100%; padding-inline: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-subtle); color: var(--text); font-size: 11px; }
   .checklist-warning-button { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 8px; background: var(--yellow-soft); color: var(--yellow); font-weight: 650; cursor: pointer; }
   .checklist-warning-list { display: grid; gap: 10px; margin: 0; padding: 14px 0 18px 20px; color: var(--text); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
   .checklist-warning-list li::marker { color: var(--yellow); }
@@ -59,7 +60,7 @@
   .production-checklist .checklist-table input:not([type="checkbox"]) { min-width: 0; }
   .production-checklist .checklist-table input[type="checkbox"] { flex: none; width: 18px; height: 18px; accent-color: var(--blue); }
   .checklist-row-check { display: flex; align-items: center; min-height: 36px; cursor: pointer; }
-  .checklist-collar { display: block; padding-inline: 4px; color: var(--muted); font-size: 10px; }
+  .checklist-collar { display: block; width: 100%; min-width: 0; min-height: 28px; margin-bottom: 3px; padding-inline: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-subtle); color: var(--text); font-size: 11px; }
   .production-checklist .checklist-table td:last-child button { display: grid; place-items: center; width: 100%; min-height: 36px; padding: 0; }
   .production-checklist .checklist-table tbody tr:hover:not(.done) { background: var(--card-subtle); }
   .checklist-table-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; align-items: start; }
@@ -70,7 +71,7 @@
   .checklist-list-actions { justify-content: flex-start; }
 }
 @container (max-width: 420px) {
-  .production-checklist .checklist-toolbar button, .checklist-list-actions button { min-height: 44px; height: auto; }
+  .production-checklist .checklist-toolbar button, .checklist-list-actions button, .checklist-default-collar { min-height: 44px; height: auto; }
   .checklist-output { justify-content: flex-start; }
   .production-checklist .checklist-table th:first-child, .production-checklist .checklist-table th:last-child { width: 34px; }
   .production-checklist .checklist-table th:nth-child(2) { width: 25%; }

@@ -13,7 +13,7 @@ import ProductionSheets from "./ProductionSheets";
 import ChecklistPieces from "./ChecklistPieces";
 import PdfDownloadButton from "./PdfDownloadButton";
 import OrderPhotoField from "./OrderPhotoField";
-import { parseProductionOrder, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionRow } from "./production-checklist";
+import { parseProductionOrder, productionCollar, productionCollarLabels, sampleProductionOrder, sortProductionRows, validateProductionChecklist, type ProductionChecklist as Checklist, type ProductionCollar, type ProductionRow } from "./production-checklist";
 import { defaultProductionColor, productionColorFromNotes, productionColorFromProduct, productionColorInk, validProductionColor } from "./production-theme";
 
 export default function ProductionChecklist({ value, title, source, photoData, linkedPhotoData, linkedProduct, linkedDeadline, manualColor, onColorChange, onPhotoChange, onChange }: { value?: Checklist | null; title: string; source: string; photoData?: string; linkedPhotoData?: string; linkedProduct?: string; linkedDeadline?: string; manualColor?: string; onColorChange: (color: string) => void; onPhotoChange: (photo: string) => void | Promise<void>; onChange: (value: Checklist | null) => void }) {
@@ -57,7 +57,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
       if (importedColor && !productionColorFromNotes(result.notes)) {
         result.notes = [`Cor da camisa: ${importedColor.label}`, result.notes].filter(Boolean).join("\n").slice(0, 4000);
       }
-      onChange({ ...result, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || linkedDeadline || "" });
+      onChange({ ...result, defaultCollar: value?.defaultCollar, client: result.client || value?.client || title, deadline: result.deadline || value?.deadline || linkedDeadline || "" });
       setModal(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível organizar a lista."); }
     finally { setBusy(false); }
@@ -93,6 +93,11 @@ export default function ProductionChecklist({ value, title, source, photoData, l
         <ChevronRight size={16} aria-hidden="true" />
       </button>
       {value && <div className="checklist-list-actions">
+        <select className="checklist-default-collar" aria-label="Gola padrão do checklist" value={value.defaultCollar ?? ""} onChange={event => onChange({ ...value, defaultCollar: productionCollar(event.target.value) })}>
+          <option value="">{value.defaultCollar ? "Sem gola padrão" : "Definir gola padrão"}</option>
+          <option value="polo">Padrão · Gola polo</option>
+          <option value="common">Padrão · Gola normal</option>
+        </select>
         {warningCount > 0 && <button className="checklist-warning-button" type="button" aria-haspopup="dialog" onClick={() => setModal("warnings")}><TriangleAlert size={15} aria-hidden="true" />{warningCount} {warningCount === 1 ? "aviso" : "avisos"}</button>}
         <button className="secondary" type="button" aria-haspopup="dialog" onClick={openImport}>Colar outra lista</button>
         <button className="secondary" type="button" aria-haspopup="dialog" disabled={rows.length >= 500} onClick={() => setModal("piece")}><Plus size={15} aria-hidden="true" /> Adicionar peça</button>
@@ -100,7 +105,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
     </div>
     {error && modal !== "import" && <p className="form-error" role="alert">{error}</p>}
     {value && <>
-      {rows.length > 0 && <ChecklistPieces rows={rows} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} />}
+      {rows.length > 0 && <ChecklistPieces rows={rows} defaultCollar={value.defaultCollar} onUpdate={updateRow} onRemove={id => onChange({ ...value, rows: sortProductionRows(value.rows.filter(item => item.id !== id)) })} />}
       <div className="checklist-footer"><button className="secondary" type="button" onClick={() => { if (window.confirm("Remover o checklist desta anotação?")) onChange(null); }}>Remover checklist</button></div>
       {typeof document !== "undefined" && createPortal(<div ref={printRoot} className="production-print-root" style={theme} aria-hidden="true"><ProductionSheets checklist={value} photoData={productPhoto} /></div>, document.body)}
     </>}
@@ -130,7 +135,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
       <header><h2 id={modalId}>Avisos da lista</h2><button type="button" onClick={() => setModal(null)} aria-label="Fechar"><X size={20} /></button></header>
       <ul className="checklist-warning-list">{value.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
     </Modal>}
-    {modal === "piece" && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel="Masculina" close={() => setModal(null)} add={specification => {
+    {modal === "piece" && value && <AddPieceDialog models={[...new Set(rows.map(row => row.model))]} defaultModel="Masculina" defaultCollar={value.defaultCollar} close={() => setModal(null)} add={specification => {
       if (value.rows.length >= 500) return "O checklist já atingiu o limite de 500 peças.";
       onChange({ ...value, rows: sortProductionRows([...value.rows, { ...specification, id: makeId(), done: false }]) });
       setModal(null);
@@ -140,7 +145,7 @@ export default function ProductionChecklist({ value, title, source, photoData, l
 }
 
 
-function AddPieceDialog({ models, defaultModel, close, add }: { models: string[]; defaultModel: string; close: () => void; add: (specification: Pick<ProductionRow, "model" | "size" | "name">) => string | void }) {
+function AddPieceDialog({ models, defaultModel, defaultCollar, close, add }: { models: string[]; defaultModel: string; defaultCollar?: ProductionCollar; close: () => void; add: (specification: Pick<ProductionRow, "model" | "size" | "name" | "collar">) => string | void }) {
   const [unnamed, setUnnamed] = useState(false);
   const [error, setError] = useState("");
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -150,7 +155,7 @@ function AddPieceDialog({ models, defaultModel, close, add }: { models: string[]
     const size = String(form.get("size") ?? "").trim();
     const name = unnamed ? "Sem nome" : String(form.get("name") ?? "").trim();
     if (!model || !size || !name) return setError("Preencha o modelo, o tamanho e o nome, ou marque a opção de peça sem nome.");
-    setError(add({ model, size, name }) || "");
+    setError(add({ model, size, name, collar: productionCollar(form.get("collar")) }) || "");
   };
   return <Modal titleId="add-piece-title" busy={false} close={close}>
     <header><h2 id="add-piece-title">Adicionar peça</h2><button type="button" onClick={close} aria-label="Fechar especificações da peça"><X size={20} /></button></header>
@@ -158,6 +163,11 @@ function AddPieceDialog({ models, defaultModel, close, add }: { models: string[]
       <label>Modelo<input name="model" list="checklist-model-options" defaultValue={defaultModel} required maxLength={80} data-initial-focus placeholder="Ex.: Masculina, feminina ou infantil" /></label>
       <datalist id="checklist-model-options">{[...new Set([...models, "Masculina", "Feminina", "Infantil", "Unissex"])].map(model => <option key={model} value={model} />)}</datalist>
       <label>Tamanho<input name="size" list="checklist-size-options" required maxLength={40} placeholder="Ex.: P, M, G, 10 anos ou sob medida" /></label>
+      <label>Gola<select name="collar" defaultValue="">
+        <option value="">{defaultCollar ? `Usar padrão · ${productionCollarLabels[defaultCollar]}` : "Sem indicação"}</option>
+        <option value="polo">Gola polo</option>
+        <option value="common">Gola normal</option>
+      </select></label>
       <datalist id="checklist-size-options">{["PP", "P", "M", "G", "GG", "XGG", "G1", "G2", "Sob medida"].map(size => <option key={size} value={size} />)}</datalist>
       <label>Nome na peça<input name="name" required={!unnamed} disabled={unnamed} maxLength={160} placeholder={unnamed ? "Sem nome" : "Digite o nome que será estampado"} /></label>
       <label className="checklist-entry-unnamed"><input type="checkbox" checked={unnamed} onChange={event => setUnnamed(event.target.checked)} /> Peça sem nome</label>

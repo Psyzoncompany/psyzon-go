@@ -8,6 +8,7 @@ import { OrderKindPicker, SpecialOrderFields } from "./OrderKindFields";
 import { readSpecialOrder } from "./special-order";
 import { orderStages, specialOrderLabels, type SpecialOrderKind } from "./order-model";
 import OrderPricingFields from "./OrderPricingFields";
+import Modal from "./Modal";
 import { readShirtMix, poloPieces, shirtOrderPrice, suggestedShirtPrice, validateShirtOrderPrice } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
 import type { BillInput } from "./FinanceWorkspace";
@@ -487,6 +488,7 @@ export default function HomePage() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (document.querySelector('#create-balance-title, [aria-labelledby="create-title"][aria-busy="true"]')) return;
       if (target?.matches("input, textarea, select") || target?.isContentEditable) {
         if (event.key === "Escape") {
           setModal(null);
@@ -1005,7 +1007,7 @@ export default function HomePage() {
     await runTransaction(getFirestore(getApps()[0]),async transaction=>{const ref=userDocument(uid,"balanceEntries","opening");const existing=await transaction.get(ref);if(existing.exists())throw new Error("O saldo inicial já foi registrado.");transaction.set(ref,balanceMovement(amount,"Saldo inicial"));});
   };
 
-  const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
+  const submitCreate = async (event: FormEvent<HTMLFormElement>, chooseBalance: (amount: number) => Promise<boolean | null>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const kind = modal;
@@ -1053,6 +1055,8 @@ export default function HomePage() {
           nextOrder.paid > nextOrder.total
         )
           throw new Error("O recebido excede o total do pedido.");
+        const includeBalance = nextOrder.paid > 0 ? await chooseBalance(nextOrder.paid) : false;
+        if (includeBalance === null) return;
         const orderReference = doc(userCollection(uid, "orders"));
         const orderKey = orderReference.id;
         const customerKey =
@@ -1085,7 +1089,7 @@ export default function HomePage() {
           { merge: true },
         );
         if (nextOrder.paid > 0) {
-          if(window.confirm("Adicionar "+displayMoney(nextOrder.paid)+" ao saldo da empresa?")) batch.set(doc(userCollection(uid,"balanceEntries")),balanceMovement(nextOrder.paid,"Recebimento · "+nextOrder.customer));
+          if (includeBalance) batch.set(doc(userCollection(uid, "balanceEntries")), balanceMovement(nextOrder.paid, "Recebimento · " + nextOrder.customer));
           batch.set(doc(userCollection(uid, "transactions")), {
             description: `Entrada · ${nextOrder.customer}`,
             amount: nextOrder.paid,
@@ -2136,23 +2140,43 @@ function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {
   return <label className="full">DTF<select name="dtfStatus" aria-label="DTF" defaultValue={value}>{Object.entries(orderDtfStatus).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label>;
 }
 
-function CreateModalV2({ customers, kind, setKind, close, onSubmit }: { customers: Customer[]; kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void> }) {
+function CreateModalV2({ customers, kind, setKind, close, onSubmit }: { customers: Customer[]; kind: CreateKind; setKind: (kind: CreateKind) => void; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, chooseBalance: (amount: number) => Promise<boolean | null>) => Promise<void> }) {
   const [photoBusy, setPhotoBusy] = useState(false);
   const saving = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [balanceChoice, setBalanceChoice] = useState<{ amount: number; resolve: (choice: boolean | null) => void }>();
+  const saveButton = useRef<HTMLButtonElement>(null);
   const dismiss = () => { if (!saving.current) close(); };
+  const finishChoice = (choice: boolean | null) => {
+    balanceChoice?.resolve(choice);
+    setBalanceChoice(undefined);
+    if (choice === null) requestAnimationFrame(() => saveButton.current?.focus());
+  };
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
-    try { await onSubmit(event); } finally { saving.current = false; setBusy(false); }
+    try {
+      await onSubmit(event, amount => new Promise(resolve => setBalanceChoice({ amount, resolve })));
+    } finally { saving.current = false; setBusy(false); }
   };
   const [orderKind, setOrderKind] = useState<SpecialOrderKind>();
   const special = kind === "pedido" ? orderKind : undefined;
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && dismiss()}><aside className="modal" role="dialog" aria-modal="true" aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={dismiss} disabled={busy} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={submit} aria-busy={busy}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} list="order-customers" /></label><datalist id="order-customers">{customers.map(customer => <option key={customer.id} value={customer.name} />)}</datalist><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label>{kind === "pedido" && <OrderKindPicker kind={special} change={setOrderKind} />}
+  return <><div className="modal-backdrop" inert={Boolean(balanceChoice)} onMouseDown={(event) => event.target === event.currentTarget && dismiss()}><aside className="modal" role="dialog" aria-modal="true" aria-busy={busy} aria-labelledby="create-title"><header><h2 id="create-title">{kind === "orcamento" ? "Novo orçamento" : kind === "pedido" ? "Novo pedido" : "Novo cliente"}</h2><button onClick={dismiss} disabled={busy} aria-label="Fechar"><X size={20} /></button></header><div className="create-tabs"><button className={kind === "pedido" ? "active" : ""} disabled={busy} onClick={() => setKind("pedido")}>Pedido</button><button className={kind === "orcamento" ? "active" : ""} disabled={busy} onClick={() => setKind("orcamento")}>Orçamento</button><button className={kind === "cliente" ? "active" : ""} disabled={busy} onClick={() => setKind("cliente")}>Cliente</button></div><form key={kind} onSubmit={submit} aria-busy={busy}>{kind !== "cliente" ? <><label className="full">Cliente<input name="customer" required autoFocus maxLength={120} list="order-customers" /></label><datalist id="order-customers">{customers.map(customer => <option key={customer.id} value={customer.name} />)}</datalist><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label>{kind === "pedido" && <OrderKindPicker kind={special} change={setOrderKind} />}
   {special ? <><input type="hidden" name="orderKind" value={special} /><SpecialOrderFields key={special} kind={special} defaultDeadline={isoOffset(7)} /></> : <>
-  <label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /></>}{special !== "collection" && <OrderPhotoField onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={dismiss} disabled={busy}>Cancelar</button><button type="submit" className="primary" disabled={photoBusy || busy}><Check size={17} /> {busy ? "Salvando…" : "Salvar"}</button></footer></form></aside></div>;
+  <label className="full">Produto<input name="product" required maxLength={160} /></label><OrderPricingFields /><div className="form-row"><label>Prazo<input name="dueDate" type="date" defaultValue={isoOffset(7)} required /></label>{kind !== "orcamento" && <label>Valor recebido<input name="paid" type="number" min="0" step="0.01" defaultValue="0" /></label>}</div><OrderDtfField /></>}{special !== "collection" && <OrderPhotoField onBusyChange={setPhotoBusy} />}<label className="full">Observação<textarea name="notes" rows={3} /></label></> : <><label className="full">Nome<input name="name" required autoFocus maxLength={120} /></label><label className="full">WhatsApp<input name="phone" inputMode="tel" maxLength={40} /></label><label className="full">Empresa (opcional)<input name="company" maxLength={160} /></label></>}<footer><button type="button" className="secondary" onClick={dismiss} disabled={busy}>Cancelar</button><button ref={saveButton} type="submit" className="primary" disabled={photoBusy || busy}><Check size={17} /> {busy ? "Salvando…" : "Salvar"}</button></footer></form></aside></div>
+  {balanceChoice && <Modal titleId="create-balance-title" compact busy={false} close={() => finishChoice(null)}>
+    <header><h2 id="create-balance-title">Adicionar ao saldo da empresa?</h2><button type="button" aria-label="Voltar ao pedido" onClick={() => finishChoice(null)}><X size={18} /></button></header>
+    <form onSubmit={event => { event.preventDefault(); finishChoice(true); }}>
+      <p className="form-help">Valor recebido · <strong>{money.format(balanceChoice.amount)}</strong></p>
+      <footer className="create-balance-actions">
+        <button className="secondary" type="button" onClick={() => finishChoice(false)}>Salvar sem somar</button>
+        <button className="primary" type="submit">Adicionar ao saldo</button>
+      </footer>
+    </form>
+  </Modal>}
+  </>;
 }
 
 function OrderEditModal({ order, close, onSubmit, busy=false }: { busy?: boolean; order: Order; close: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

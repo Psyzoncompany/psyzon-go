@@ -1350,6 +1350,7 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 .compact-modal input { font-size: 16px; letter-spacing: .18em; }
 .compact-modal .form-error { margin: 0; }
 .compact-modal form footer { margin: 0; padding: 0; border: 0; }
+.create-balance-actions { flex-wrap: wrap; }
 .order-photo-field { padding: 12px; border: 1px dashed var(--border); border-radius: 10px; }
 .order-photo-field label > span { display: flex; align-items: center; gap: 6px; color: var(--text); }
 .order-photo-field input[type="file"] { height: auto; padding: 8px; }

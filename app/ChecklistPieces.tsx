@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import type { ProductionRow } from "./production-checklist";
+import { productionCollarLabels, type ProductionRow } from "./production-checklist";
 
 export default function ChecklistPieces({ rows, onUpdate, onRemove }: {
   rows: ProductionRow[];
@@ -29,7 +29,7 @@ export default function ChecklistPieces({ rows, onUpdate, onRemove }: {
           const number = column * split + index + 1;
           return <tr key={row.id} className={row.done ? "done" : ""}>
             <td><label className="checklist-row-check"><input type="checkbox" checked={row.done} onChange={event => onUpdate(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${number}: ${row.name}`} /></label></td>
-            <td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${number}`} onChange={event => onUpdate(row.id, { model: event.target.value })} /></td>
+            <td><input value={row.model} maxLength={80} aria-label={`Modelo da peça ${number}`} onChange={event => onUpdate(row.id, { model: event.target.value })} />{row.collar && <small className="checklist-collar">{productionCollarLabels[row.collar]}</small>}</td>
             <td><input value={row.size} maxLength={40} aria-label={`Tamanho da peça ${number}`} onChange={event => onUpdate(row.id, { size: event.target.value })} /></td>
             <td><input value={row.name} maxLength={160} aria-label={`Nome da peça ${number}`} onChange={event => onUpdate(row.id, { name: event.target.value })} /></td>
             <td><button type="button" aria-label={`Excluir peça ${number}`} onClick={() => onRemove(row.id)}><Trash2 size={14} /></button></td>

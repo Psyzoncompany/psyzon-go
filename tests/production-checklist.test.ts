@@ -190,6 +190,62 @@ function candidate(output: unknown, family: "groq" | "deepseek" = "groq"): Provi
   return { id: family, family, label: family, provider: { model: "test-model", create: async (_input, _instructions, tools) => { assert.deepEqual(tools, []); return { id: "test", status: "completed", functionCalls: [], outputText: JSON.stringify(output), usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }; }, continue: async () => { throw new Error("Unexpected continuation"); } } };
 }
 
+test("a pasted budget merges numbered sections, preserves explicit collars and excludes summaries", async () => {
+  const source = `# PSYZON — ORÇAMENTO DE CAMISAS
+
+**VALORES**
+- Camisa padrão: R$ 60,00
+- Camisa gola normal: R$ 45,00
+- Camisa polo: R$ 60,00 (considerado no cálculo)
+
+### LISTA ORIGINAL — 10 CAMISAS
+1. Vitória Mello — P
+2. Mayara Rebolsa — G
+3. Mikaele — G
+4. Diego Chelles — G1
+5. Lorrana Silva — P
+6. Maika Silva — M
+7. Ricardo Brito — M
+8. Francy — P
+9. Frores — P
+10. Emily — P
+**Subtotal: 10 × R$ 60,00 = R$ 600,00**
+
+### CAMISAS ADICIONADAS — 4 UNIDADES
+11. Marcos Precheka — G — R$ 60,00
+12. Roberta Melo — G — Gola normal — R$ 45,00
+13. Rafik — GG — Polo — R$ 60,00
+14. Renato Melo — G — Polo — R$ 60,00
+**Subtotal das adicionais: R$ 225,00**
+
+### RESUMO POR TAMANHO
+- P: 5 unidades
+- M: 2 unidades
+- G: 5 unidades
+- GG: 1 unidade
+- G1: 1 unidade
+**TOTAL: 14 CAMISAS**
+
+### RESUMO FINANCEIRO
+- Lista original: R$ 600,00
+- Camisas adicionais: R$ 225,00
+**VALOR TOTAL DO PEDIDO: R$ 825,00**`;
+  const checklist = parseProductionOrder(source);
+  assert.equal(checklist.rows.length, 14);
+  assert.deepEqual(productionSummary(checklist.rows).map(({ size, quantity }) => [size, quantity]), [["P", 5], ["M", 2], ["G", 5], ["GG", 1], ["G1", 1]]);
+  assert.equal(checklist.notes, "");
+  assert.deepEqual(checklist.warnings, []);
+  assert.ok(checklist.rows.every(row => row.model === "Masculina"));
+  const collars = Object.fromEntries(checklist.rows.filter(row => row.collar).map(row => [row.name, row.collar]));
+  assert.deepEqual(collars, { "Roberta Melo": "common", "Rafik": "polo", "Renato Melo": "polo" });
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  assert.match(html, /Roberta Melo<small> · Gola normal/);
+  assert.match(html, /Rafik<small> · Gola polo/);
+  assert.doesNotMatch(html, /R\$|RESUMO FINANCEIRO/);
+  const ai = await organizeProductionWithAI(source, [candidate(checklist)]);
+  assert.deepEqual(Object.fromEntries(ai.rows.filter(row => row.collar).map(row => [row.name, row.collar])), collars);
+});
+
 test("AI output is validated and invented names trigger fallback", async () => {
   const good = parseProductionOrder(sampleProductionOrder);
   const bad = { ...good, rows: [{ ...good.rows[0], name: "Nome inventado" }] };

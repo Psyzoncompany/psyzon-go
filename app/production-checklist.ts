@@ -1,9 +1,44 @@
 import { expandProductionShorthand } from "./production-shorthand";
-export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean };
+export const productionCollarLabels = { common: "Gola normal", polo: "Gola polo" } as const;
+type ProductionCollar = keyof typeof productionCollarLabels;
+export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean; collar?: ProductionCollar };
 export type ProductionChecklist = { client: string; deadline: string; notes: string; rows: ProductionRow[]; warnings: string[] };
 
 const sizeCollator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 const standardSizes = ["PP", "P", "M", "G", "GG", "XGG"];
+const sizeHeadingPattern = /^(?:tamanho\s+)?(XGG|GG|G\d+|PP|P|M|G|\d+\s*anos?|sob medida|[úu]nico)\s*(?:\((\d+)\)|[-–—|:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i;
+const productionNotesPattern = /^(observa[çc][õo]es?|aten[çc][ãa]o(?: na produ[çc][ãa]o)?|cor(?: d[ao]s? [^:]+)?|malha|tecido|estampa)\s*:/i;
+const normalizeProductionText = (line: string) => line.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+const cleanProductionLine = (line: string) => line.trim().replace(/^#{1,6}\s+/, "").replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "").trim();
+
+export function productionInputText(text: string) {
+  let section: "prices" | "summary" | undefined;
+  return text.split(/\r?\n/).map(cleanProductionLine).filter(line => {
+    const key = normalizeProductionText(line);
+    if (/^valores\s*:?$/.test(key)) { section = "prices"; return false; }
+    if (/^resumo (?:por tamanho|financeiro)\s*:?$/.test(key)) { section = "summary"; return false; }
+    if (/^(lista (?:original|adicional)|(?:camisas|camisetas|pecas) (?:adicionadas|adicionais))(?:\s*[-–—:]\s*\d+\s*(?:camis(?:a|eta)s?|pecas?|unidades?|un\.?))?\s*:?$/.test(key)) {
+      section = undefined;
+      return false;
+    }
+    if (/^(?:psyzon\s*[-–—]\s*)?orcamento (?:de|para) camis(?:a|eta)s\s*:?$/.test(key) ||
+        /^(?:subtotal[^:]*|(?:valor )?total(?: geral| do pedido)?|lista original|camisas adicionais)\s*:/.test(key) ||
+        /^camis(?:a|eta) [^:]+:\s*r\s*\$/.test(key)) return false;
+    if (/^(?:observacoes?|atencao(?: na producao)?)\s*:/.test(key) || (section === "prices" && namedProductionPiece(line))) section = undefined;
+    return !section || /^(cliente|pedido|prazo|entrega)\s*:/i.test(line);
+  }).join("\n");
+}
+
+function namedProductionPiece(line: string) {
+  const [name, size, ...details] = line.replace(/^\d+[.)]\s*/, "").split(/\s*[–—]\s*|\s+[-|]\s+/).map(part => part.trim());
+  if (!name || !size || !/\p{L}/u.test(name)) return;
+  const match = size.match(sizeHeadingPattern);
+  if (!match || match[2] || match[3]) return;
+  const collar = details.map(normalizeProductionText).find(part => /^(?:polo|gola (?:polo|normal|comum))$/.test(part));
+  const model = details.find(part => /^(?:masculin[ao]s?|feminin[ao]s?|infantil|unissex|baby\s*look)$/i.test(part));
+  const collarType: ProductionCollar | undefined = collar ? (collar.endsWith("polo") ? "polo" : "common") : undefined;
+  return { name, size: match[1].toLocaleUpperCase("pt-BR"), model, collar: collarType };
+}
 
 function sizeOrder(size: string): [number, number, string] {
   const label = size.trim().toLocaleUpperCase("pt-BR").replace(/^TAMANHO\s+/, "").replace(/\s+/g, " ");
@@ -62,16 +97,23 @@ export function parseProductionOrder(text: string): ProductionChecklist {
   let model = "Masculina"; let size = "A confirmar"; let client = ""; let deadline = "";
   const expected: Array<{ label: string; count: number; start: number; end?: number; level: "model" | "size" }> = [];
   const close = (level: "model" | "size") => expected.filter((item) => item.end === undefined && (level === "model" || item.level === "size")).forEach((item) => { item.end = rows.length; });
-  for (const raw of expandProductionShorthand(text).split(/\r?\n/)) {
-    const line = raw.trim().replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "");
+  for (const raw of expandProductionShorthand(productionInputText(text)).split(/\r?\n/)) {
+    const line = cleanProductionLine(raw);
     if (!line) continue;
     if (/^(cliente|pedido)\s*:/i.test(line)) { client = line.split(":").slice(1).join(":").trim(); continue; }
     if (/^(prazo|entrega)\s*:/i.test(line)) { const value = line.split(":").slice(1).join(":").trim(); if (/^\d{4}-\d{2}-\d{2}$/.test(value)) deadline = value; else notes.push(line); continue; }
     const heading = line.replace(/:\s*$/, "").match(/^(masculin[ao]s?|feminin[ao]s?|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
     if (heading) { close("model"); model = heading[1]; size = "A confirmar"; if (heading[2]) expected.push({ label: model, count: Number(heading[2]), start: rows.length, level: "model" }); continue; }
-    const sizeHeading = line.match(/^(?:tamanho\s+)?(XGG|GG|G\d|PP|P|M|G|\d+\s*anos?|sob medida|único)\s*(?:\((\d+)\)|[-–—|:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
+    const sizeHeading = line.match(sizeHeadingPattern);
     if (sizeHeading) { close("size"); size = sizeHeading[1].toLocaleUpperCase("pt-BR"); const count = sizeHeading[2] ?? sizeHeading[3]; if (count) expected.push({ label: `${model} / ${size}`, count: Number(count), start: rows.length, level: "size" }); continue; }
-    if (/^(observa[çc][õo]es?|aten[çc][ãa]o|cor(?: d[ao]s? [^:]+)?|malha|tecido|estampa)\s*:/i.test(line) || size === "A confirmar") { notes.push(line); continue; }
+    if (productionNotesPattern.test(line)) { notes.push(line); continue; }
+    const piece = namedProductionPiece(line);
+    if (piece) {
+      if (rows.length >= 500) throw new Error("A lista deve ter entre 1 e 500 peças.");
+      rows.push({ id: `piece-${rows.length + 1}`, ...piece, model: piece.model ?? model, done: false });
+      continue;
+    }
+    if (size === "A confirmar") { notes.push(line); continue; }
     const unnamed = line.match(/^(\d+)\s*(?:unidades?|un\.?)?\s*sem nome$/i);
     const quantity = unnamed ? Number(unnamed[1]) : 1;
     if (!quantity || rows.length + quantity > 500) throw new Error("A lista deve ter entre 1 e 500 peças.");
@@ -88,7 +130,7 @@ export function parseProductionOrder(text: string): ProductionChecklist {
 
 // Model selection comes from the supplied list, never from a person's name.
 export function applyProductionSourceModels(checklist: ProductionChecklist, text: string): ProductionChecklist {
-  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const normalize = normalizeProductionText;
   let currentModel = "Masculina";
   const lines = text.split(/\r?\n/).map(raw => {
     const line = raw.trim().replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "");
@@ -123,7 +165,8 @@ export function applyProductionSourceModels(checklist: ProductionChecklist, text
     const customModel = explicitModel && !/^(geral|a confirmar)$/.test(explicitModel) && details && containsName(details, explicitModel) ? row.model : undefined;
     const specification = details?.match(/\b(masculin[ao]s?|feminin[ao]s?|infantil|unissex|baby\s*look)\b/i)?.[1];
     const model = customModel || specification || source?.model || "Masculina";
-    return { ...row, model: /^(geral|a confirmar)?$/i.test(model) ? "Masculina" : model };
+    const collar = source && namedProductionPiece(source.line)?.collar;
+    return { ...row, collar, model: /^(geral|a confirmar)?$/i.test(model) ? "Masculina" : model };
   });
   return { ...checklist, rows: sortProductionRows(rows) };
 }
@@ -133,7 +176,7 @@ export function validateProductionChecklist(value: unknown): ProductionChecklist
   const data = value as Record<string, unknown>;
   if (!Array.isArray(data.rows) || data.rows.length < 1 || data.rows.length > 500) throw new Error("A lista deve ter entre 1 e 500 peças.");
   const string = (input: unknown, max: number) => { if (typeof input !== "string" || input.length > max) throw new Error("O checklist contém um campo inválido."); return input.trim(); };
-  return { client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: sortProductionRows(data.rows.map((value, index) => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true }; })) };
+  return { client: string(data.client ?? "", 120), deadline: string(data.deadline ?? "", 10), notes: string(data.notes ?? "", 4000), warnings: Array.isArray(data.warnings) ? data.warnings.slice(0, 30).map((warning) => string(warning, 300)) : [], rows: sortProductionRows(data.rows.map((value, index): ProductionRow => { if (!value || typeof value !== "object") throw new Error("Peça inválida."); const row = value as Record<string, unknown>; return { id: `piece-${index + 1}`, model: string(row.model, 80), size: string(row.size, 40), name: string(row.name, 160) || "Sem nome", done: row.done === true, ...(row.collar === "common" || row.collar === "polo" ? { collar: row.collar } : {}) }; })) };
 }
 
 export function productionSummary(rows: ProductionRow[]) {
@@ -148,7 +191,8 @@ export function productionPages(rows: ProductionRow[], continuationCapacity = 15
   let page = 0; let column = 0; let used = 0;
   for (const row of ordered) {
     let previous = pages[page][column].at(-1);
-    const weight = () => 1 + Math.max(0, Math.ceil(row.name.length / 22) - 1) * .6 + (previous?.model !== row.model ? 1.5 : 0) + (previous?.model !== row.model || previous?.size !== row.size ? 1.2 : 0);
+    const labelLength = row.name.length + (row.collar ? productionCollarLabels[row.collar].length + 3 : 0);
+    const weight = () => 1 + Math.max(0, Math.ceil(labelLength / 22) - 1) * .6 + (previous?.model !== row.model ? 1.5 : 0) + (previous?.model !== row.model || previous?.size !== row.size ? 1.2 : 0);
     if (used + weight() > (page === 0 ? 15 : continuationCapacity) && pages[page][column].length) {
       if (column === 0) column = 1;
       else { page += 1; column = 0; pages.push([[], []]); }

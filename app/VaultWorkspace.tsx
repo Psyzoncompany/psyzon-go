@@ -99,8 +99,8 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
     const password = String(fields.get("password") ?? "");
     const source = stored ?? backup;
     void run(async ticket => {
-      if (!source && (password.trim().length < 16 || password !== fields.get("confirmation"))) {
-        throw new Error("Use uma frase secreta com pelo menos 16 caracteres e confira a confirmação.");
+      if (!source && (password.trim().length < 6 || password !== fields.get("confirmation"))) {
+        throw new Error("Use pelo menos 6 caracteres e confira a confirmação.");
       }
       const payload = source ? parseVault(source) : undefined;
       const salt = payload?.salt ?? newVaultSalt();
@@ -158,10 +158,10 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
     {notice && <p role="alert" className="form-error">{notice}</p>}
     {!session ? <div className="panel vault-access">
       <h2>{initializing ? "Criar cofre" : backup ? "Restaurar backup" : "Desbloquear cofre"}</h2>
-      <p>{initializing ? "Use uma frase secreta exclusiva, com pelo menos 16 caracteres. O cofre fica neste navegador e a senha não pode ser recuperada." : "Digite a senha principal do cofre."}</p>
+      <p>Dica da senha: <strong>Cachorro</strong></p>
       {stored !== undefined && <form key={lockEpoch} onSubmit={unlock}>
-        <label>Senha principal<input type="password" name="password" autoComplete={initializing ? "new-password" : "current-password"} required minLength={initializing ? 16 : undefined} maxLength={512} /></label>
-        {initializing && <label>Confirmar senha<input type="password" name="confirmation" autoComplete="new-password" required minLength={16} maxLength={512} /></label>}
+        <label>Senha principal<input type="password" name="password" autoComplete={initializing ? "new-password" : "current-password"} required minLength={initializing ? 6 : undefined} maxLength={512} /></label>
+        {initializing && <label>Confirmar senha<input type="password" name="confirmation" autoComplete="new-password" required minLength={6} maxLength={512} /></label>}
         <button type="submit" className="primary" disabled={busy}>{busy ? "Aguarde…" : initializing ? "Criar cofre" : backup ? "Restaurar cofre" : "Desbloquear"}</button>
       </form>}
       {stored === null && <div className="vault-actions">

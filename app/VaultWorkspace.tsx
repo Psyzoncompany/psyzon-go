@@ -27,6 +27,8 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
   const [revealed, setRevealed] = useState("");
   const [editor, setEditor] = useState<VaultEntry | "new">();
   const [changingPassword, setChangingPassword] = useState(false);
+  const [startingNewVault, setStartingNewVault] = useState(false);
+  const [previousBackup, setPreviousBackup] = useState<string>();
 
   function lock() {
     revision.current++;
@@ -39,6 +41,7 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     setQuery("");
     setNotice("");
     setChangingPassword(false);
+    setStartingNewVault(false);
   }
 
   const refreshFromOtherTab = useEffectEvent(async (value: string | null) => {
@@ -62,7 +65,12 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
 
   useEffect(() => {
     function refresh() {
-      try { setStored(localStorage.getItem(storageKey)); }
+      try {
+        setStored(localStorage.getItem(storageKey));
+        const archives = Object.keys(localStorage).filter(key => key.startsWith(`${storageKey}:archive:`)).sort();
+        const latest = archives.at(-1);
+        if (latest) setPreviousBackup(localStorage.getItem(latest) ?? undefined);
+      }
       catch { setNotice("O navegador bloqueou o armazenamento local."); }
     }
     function onStorage(event: StorageEvent) {
@@ -96,10 +104,14 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     setChangingPassword(false);
   }, [active]);
 
-  function persist(expected: string | null, next: string, ticket: number) {
+  function persist(expected: string | null, next: string, ticket: number, archivePrevious = false) {
     const write = () => {
       if (revision.current !== ticket) throw new Error("O cofre foi bloqueado.");
       if (localStorage.getItem(storageKey) !== expected) throw new Error("O cofre mudou em outra aba. Abra novamente.");
+      if (archivePrevious && expected) {
+        localStorage.setItem(`${storageKey}:archive:${Date.now()}:${crypto.randomUUID()}`, expected);
+        setPreviousBackup(expected);
+      }
       localStorage.setItem(storageKey, next);
       setStored(next);
     };
@@ -125,7 +137,7 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     if (stored === undefined) return;
     setShowPassword(false);
     const password = String(fields.get("password") ?? "");
-    const source = stored ?? backup;
+    const source = startingNewVault ? undefined : stored ?? backup;
     void run(async ticket => {
       if (!source && password.trim().length < 6) {
         throw new Error("Use pelo menos 6 caracteres.");
@@ -144,9 +156,10 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
         }
       }
       const serialized = source ?? await encryptVault(entries, key, salt);
-      if (stored === null) await persist(null, serialized, ticket);
+      if (stored === null || startingNewVault) await persist(stored, serialized, ticket, startingNewVault);
       if (revision.current !== ticket) return;
       setBackup(undefined);
+      setStartingNewVault(false);
       setSession({ key, salt, entries, serialized });
     });
   }
@@ -191,19 +204,18 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     saveEntries(editor === "new" ? [...session.entries, entry] : session.entries.map(item => item.id === entry.id ? entry : item));
   }
 
-  function exportBackup() {
-    if (!session) return;
-    const url = URL.createObjectURL(new Blob([session.serialized], { type: "application/json" }));
+  function exportBackup(serialized: string, filename = "psyzon-cofre-backup.json") {
+    const url = URL.createObjectURL(new Blob([serialized], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "psyzon-cofre-backup.json";
+    link.download = filename;
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   if (!active) return null;
 
-  const initializing = stored === null && !backup;
+  const initializing = startingNewVault || (stored === null && !backup);
   const category = page === "Configurações" ? "Todas" : page;
   const entries = session ? searchVault(session.entries, query, category) : [];
   const current = editor && editor !== "new" ? editor : undefined;
@@ -213,8 +225,9 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     </header>
     {notice && !editor && !changingPassword && <p role="alert" className="form-error">{notice}</p>}
     {!session ? <div className="panel vault-access">
-      <h2>{initializing ? "Criar cofre" : backup ? "Restaurar backup" : "Desbloquear cofre"}</h2>
+      <h2>{startingNewVault ? "Definir nova senha" : initializing ? "Criar cofre" : backup ? "Restaurar backup" : "Desbloquear cofre"}</h2>
       <p>Dica da senha: <strong>Cachorro</strong></p>
+      {startingNewVault && <p>O novo cofre começa vazio. Os registros anteriores ficam em uma cópia criptografada, que ainda usa a senha antiga.</p>}
       {stored !== undefined && <form key={lockEpoch} onSubmit={unlock}>
         <div className="vault-password"><label>Senha principal<input type={showPassword ? "text" : "password"} name="password" autoCapitalize="none" spellCheck={false} autoCorrect="off" autoComplete={initializing ? "new-password" : "current-password"} required minLength={initializing ? 6 : undefined} maxLength={512}
           aria-describedby={capsLock ? "vault-caps-lock" : undefined}
@@ -222,8 +235,12 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
           onKeyUp={event => setCapsLock(event.getModifierState("CapsLock"))}
           onBlur={() => setCapsLock(false)} /></label><button type="button" className="secondary" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? "Ocultar senha principal" : "Mostrar senha principal"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>
         <span id="vault-caps-lock" role="status" hidden={!capsLock}>Caps Lock ativado</span>
-        <button type="submit" className="primary" disabled={busy}>{busy ? "Aguarde…" : initializing ? "Criar cofre" : backup ? "Restaurar cofre" : "Desbloquear"}</button>
+        <button type="submit" className="primary" disabled={busy}>{busy ? "Aguarde…" : startingNewVault ? "Salvar nova senha" : initializing ? "Criar cofre" : backup ? "Restaurar cofre" : "Desbloquear"}</button>
       </form>}
+      {stored && <div className="vault-actions">
+        <button type="button" className="secondary" disabled={busy} onClick={() => { setNotice(""); setShowPassword(false); setLockEpoch(epoch => epoch + 1); setStartingNewVault(value => !value); }}>{startingNewVault ? "Cancelar" : "Esqueci a senha"}</button>
+        {startingNewVault && <button type="button" className="secondary" onClick={() => exportBackup(stored, "psyzon-cofre-anterior.json")}><Download size={16} /> Baixar cópia anterior</button>}
+      </div>}
       {stored === null && <div className="vault-actions">
         <input type="file" ref={inputFile} accept=".json,application/json" hidden onChange={event => {
           const file = event.target.files?.[0];
@@ -244,7 +261,8 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
         <h2>Segurança e backup</h2>
         <p>Os registros ficam criptografados neste navegador.</p>
         <div className="vault-actions">
-          <button type="button" className="secondary" onClick={exportBackup}><Download size={16} /> Baixar backup</button>
+          <button type="button" className="secondary" onClick={() => exportBackup(session.serialized)}><Download size={16} /> Baixar backup</button>
+          {previousBackup && <button type="button" className="secondary" onClick={() => exportBackup(previousBackup, "psyzon-cofre-anterior.json")}><Download size={16} /> Baixar cópia anterior</button>}
           <button type="button" className="secondary" onClick={() => { setNotice(""); setChangingPassword(true); }}><KeyRound size={16} /> Alterar senha</button>
         </div>
       </section> : <>

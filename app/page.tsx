@@ -103,6 +103,7 @@ import {
   EyeOff,
   History,
   Home,
+  KeyRound,
   LogOut,
   Moon,
 
@@ -171,6 +172,7 @@ const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
 const RestockWorkspace = dynamic(() => import("./notes/RestockWorkspace"), { ssr: false });
 const TasksWorkspace = dynamic(() => import("./notes/TasksWorkspace"), { ssr: false });
+const VaultWorkspace = dynamic(() => import("./VaultWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -257,12 +259,13 @@ const navItems: { id: View; label: string; icon: typeof Home }[] = [
   { id: "clientes", label: "Clientes", icon: UsersRound },
   { id: "financeiro", label: "Financeiro", icon: WalletCards },
   { id: "historico", label: "Histórico", icon: History },
+  { id: "cofre", label: "Cofre de senhas", icon: KeyRound },
   { id: "mais", label: "Configuração", icon: Settings },
 ];
 const navGroups = [
   { label: "Operação", items: navItems.filter((item) => ["inicio", "producao", "dtf", "notas", "clientes"].includes(item.id)) },
   { label: "Gestão", items: navItems.filter((item) => ["financeiro", "historico"].includes(item.id)) },
-  { label: "Conta", items: navItems.filter((item) => item.id === "mais") },
+  { label: "Conta", items: navItems.filter((item) => item.id === "cofre" || item.id === "mais") },
 ];
 
 export default function HomePage() {
@@ -546,7 +549,7 @@ export default function HomePage() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
-      if (document.querySelector('#create-balance-title, [aria-labelledby="create-title"][aria-busy="true"]')) return;
+      if (view === "cofre" || document.querySelector('[aria-labelledby="create-title"][aria-busy="true"]')) return;
       if (target?.matches("input, textarea, select") || target?.isContentEditable) {
         if (event.key === "Escape") {
           setModal(null);
@@ -566,7 +569,7 @@ export default function HomePage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setView]);
+  }, [setView, view]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -2165,6 +2168,7 @@ export default function HomePage() {
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
+          {view === "cofre" && <VaultWorkspace key={uid} uid={uid} />}
           {view === "ai" && <PSYZONAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
           {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables,...materialPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : bill?.category === "Materiais dos pedidos" ? "materiais" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "financeiro" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}

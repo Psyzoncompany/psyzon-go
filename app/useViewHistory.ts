@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "mais", "ai"] as const;
+export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "cofre", "mais", "ai"] as const;
 export type View = (typeof views)[number];
 
 export function viewFromHash(hash: string): View {
@@ -41,7 +41,7 @@ export default function useViewHistory() {
       updateLocation(next);
       if (scroll) window.scrollTo({ top: 0 });
     };
-    if (previous === next.view || !document.startViewTransition || matchMedia("(max-width: 760px)").matches ||
+    if (previous === next.view || previous === "cofre" || next.view === "cofre" || !document.startViewTransition || matchMedia("(max-width: 760px)").matches ||
         !document.querySelector(".main > .content") || document.hidden ||
         root.dataset.glassMotion !== "full" || !matchMedia("screen and (prefers-reduced-motion: no-preference)").matches) {
       apply();

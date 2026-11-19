@@ -1,0 +1,36 @@
+.vault-workspace { max-width: 1000px; margin-inline: auto; display: grid; gap: 16px; }
+.vault-heading, .vault-title, .vault-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vault-heading { justify-content: space-between; }
+.vault-title > span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--blue-soft); color: var(--blue); }
+.vault-title h1 { margin: 0; }
+.vault-workspace h2 { margin: 0; font-size: 1.15em; }
+.vault-access, .vault-toolbar, .vault-editor, .vault-empty { padding: 20px; }
+.vault-access { width: min(100%, 460px); }
+.vault-access p, .vault-entry small, .vault-empty { color: var(--muted); }
+.vault-access form, .vault-editor { display: grid; gap: 12px; }
+.vault-access form + .vault-actions { margin-top: 12px; }
+.vault-access form button { justify-self: start; }
+.vault-workspace label { display: grid; gap: 6px; min-width: 0; }
+.vault-workspace :is(input:not([type="file"]), select) { width: 100%; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-subtle); color: var(--text); font-size: 16px; }
+.vault-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, 175px) auto; gap: 10px; align-items: center; }
+.vault-toolbar .vault-search { position: relative; }
+.vault-search > svg { position: absolute; top: 13px; left: 12px; color: var(--muted); pointer-events: none; }
+.vault-toolbar .vault-search input { padding-left: 38px; }
+.vault-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vault-editor h2, .vault-editor .vault-actions { grid-column: 1 / -1; }
+.vault-list { margin: 0; padding: 0 20px; list-style: none; }
+.vault-list li { display: flex; justify-content: space-between; align-items: start; gap: 12px; padding: 14px 0; }
+.vault-list li + li { border-top: 1px solid var(--border); }
+.vault-entry { display: grid; min-width: 0; gap: 4px; overflow-wrap: anywhere; }
+.vault-entry output { white-space: pre-wrap; font-family: monospace; padding: 6px 8px; border-radius: 6px; background: var(--card-subtle); }
+.vault-list .vault-actions { flex-wrap: nowrap; }
+.vault-list .vault-actions button { min-width: 40px; min-height: 40px; padding: 6px; justify-content: center; }
+@media (max-width: 580px) {
+  .vault-access, .vault-toolbar, .vault-editor, .vault-empty { padding: 14px; }
+  .vault-toolbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .vault-search { grid-column: 1 / -1; }
+  .vault-editor { grid-template-columns: minmax(0, 1fr); }
+  .vault-list { padding: 0 12px; }
+  .vault-list .vault-actions { gap: 4px; }
+  .vault-list .vault-actions button { min-width: 44px; min-height: 44px; }
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Boxes, ChevronRight, History, Home, Layers, ListChecks, MoreHorizontal, NotebookPen, Printer, Settings, UsersRound, WalletCards, X } from "lucide-react";
+import { Sparkles, Boxes, ChevronRight, History, Home, KeyRound, Layers, ListChecks, MoreHorizontal, NotebookPen, Printer, Settings, UsersRound, WalletCards, X } from "lucide-react";
 import type { View } from "./useViewHistory";
 
 const tabs = [
@@ -17,6 +17,7 @@ const destinations = [
   { id: "historico", label: "Histórico", detail: "Movimentações da empresa", icon: History },
   { id: "materiais", label: "Materiais", detail: "Compras da produção", icon: Layers },
   { id: "afazeres", label: "Afazeres", detail: "Tarefas do dia a dia", icon: ListChecks },
+  { id: "cofre", label: "Cofre de senhas", detail: "Acesso protegido", icon: KeyRound },
   { id: "mais", label: "Configurações", detail: "Conta e preferências", icon: Settings },
 ] as const;
 

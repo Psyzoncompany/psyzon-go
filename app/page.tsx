@@ -12,6 +12,7 @@ import { acceptFirestoreWrite } from "./local-firestore-write";
 import { FinanceIntentConflict, financeConnectionFailure, queueFinanceIntent, readFinanceIntents, receiptOrderState, updateFinanceIntent, type FinanceIntent } from "./offline-finance";
 import { readShirtMix, poloPieces, shirtOrderPrice, suggestedShirtPrice, validateShirtOrderPrice } from "./order-pricing";
 import ValuesPrivacyDialog from "./ValuesPrivacyDialog";
+import VaultWorkspace from "./VaultWorkspace";
 import type { BillInput } from "./FinanceWorkspace";
 import { materialPurchaseBills } from "./notes/materials-model";
 import { forecastMaterial } from "./material-forecast";
@@ -172,7 +173,6 @@ const DtfWorkspace = dynamic(() => import("./DtfWorkspace"), { ssr: false });
 const HistoryWorkspace = dynamic(() => import("./HistoryWorkspace"), { ssr: false });
 const RestockWorkspace = dynamic(() => import("./notes/RestockWorkspace"), { ssr: false });
 const TasksWorkspace = dynamic(() => import("./notes/TasksWorkspace"), { ssr: false });
-const VaultWorkspace = dynamic(() => import("./VaultWorkspace"), { ssr: false });
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -2094,8 +2094,8 @@ export default function HomePage() {
   if (!isFirebaseConfigured) return <ConnectionErrorScreen message="Confira as variáveis NEXT_PUBLIC_FIREBASE_API_KEY, NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN, NEXT_PUBLIC_FIREBASE_PROJECT_ID e NEXT_PUBLIC_FIREBASE_APP_ID." />;
   if (!user) return <AuthScreenV2 error={authError} onSignIn={signInGoogle} />;
   const accountFirstName = user.displayName?.trim().split(/\s+/)[0];
-  if (!dataReady && !online) return <ConnectionErrorScreen message="Conecte-se uma vez para baixar os dados desta conta neste aparelho." />;
-  if (!dataReady || !interfaceAppearance.ready) return <StartupLoading firstName={accountFirstName} />;
+  if (view !== "cofre" && !dataReady && !online) return <ConnectionErrorScreen message="Conecte-se uma vez para baixar os dados desta conta neste aparelho." />;
+  if ((view !== "cofre" && !dataReady) || !interfaceAppearance.ready) return <StartupLoading firstName={accountFirstName} />;
 
   const userName = user.displayName || "Usuário PSYZON";
   const firstName = accountFirstName || "";
@@ -2168,7 +2168,7 @@ export default function HomePage() {
           {view === "clientes" && <CustomersWorkspace customers={visibleCustomers} displayMoney={displayMoney} onCreate={() => setModal("cliente")} onSave={saveCustomerValues} onDelete={deleteCustomer} dtfCount={customer => dtfLinks.filter(items => items.some(item => dtfForCustomer(item, customer))).length} openDtf={id => setView("dtf", id)} />}
           {view === "costureiras" && <SewingWorkspace orders={orders} ledger={sewingLedger} save={saveSewing} money={displayMoney} />}
 
-          {view === "cofre" && <VaultWorkspace key={uid} uid={uid} />}
+          <VaultWorkspace key={`vault-${uid}`} uid={uid} active={view === "cofre"} />
           {view === "ai" && <PSYZONAI getIdToken={getAiToken} onNavigate={target => setView(target === "pessoal" ? "financeiro" : target)} />}
           {view === "financeiro" && <FinanceWorkspace today={calendarDate} restock={[...stockPayables,...sewingPayables,...materialPayables]} openRestock={bill => setView(bill?.category === "Costura" ? "costureiras" : bill?.category === "Materiais dos pedidos" ? "materiais" : "reposicao")} bills={bills} transactions={transactions} customers={balances} currentMonth={calendarDate.slice(0, 7)} displayMoney={displayMoney} displayTotal={displayTotal} onSaveBill={saveBill} onSettleBill={payBill} onUndoPayment={undoBillPayment} onDeleteBill={deleteBill} onReceive={receiveCustomer} onRefund={customer => receiveCustomer(customer,true)} />}
           {view === "financeiro" && <CollectionAgenda orders={productionOrders} today={calendarDate} money={displayTotal} charged={markCharged} edit={setEditingOrder} />}

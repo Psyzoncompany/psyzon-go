@@ -372,6 +372,22 @@ test("monthly closing snapshots are owner-only and cannot be overwritten", async
   await assertSucceeds(deleteDoc(ref));
 });
 
+test("encrypted vault is private and rejects stale offline edits", async () => {
+  const path = "users/vault-owner/privateVault/main";
+  const owner = doc(environment.authenticatedContext("vault-owner").firestore(), path);
+  const stranger = doc(environment.authenticatedContext("someone-else").firestore(), path);
+  const first = "c4a5c2da-0ae1-4e72-8d7a-948e7adfc4c6";
+  const second = "becaa9d6-c348-48ac-a859-40c61d481520";
+  const third = "226dcf19-caa6-402f-8d82-819fb301dd47";
+  const value = { encrypted: "x".repeat(120), revision: first, previous: "", archiveId: "" };
+  await assertSucceeds(setDoc(owner, value));
+  await assertFails(getDoc(stranger));
+  await assertFails(updateDoc(stranger, { revision: second, previous: first }));
+  await assertSucceeds(updateDoc(owner, { revision: second, previous: first }));
+  await assertFails(updateDoc(owner, { revision: third, previous: first }));
+  await assertFails(updateDoc(owner, { revision: third, previous: second, password: "forbidden" }));
+});
+
 test("company balance ledger is private, immutable and supports signed movements", async () => {
   const db=environment.authenticatedContext("balance-owner").firestore();
   const ref=doc(db,"users/balance-owner/balanceEntries/payment");

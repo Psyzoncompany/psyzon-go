@@ -1,20 +1,33 @@
 "use client";
 
 import { Download, Eye, EyeOff, KeyRound, Lock, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react";
+import { getApp } from "firebase/app";
+import { doc, getFirestore, onSnapshot, runTransaction, updateDoc } from "firebase/firestore";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import Modal from "./Modal";
+import { acceptFirestoreWrite } from "./local-firestore-write";
 import { decryptVault, deriveVaultKey, encryptVault, maxVaultSize, newVaultSalt, parseVault, searchVault, vaultCategories, vaultKey, type VaultEntry } from "./vault-model";
 import "./vault.css";
 
 type Session = { key: CryptoKey; salt: string; serialized: string; entries: VaultEntry[] };
+type CloudVault = { encrypted: string; revision: string; previous: string; archiveId: string };
 const vaultPages = ["Todas", ...vaultCategories, "Configurações"] as const;
+const vaultDocument = (uid: string, id = "main") => doc(getFirestore(getApp()), "users", uid, "privateVault", id);
 
 export default function VaultWorkspace({ uid, active }: { uid: string; active: boolean }) {
   const storageKey = vaultKey(uid);
   const revision = useRef(0);
   const working = useRef(false);
   const inputFile = useRef<HTMLInputElement>(null);
+  const cloud = useRef<CloudVault | null | undefined>(undefined);
+  const ownWrite = useRef<string>(undefined);
+  const legacy = useRef<string | null>(null);
   const [stored, setStored] = useState<string | null>();
+  const [opened, setOpened] = useState(active);
+  const [synced, setSynced] = useState(false);
+  const [pendingSync, setPendingSync] = useState(false);
+  const [archiveId, setArchiveId] = useState("");
+  const [rejectedBackup, setRejectedBackup] = useState<string>();
   const [backup, setBackup] = useState<string>();
   const [session, setSession] = useState<Session>();
   const [lockEpoch, setLockEpoch] = useState(0);
@@ -64,24 +77,39 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
   });
 
   useEffect(() => {
-    function refresh() {
-      try {
-        setStored(localStorage.getItem(storageKey));
-        const archives = Object.keys(localStorage).filter(key => key.startsWith(`${storageKey}:archive:`)).sort();
-        const latest = archives.at(-1);
-        if (latest) setPreviousBackup(localStorage.getItem(latest) ?? undefined);
-      }
-      catch { setNotice("O navegador bloqueou o armazenamento local."); }
-    }
-    function onStorage(event: StorageEvent) {
-      if (event.key !== storageKey && event.key !== null) return;
-      if (event.storageArea !== localStorage) return;
-      void refreshFromOtherTab(event.newValue);
-    }
-    refresh();
-    window.addEventListener("storage", onStorage);
-    return () => { revision.current++; window.removeEventListener("storage", onStorage); };
-  }, [storageKey]);
+    if (active) setOpened(true);
+  }, [active]);
+
+  useEffect(() => {
+    if (!opened) return;
+    try {
+      legacy.current = localStorage.getItem(storageKey);
+      const latest = Object.keys(localStorage).filter(key => key.startsWith(`${storageKey}:archive:`)).sort().at(-1);
+      if (latest) setPreviousBackup(localStorage.getItem(latest) ?? undefined);
+    } catch { /* Older versions used browser storage for their encrypted vault. */ }
+    let previousValue: string | null | undefined;
+    const unsubscribe = onSnapshot(vaultDocument(uid), { includeMetadataChanges: true }, snapshot => {
+      const value = snapshot.exists() ? snapshot.data() as CloudVault : null;
+      setPendingSync(snapshot.metadata.hasPendingWrites);
+      if (snapshot.metadata.fromCache && !value && cloud.current === undefined && !legacy.current) return;
+      cloud.current = value;
+      setSynced(!snapshot.metadata.fromCache);
+      setArchiveId(value?.archiveId ?? "");
+      const next = value?.encrypted ?? legacy.current;
+      if (previousValue === next) return;
+      previousValue = next;
+      if (value?.revision === ownWrite.current && value) setStored(next);
+      else void refreshFromOtherTab(next);
+    }, () => setNotice("Não foi possível sincronizar o cofre da sua conta."));
+    return () => { revision.current++; unsubscribe(); };
+  }, [uid, storageKey, opened]);
+
+  useEffect(() => {
+    if (!archiveId) return;
+    return onSnapshot(vaultDocument(uid, archiveId), snapshot => {
+      if (snapshot.exists()) setPreviousBackup((snapshot.data() as CloudVault).encrypted);
+    }, () => { /* The active vault can still open without the archived copy. */ });
+  }, [uid, archiveId]);
 
   useEffect(() => {
     const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) lock(); };
@@ -104,18 +132,35 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     setChangingPassword(false);
   }, [active]);
 
-  function persist(expected: string | null, next: string, ticket: number, archivePrevious = false) {
-    const write = () => {
-      if (revision.current !== ticket) throw new Error("O cofre foi bloqueado.");
-      if (localStorage.getItem(storageKey) !== expected) throw new Error("O cofre mudou em outra aba. Abra novamente.");
-      if (archivePrevious && expected) {
-        localStorage.setItem(`${storageKey}:archive:${Date.now()}:${crypto.randomUUID()}`, expected);
-        setPreviousBackup(expected);
+  async function persist(expected: string | null, next: string, ticket: number, archivePrevious = false, offlineEdit = false) {
+    if (revision.current !== ticket) throw new Error("O cofre foi bloqueado.");
+    const current = cloud.current;
+    if ((current?.encrypted ?? legacy.current) !== expected) throw new Error("O cofre mudou em outro aparelho. Confira os registros atualizados.");
+    const reference = vaultDocument(uid);
+    const archive = archivePrevious && expected ? crypto.randomUUID() : current?.archiveId ?? "";
+    const nextDoc: CloudVault = { encrypted: next, revision: crypto.randomUUID(), previous: current?.revision ?? "", archiveId: archive };
+    ownWrite.current = nextDoc.revision;
+    if (!navigator.onLine && offlineEdit && current && !archivePrevious) {
+      await acceptFirestoreWrite(reference, updateDoc(reference, nextDoc), () => {
+        setRejectedBackup(next);
+        setNotice("Outro aparelho atualizou o cofre. Baixe a cópia das suas alterações para guardá-las.");
+      });
+    } else {
+      if (!navigator.onLine) throw new Error("Conecte-se para criar, transferir ou alterar a senha do cofre.");
+      await runTransaction(reference.firestore, async transaction => {
+        const snapshot = await transaction.get(reference);
+        if ((snapshot.data() as CloudVault | undefined)?.revision !== current?.revision) throw new Error("O cofre mudou em outro aparelho. Confira os registros atualizados.");
+        if (archivePrevious && expected) transaction.set(vaultDocument(uid, archive), { encrypted: expected, revision: archive, previous: "", archiveId: "" });
+        transaction.set(reference, nextDoc);
+      });
+      if (legacy.current === expected) {
+        try { if (localStorage.getItem(storageKey) === expected) localStorage.removeItem(storageKey); }
+        catch { /* Keep the legacy copy if the browser blocks access. */ }
+        legacy.current = null;
       }
-      localStorage.setItem(storageKey, next);
-      setStored(next);
-    };
-    return navigator.locks ? navigator.locks.request(storageKey, write) : Promise.resolve().then(write);
+    }
+    cloud.current = nextDoc;
+    setStored(next);
   }
 
   async function run(action: (ticket: number) => Promise<void>) {
@@ -128,6 +173,13 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     catch (error) { if (ticket === revision.current) setNotice(error instanceof Error ? error.message : "Não foi possível concluir."); }
     finally { working.current = false; setBusy(false); }
   }
+
+  const syncLegacy = useEffectEvent(() => {
+    if (!synced || cloud.current || !session || session.serialized !== legacy.current) return;
+    void run(ticket => persist(session.serialized, session.serialized, ticket));
+  });
+
+  useEffect(() => { if (synced) syncLegacy(); }, [synced]);
 
   function unlock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,7 +208,7 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
         }
       }
       const serialized = source ?? await encryptVault(entries, key, salt);
-      if (stored === null || startingNewVault) await persist(stored, serialized, ticket, startingNewVault);
+      if (stored === null || startingNewVault || (!cloud.current && navigator.onLine)) await persist(stored, serialized, ticket, startingNewVault);
       if (revision.current !== ticket) return;
       setBackup(undefined);
       setStartingNewVault(false);
@@ -184,7 +236,7 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
     if (!session) return;
     void run(async ticket => {
       const serialized = await encryptVault(entries, session.key, session.salt);
-      await persist(session.serialized, serialized, ticket);
+      await persist(session.serialized, serialized, ticket, false, true);
       if (revision.current !== ticket) return;
       setSession({ ...session, entries, serialized });
       setEditor(undefined);
@@ -224,6 +276,8 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
       {session && <button type="button" className="secondary" onClick={lock}><Lock size={16} /> Bloquear</button>}
     </header>
     {notice && !editor && !changingPassword && <p role="alert" className="form-error">{notice}</p>}
+    {rejectedBackup && <div className="vault-actions"><button type="button" className="secondary" onClick={() => exportBackup(rejectedBackup, "psyzon-cofre-alteracoes.json")}><Download size={16} /> Baixar alterações pendentes</button></div>}
+    {stored === undefined && !notice && <p role="status">Conecte-se para carregar o cofre pela primeira vez neste aparelho.</p>}
     {!session ? <div className="panel vault-access">
       <h2>{startingNewVault ? "Definir nova senha" : initializing ? "Criar cofre" : backup ? "Restaurar backup" : "Desbloquear cofre"}</h2>
       <p>Dica da senha: <strong>Cachorro</strong></p>
@@ -259,7 +313,8 @@ export default function VaultWorkspace({ uid, active }: { uid: string; active: b
       <nav className="vault-navigation" aria-label="Seções do cofre">{vaultPages.map(item => <button key={item} className="secondary" type="button" aria-current={page === item ? "page" : undefined} onClick={() => { setPage(item); setRevealed(""); setNotice(""); }}>{item}</button>)}</nav>
       {page === "Configurações" ? <section className="panel vault-access" aria-label="Configurações do cofre">
         <h2>Segurança e backup</h2>
-        <p>Os registros ficam criptografados neste navegador.</p>
+        <p>Os registros são sincronizados de forma criptografada na sua conta.</p>
+        <p role="status">{pendingSync ? "Alterações aguardando sincronização" : synced && cloud.current ? "Cofre sincronizado" : "Cópia criptografada neste aparelho"}</p>
         <div className="vault-actions">
           <button type="button" className="secondary" onClick={() => exportBackup(session.serialized)}><Download size={16} /> Baixar backup</button>
           {previousBackup && <button type="button" className="secondary" onClick={() => exportBackup(previousBackup, "psyzon-cofre-anterior.json")}><Download size={16} /> Baixar cópia anterior</button>}

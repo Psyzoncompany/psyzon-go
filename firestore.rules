@@ -276,6 +276,24 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
     }
 
+    match /users/{uid}/privateVault/{documentId} {
+      function validVault(data) {
+        return data.keys().hasAll(["encrypted", "revision", "previous", "archiveId"])
+          && data.keys().hasOnly(["encrypted", "revision", "previous", "archiveId"])
+          && text(data.encrypted, 72, 1000000)
+          && data.revision is string && data.revision.matches('^[a-f0-9-]{36}$')
+          && data.previous is string && (data.previous == "" || data.previous.matches('^[a-f0-9-]{36}$'))
+          && data.archiveId is string && (data.archiveId == "" || data.archiveId.matches('^[a-f0-9-]{36}$'));
+      }
+      allow get: if owns(uid);
+      allow create: if owns(uid) && validVault(request.resource.data)
+        && ((documentId == "main" && request.resource.data.previous == "")
+          || (documentId == request.resource.data.revision && documentId != "main"));
+      allow update: if owns(uid) && documentId == "main" && validVault(request.resource.data)
+        && request.resource.data.previous == resource.data.revision
+        && request.resource.data.revision != resource.data.revision;
+    }
+
     match /users/{uid}/transactions/{documentId} {
       allow get, list: if owns(uid);
       allow create: if owns(uid) && validTransaction(request.resource.data);

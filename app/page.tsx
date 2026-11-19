@@ -35,14 +35,14 @@ import { synchronizedOrderQuantities } from "./order-quantity-sync";
 import { dtfCanBeQueued, dtfSourceOrderId, indexDtfCustomerLinks, missingProductionDtf } from "./dtf-links";
 import ProductionChecklistWindow from "./ProductionChecklistWindow";
 import { changeDtfPrints, dtfForCustomer, readDtfPrints, type DtfInput, type DtfOrder, type DtfPrintChange, type DtfStage } from "./dtf-model";
-import { dtfAlertDays, dueLabel, dueTone, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
-import { billDueDate, billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, customerRefund, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
+import { dueLabel, dueTone, normalizeOrderStatus, orderDtfStatus, orderStatuses, type Order, type OrderDtfStatus, type OrderStatus } from "./order-model";
+import { billIsSettled, billPaymentId, billReversal, billSettlementAfterEdit, currentBillExpense, customerAdjustments, customerBalances, customerNameKey, customerReceipt, customerRefund, financialSummary, nextMonthPayables, orderReceivables, roundMoney, type Bill, type Customer, type CustomerBalance } from "./finance-model";
 import { makeId, millis, newDraft, readDocument, serializeDraft } from "./notes-model";
 import { fabricHistoryEntry, historyDate, historyRows, legacyFabricPurchases, materialHistoryId, pendingFabric, validateHistoryInput, type HistoryEntry, type HistoryInput } from "./history-model";
 import { confirmMaterialPurchase, updatePurchasedMaterials, type MaterialPurchaseInput } from "./notes/materials-model";
 import { indexOrderTasks, taskCompletionMonth, type Task } from "./notes/task-model";
 import FloatingTasks from "./notes/FloatingTasks";
-import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, restockAlerts, type RestockInput, type RestockChange } from "./notes/restock-model";
+import { changeRestockNote, newRestockNote, restockPrefix, restockTasks, restockBills, type RestockInput, type RestockChange } from "./notes/restock-model";
 import useViewHistory from "./useViewHistory";
 import MobileNavigation from "./MobileNavigation";
 import NotesNavigation, { noteViews } from "./NotesNavigation";
@@ -51,7 +51,8 @@ import useInterfaceMotion from "./useInterfaceMotion";
 import { TypedHeading, SiteTypewriter } from "./Typewriter";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
-import { buildReminderContent, type ReminderAttentionItem } from "./notification-content";
+import { pendingNotifications, type AppNotification } from "./pending-notifications";
+import { hasWebPush, prepareWebPush, pushEnabledFor, enableWebPush, disableWebPush, sendWebPushTest, WebPushExpired, type WebPushSetup } from "./web-push-client";
 import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
@@ -154,13 +155,6 @@ type Transaction = {
   createdAt?: unknown;
 };
 type View = import("./useViewHistory").View;
-
-type AppNotification = ReminderAttentionItem & {
-  id: string;
-  tone: "danger" | "warning" | "info";
-  view: View;
-  orderId?: string;
-};
 
 const CustomersWorkspace = dynamic(() => import("./CustomersWorkspace"), { ssr: false });
 const FinanceWorkspace = dynamic(() => import("./FinanceWorkspace"), { ssr: false });
@@ -305,7 +299,10 @@ export default function HomePage() {
   const [privacyTarget, setPrivacyTarget] = useState<boolean | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => localDateValue());
   const [uiSize, setUiSize] = useState<UISize>("comfortable");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [webPushSetup, setWebPushSetup] = useState<WebPushSetup | null>(null);
+  const [webPushMessage, setWebPushMessage] = useState("");
+  const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [savingOrder,setSavingOrder]=useState(false);
@@ -365,9 +362,7 @@ export default function HomePage() {
     setDark(storedTheme === "dark");
     const storedSize = localStorage.getItem("psy-ui-size") as UISize | null;
     if (["compact", "comfortable", "large", "extra-large"].includes(storedSize ?? "")) setUiSize(storedSize!);
-    const notificationsAllowed = Capacitor.isNativePlatform() ||
-      (typeof Notification !== "undefined" && Notification.permission === "granted");
-    setNotificationsEnabled(notificationsAllowed && localStorage.getItem("psy-notifications") !== "off");
+    if (Capacitor.isNativePlatform()) setNotificationsEnabled(localStorage.getItem("psy-notifications") !== "off");
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then(async registration => {
         await registration.update().catch(() => {});
@@ -644,11 +639,44 @@ export default function HomePage() {
     closePrivacy();
   };
 
+  useEffect(() => {
+    if (!uid || Capacitor.isNativePlatform()) return;
+    setWebPushSetup(null);
+    setNotificationsEnabled(false);
+    if (!hasWebPush()) {
+      setWebPushMessage("No iPhone, abra o Psyzon GO pelo ícone da Tela de Início. No PC, use um navegador compatível.");
+      return;
+    }
+
+    let cancelled = false;
+    setWebPushMessage("Preparando as notificações deste dispositivo…");
+    void prepareWebPush().then(async (setup) => {
+      const subscription = await setup.registration.pushManager.getSubscription();
+      if (cancelled) return;
+      setWebPushSetup(setup);
+      setNotificationsEnabled(Notification.permission === "granted" && Boolean(subscription) && pushEnabledFor(uid));
+      setWebPushMessage(Notification.permission === "denied" ? "Permita as notificações nos ajustes deste dispositivo." : "");
+    }).catch(() => {
+      if (!cancelled) setWebPushMessage("Avisos em segundo plano indisponíveis. Reabra o Psyzon GO para tentar novamente.");
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
+
   const signOutGoogle = async () => {
     closePrivacy();
     if (!isFirebaseConfigured) return;
+    if (notificationBusy) return showToast("Aguarde a configuração dos avisos antes de sair.");
     const saves:Promise<boolean>[]=[];window.dispatchEvent(new CustomEvent<PrepareReload>(prepareReloadEvent,{detail:{waitUntil:promise=>saves.push(promise)}}));
     if(!(await Promise.all(saves)).every(Boolean)){showToast("Salve as alterações pendentes antes de sair.");return;}
+    if (user && !Capacitor.isNativePlatform() && hasWebPush() && pushEnabledFor(user.uid)) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) await disableWebPush(user, registration);
+      } catch {
+        showToast("Desative os avisos deste dispositivo antes de sair.");
+        return;
+      }
+    }
     await signOut(clientAuth(getApps()[0]));
     setView("inicio");
     try{localStorage.removeItem("psy-data-cache-ready-v1:"+uid);const db=getFirestore(getApps()[0]);await terminate(db);await clearIndexedDbPersistence(db);}catch{/* Other open tabs can hold the cache until they close. */}
@@ -958,50 +986,10 @@ export default function HomePage() {
   const overdue = confirmedOrders.filter((order) => dueTone(order.dueDate, order.status) === "danger");
   const urgent = confirmedOrders.filter((order) => ["danger", "warning"].includes(dueTone(order.dueDate, order.status)));
 
-  const notifications = useMemo<AppNotification[]>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const month = localDateValue(today).slice(0, 7);
-    const items: AppNotification[] = [];
-
-    orders.forEach((order) => {
-      if (order.orderKind === "collection" || order.status === "Entregue" || order.status === "Orçamento") return;
-      const dtfDays = dtfAlertDays(order, calendarDate);
-      if (dtfDays !== undefined) items.push({ id: `dtf-${order.id}`, orderId: order.id, title: `Pedir DTF · ${order.customer}`, detail: `${order.product} · ${dueLabel(order.dueDate, order.status, today)}`, tone: dtfDays <= 0 ? "danger" : "warning", view: "producao" });
-      const due = new Date(`${order.dueDate}T00:00:00`);
-      const days = Math.round((due.getTime() - today.getTime()) / 86400000);
-      if (days <= 2) items.push({
-        id: `order-${order.id}`,
-        orderId: order.id,
-        title: days < 0 ? `Pedido atrasado · ${order.customer}` : days === 0 ? `Entrega hoje · ${order.customer}` : `Entrega próxima · ${order.customer}`,
-        detail: `${order.product} · ${dueLabel(order.dueDate, order.status, today)}`,
-        tone: days < 0 ? "danger" : "warning",
-        view: "producao",
-      });
-    });
-
-    bills.forEach((bill) => {
-      if (billIsSettled(bill, month)) return;
-      const dueDate = billDueDate(bill, month);
-      const days = Math.round((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
-      const action = bill.direction === "receivable" ? "a receber" : "a pagar";
-      if (days <= 3) {
-        const timing = days < 0 ? "em atraso" : days === 0 ? "vence hoje" : "vence em breve";
-        const systemDetail = `${timing.charAt(0).toUpperCase()}${timing.slice(1)} · ${dueDate.slice(8, 10)}/${dueDate.slice(5, 7)}`;
-        items.push({
-          id: `bill-${bill.id}`,
-          title: `${bill.description} · ${action}`,
-          detail: `${money.format(bill.amount)} · ${systemDetail}`,
-          systemDetail,
-          tone: days < 0 ? "danger" : "warning",
-          view: "financeiro",
-        });
-      }
-    });
-
-    items.push(...restockAlerts(stockItems, calendarDate));
-    return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [orders, bills, calendarDate, stockItems]);
+  const notifications = useMemo(
+    () => pendingNotifications(orders, bills, stockItems, calendarDate),
+    [orders, bills, stockItems, calendarDate],
+  );
   const dtfAlertCount = notifications.filter(item => item.id.startsWith("dtf-")).length;
 
   const openNotification = (item: AppNotification) => {
@@ -1022,29 +1010,6 @@ export default function HomePage() {
     window.addEventListener("hashchange", openFromSystemNotification);
     return () => window.removeEventListener("hashchange", openFromSystemNotification);
   }, []);
-
-  useEffect(() => {
-    if (!uid || !notificationsEnabled || !dataReady || !notifications.length || Capacitor.isNativePlatform() ||
-      !navigator.serviceWorker || typeof Notification === "undefined" || Notification.permission !== "granted") return;
-
-    let cancelled = false;
-    const showAttention = async () => {
-      const day = localDateValue();
-      const key = `psy-last-detailed-notification:${uid}`;
-      if (localStorage.getItem(key) === day) return;
-      const registration = await navigator.serviceWorker.ready;
-      if (cancelled || Notification.permission !== "granted" || localStorage.getItem(key) === day) return;
-      const content = buildReminderContent(notifications, "");
-      await registration.showNotification(content.title, {
-        body: content.body,
-        icon: "/icon-192-v3.png",
-        tag: "psyzon-attention",
-      });
-      localStorage.setItem(key, day);
-    };
-    void showAttention().catch((error) => console.error("Não foi possível exibir o aviso de pendências", error));
-    return () => { cancelled = true; };
-  }, [uid, dataReady, notifications, notificationsEnabled]);
 
   useEffect(() => {
     if (!dataReady || !notificationsEnabled || !Capacitor.isNativePlatform()) return;
@@ -1077,24 +1042,38 @@ export default function HomePage() {
       return;
     }
 
-    if (!enabled) {
-      setNotificationsEnabled(false);
-      localStorage.setItem("psy-notifications", "off");
-      return;
-    }
-
+    if (!user || !webPushSetup || notificationBusy) return;
+    setNotificationBusy(true);
     try {
-      if (typeof Notification === "undefined" || !navigator.serviceWorker) throw new Error("Notifications API unavailable");
-      const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
-      const accepted = permission === "granted";
-      setNotificationsEnabled(accepted);
-      localStorage.setItem("psy-notifications", accepted ? "on" : "off");
-      showToast(accepted ? "Notificações ativadas" : "Notificações indisponíveis neste navegador");
+      if (enabled) await enableWebPush(user, webPushSetup);
+      else await disableWebPush(user, webPushSetup.registration);
+      setNotificationsEnabled(enabled);
+      setWebPushMessage("");
+      showToast(enabled ? "Avisos ativados neste dispositivo" : "Avisos desativados neste dispositivo");
     } catch (error) {
-      console.error("Não foi possível solicitar notificações do navegador", error);
-      setNotificationsEnabled(false);
-      localStorage.setItem("psy-notifications", "off");
-      showToast("Notificações indisponíveis neste navegador");
+      const message = Notification.permission === "denied"
+        ? "Permita as notificações nos ajustes deste dispositivo."
+        : error instanceof Error ? error.message : "Não foi possível configurar as notificações.";
+      setWebPushMessage(message);
+    } finally {
+      setNotificationBusy(false);
+    }
+  };
+
+  const testNotifications = async () => {
+    if (!user || !webPushSetup || notificationBusy) return;
+    setNotificationBusy(true);
+    try {
+      await sendWebPushTest(user, webPushSetup.registration);
+      showToast("Notificação de teste enviada para este dispositivo");
+    } catch (error) {
+      if (error instanceof WebPushExpired) {
+        await disableWebPush(user, webPushSetup.registration).catch(() => {});
+        setNotificationsEnabled(false);
+      }
+      setWebPushMessage(error instanceof Error ? error.message : "Não foi possível enviar o teste.");
+    } finally {
+      setNotificationBusy(false);
     }
   };
 
@@ -2201,7 +2180,7 @@ export default function HomePage() {
           />}
 
 
-          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
+          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
         </section>
       </main>
 
@@ -2313,14 +2292,14 @@ function Metric({ icon: Icon, label, value, detail, onClick }: any) {
   return <Tag className="metric-card" onClick={onClick}><div className="metric-top"><span><Icon size={19} /></span><small>{label}</small>{onClick && <ChevronRight size={16} />}</div><strong>{value}</strong><div className="metric-detail">{detail}</div></Tag>;
 }
 
-function MoreView({ interfaceAppearance, firebaseState, dark, setDark, privateValues, requestPrivacy, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, user, onSignOut, onReset, resetting }: any) {
+function MoreView({ interfaceAppearance, firebaseState, dark, setDark, privateValues, requestPrivacy, uiSize, setUiSize, notificationsEnabled, setNotificationsEnabled, notificationBusy, webPushReady, webPushMessage, testNotifications, user, onSignOut, onReset, resetting }: any) {
   const sizes: { value: UISize; label: string; hint: string }[] = [
     { value: "compact", label: "Pequena", hint: "90%" },
     { value: "comfortable", label: "Normal", hint: "100%" },
     { value: "large", label: "Grande", hint: "114%" },
     { value: "extra-large", label: "Muito grande", hint: "128%" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1></div></div><AppearanceSettings {...interfaceAppearance} /><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar totais financeiros</b><small>Somente A pagar e A receber</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3></div><label><span><b>Notificações do sistema</b><small>{Capacitor.isNativePlatform() ? "Lembretes às 08:00, 14:00 e 19:00" : "Aviso de pendências ao abrir o Psyzon GO"}</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>{Capacitor.isNativePlatform() ? "Os lembretes ficam agendados no dispositivo." : "No iPhone, abra o Psyzon GO pelo ícone da Tela de Início e permita as notificações."}</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1></div></div><AppearanceSettings {...interfaceAppearance} /><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar totais financeiros</b><small>Somente A pagar e A receber</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3></div><label><span><b>Notificações do sistema</b><small>{Capacitor.isNativePlatform() ? "Lembretes às 08:00, 14:00 e 19:00" : "Aviso diário de pendências a partir das 08:00, mesmo com o site fechado"}</small></span><input type="checkbox" checked={notificationsEnabled} disabled={notificationBusy || (!Capacitor.isNativePlatform() && !webPushReady)} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label>{!Capacitor.isNativePlatform() && <>{webPushMessage && <div className="settings-note" role="status"><AlertTriangle size={16} /><span>{webPushMessage}</span></div>}{notificationsEnabled && <button className="secondary" type="button" disabled={notificationBusy} onClick={testNotifications}><Bell size={16} /> Enviar teste neste dispositivo</button>}</>}</section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {

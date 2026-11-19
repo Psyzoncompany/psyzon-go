@@ -82,7 +82,7 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(localNotifications, /largeBody: content\.body/);
   assert.doesNotMatch(localNotifications, /summaryText:/);
   assert.match(androidManifest, /android\.permission\.SCHEDULE_EXACT_ALARM/);
-  assert.match(page, /Notificações indisponíveis neste navegador/);
+  assert.match(page, /Enviar teste neste dispositivo/);
   assert.match(page, /sidebarCollapsed/);
   assert.match(page, /sidebar-collapse-button/);
   assert.match(page, /PanelLeftClose/);

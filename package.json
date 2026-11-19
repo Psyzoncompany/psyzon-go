@@ -15,7 +15,7 @@
     "test:api": "tsx --test tests/mercado-pago-payment.test.ts tests/pluggy-core.test.ts",
     "test:rules": "firebase emulators:exec --project psyzon-go-rules-test --only firestore \"tsx --test tests/firestore.rules.test.ts\"",
     "typecheck": "next typegen && tsc --noEmit -p tsconfig.vercel.json",
-    "test:workspace": "tsx --test tests/finance-model.test.ts tests/production-checklist.test.ts tests/appearance.test.ts tests/sewing.test.ts tests/order-pricing.test.ts tests/notification-content.test.ts",
+    "test:workspace": "tsx --test tests/finance-model.test.ts tests/production-checklist.test.ts tests/appearance.test.ts tests/sewing.test.ts tests/order-pricing.test.ts tests/notification-content.test.ts tests/web-push.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "test:images": "tsx --test tests/image-optimization.test.ts",
@@ -39,7 +39,8 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-pluggy-connect": "^2.12.0",
-    "sharp": "0.34.5"
+    "sharp": "0.34.5",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
@@ -51,6 +52,7 @@
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",

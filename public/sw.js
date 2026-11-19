@@ -67,6 +67,20 @@ self.addEventListener("notificationclick", (event) => {
   })());
 });
 
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    let message;
+    try { message = event.data?.json(); } catch { /* Always show a visible notification for a delivered push. */ }
+    const title = typeof message?.title === "string" ? message.title : "PSYZON GO";
+    const body = typeof message?.body === "string" ? message.body : "Abra o aplicativo para consultar suas pendências.";
+    await self.registration.showNotification(title, {
+      body,
+      icon: "/icon-192-v3.png",
+      tag: "psyzon-attention",
+    });
+  })());
+});
+
 function isPublicStaticRequest(request, url) {
   if (request.method !== "GET" || request.headers.has("authorization")) return false;
   if (url.origin !== self.location.origin) return false;

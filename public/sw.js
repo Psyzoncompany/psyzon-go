@@ -45,6 +45,28 @@ self.addEventListener("message", event => {
   event.waitUntil(preparingShell);
 });
 
+self.addEventListener("notificationclick", (event) => {
+  if (event.notification.tag !== "psyzon-attention") return;
+  event.notification.close();
+  event.waitUntil((async () => {
+    const destination = new URL("/#inicio?notificacoes=1", self.location.origin).href;
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const appWindow = windows.find(({ url }) => {
+      const page = new URL(url);
+      return page.origin === self.location.origin && page.pathname === "/";
+    });
+    if (appWindow) {
+      try {
+        const client = await appWindow.navigate(destination);
+        if (client) return await client.focus();
+      } catch {
+        // The app tab may have closed while opening the alert.
+      }
+    }
+    return self.clients.openWindow(destination);
+  })());
+});
+
 function isPublicStaticRequest(request, url) {
   if (request.method !== "GET" || request.headers.has("authorization")) return false;
   if (url.origin !== self.location.origin) return false;

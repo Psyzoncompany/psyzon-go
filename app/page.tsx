@@ -51,6 +51,7 @@ import useInterfaceMotion from "./useInterfaceMotion";
 import { TypedHeading, SiteTypewriter } from "./Typewriter";
 import { Capacitor } from "@capacitor/core";
 import { syncDailyReminders } from "./localNotifications";
+import { buildReminderContent, type ReminderAttentionItem } from "./notification-content";
 import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
@@ -154,10 +155,8 @@ type Transaction = {
 };
 type View = import("./useViewHistory").View;
 
-type AppNotification = {
+type AppNotification = ReminderAttentionItem & {
   id: string;
-  title: string;
-  detail: string;
   tone: "danger" | "warning" | "info";
   view: View;
   orderId?: string;
@@ -366,7 +365,9 @@ export default function HomePage() {
     setDark(storedTheme === "dark");
     const storedSize = localStorage.getItem("psy-ui-size") as UISize | null;
     if (["compact", "comfortable", "large", "extra-large"].includes(storedSize ?? "")) setUiSize(storedSize!);
-    setNotificationsEnabled(localStorage.getItem("psy-notifications") !== "off");
+    const notificationsAllowed = Capacitor.isNativePlatform() ||
+      (typeof Notification !== "undefined" && Notification.permission === "granted");
+    setNotificationsEnabled(notificationsAllowed && localStorage.getItem("psy-notifications") !== "off");
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" })
       .then(async registration => {
         await registration.update().catch(() => {});
@@ -963,27 +964,45 @@ export default function HomePage() {
     const month = localDateValue(today).slice(0, 7);
     const items: AppNotification[] = [];
 
-    confirmedOrders.forEach((order) => {
+    orders.forEach((order) => {
+      if (order.orderKind === "collection" || order.status === "Entregue" || order.status === "Orçamento") return;
       const dtfDays = dtfAlertDays(order, calendarDate);
       if (dtfDays !== undefined) items.push({ id: `dtf-${order.id}`, orderId: order.id, title: `Pedir DTF · ${order.customer}`, detail: `${order.product} · ${dueLabel(order.dueDate, order.status, today)}`, tone: dtfDays <= 0 ? "danger" : "warning", view: "producao" });
       const due = new Date(`${order.dueDate}T00:00:00`);
-      const days = Math.ceil((due.getTime() - today.getTime()) / 86400000);
-      if (days < 0) items.push({ id: `order-${order.id}`, title: `Pedido de ${order.customer} atrasado`, detail: `${order.customer} · ${Math.abs(days)} dia(s) de atraso`, tone: "danger", view: "producao" });
-      else if (days <= 2) items.push({ id: `order-${order.id}`, title: days === 0 ? `Pedido de ${order.customer} vence hoje` : `Pedido de ${order.customer} próximo do prazo`, detail: `${order.customer} · ${order.product}`, tone: "warning", view: "producao" });
+      const days = Math.round((due.getTime() - today.getTime()) / 86400000);
+      if (days <= 2) items.push({
+        id: `order-${order.id}`,
+        orderId: order.id,
+        title: days < 0 ? `Pedido atrasado · ${order.customer}` : days === 0 ? `Entrega hoje · ${order.customer}` : `Entrega próxima · ${order.customer}`,
+        detail: `${order.product} · ${dueLabel(order.dueDate, order.status, today)}`,
+        tone: days < 0 ? "danger" : "warning",
+        view: "producao",
+      });
     });
 
     bills.forEach((bill) => {
       if (billIsSettled(bill, month)) return;
       const dueDate = billDueDate(bill, month);
-      const days = Math.ceil((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
+      const days = Math.round((new Date(dueDate + "T00:00:00").getTime() - today.getTime()) / 86400000);
       const action = bill.direction === "receivable" ? "a receber" : "a pagar";
-      if (days <= 3) items.push({ id: "bill-" + bill.id, title: bill.description + " · " + action, detail: money.format(bill.amount) + " · " + (days < 0 ? Math.abs(days) + " dia(s) em atraso" : days === 0 ? "vence hoje" : "vence em breve"), tone: days < 0 ? "danger" : "warning", view: "financeiro" });
+      if (days <= 3) {
+        const timing = days < 0 ? "em atraso" : days === 0 ? "vence hoje" : "vence em breve";
+        const systemDetail = `${timing.charAt(0).toUpperCase()}${timing.slice(1)} · ${dueDate.slice(8, 10)}/${dueDate.slice(5, 7)}`;
+        items.push({
+          id: `bill-${bill.id}`,
+          title: `${bill.description} · ${action}`,
+          detail: `${money.format(bill.amount)} · ${systemDetail}`,
+          systemDetail,
+          tone: days < 0 ? "danger" : "warning",
+          view: "financeiro",
+        });
+      }
     });
 
     items.push(...restockAlerts(stockItems, calendarDate));
     return items.sort((a, b) => (a.tone === "danger" ? -1 : 1) - (b.tone === "danger" ? -1 : 1));
-  }, [confirmedOrders, bills, calendarDate, stockItems]);
-  const dtfAlertCount = notifications.filter(item => item.orderId).length;
+  }, [orders, bills, calendarDate, stockItems]);
+  const dtfAlertCount = notifications.filter(item => item.id.startsWith("dtf-")).length;
 
   const openNotification = (item: AppNotification) => {
     setView(item.view);
@@ -992,13 +1011,40 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    if (!notificationsEnabled || !dataReady || !notifications.length || typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    if (Capacitor.isNativePlatform()) return;
-    const todayKey = new Date().toISOString().slice(0, 10);
-    if (localStorage.getItem("psy-last-system-notification") === todayKey) return;
-    new Notification("PSYZON GO", { body: `${notifications.length} item(ns) precisam da sua atenção.`, icon: "/icon-192-v3.png" });
-    localStorage.setItem("psy-last-system-notification", todayKey);
-  }, [dataReady, notifications, notificationsEnabled]);
+    const openFromSystemNotification = () => {
+      const [destination, query] = location.hash.split("?");
+      if (destination !== "#inicio" || new URLSearchParams(query).get("notificacoes") !== "1") return;
+      history.replaceState(history.state, "", destination);
+      window.scrollTo({ top: 0 });
+      setNotificationsOpen(true);
+    };
+    openFromSystemNotification();
+    window.addEventListener("hashchange", openFromSystemNotification);
+    return () => window.removeEventListener("hashchange", openFromSystemNotification);
+  }, []);
+
+  useEffect(() => {
+    if (!uid || !notificationsEnabled || !dataReady || !notifications.length || Capacitor.isNativePlatform() ||
+      !navigator.serviceWorker || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+
+    let cancelled = false;
+    const showAttention = async () => {
+      const day = localDateValue();
+      const key = `psy-last-detailed-notification:${uid}`;
+      if (localStorage.getItem(key) === day) return;
+      const registration = await navigator.serviceWorker.ready;
+      if (cancelled || Notification.permission !== "granted" || localStorage.getItem(key) === day) return;
+      const content = buildReminderContent(notifications, "");
+      await registration.showNotification(content.title, {
+        body: content.body,
+        icon: "/icon-192-v3.png",
+        tag: "psyzon-attention",
+      });
+      localStorage.setItem(key, day);
+    };
+    void showAttention().catch((error) => console.error("Não foi possível exibir o aviso de pendências", error));
+    return () => { cancelled = true; };
+  }, [uid, dataReady, notifications, notificationsEnabled]);
 
   useEffect(() => {
     if (!dataReady || !notificationsEnabled || !Capacitor.isNativePlatform()) return;
@@ -1038,7 +1084,7 @@ export default function HomePage() {
     }
 
     try {
-      if (typeof Notification === "undefined") throw new Error("Notifications API unavailable");
+      if (typeof Notification === "undefined" || !navigator.serviceWorker) throw new Error("Notifications API unavailable");
       const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
       const accepted = permission === "granted";
       setNotificationsEnabled(accepted);
@@ -2108,7 +2154,7 @@ export default function HomePage() {
             <button className="values-privacy-action" onClick={() => requestPrivacy(!privateValues)} aria-haspopup="dialog" aria-label={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"} title={privateValues ? "Mostrar totais a pagar e a receber" : "Ocultar totais a pagar e a receber"}>{privateValues ? <EyeOff size={19} /> : <Eye size={19} />}</button>
             <button className="desktop-action" onClick={() => setDark((value) => !value)} aria-label="Alternar tema">{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
             <button className="notification" onClick={() => setNotificationsOpen((value) => !value)} aria-label={`${notifications.length} notificações`} aria-expanded={notificationsOpen}><Bell size={19} />{!!notifications.length && <span>{notifications.length > 9 ? "9+" : notifications.length}</span>}</button>
-            {notificationsOpen && <div className="notification-panel"><header><div><b>Notificações</b><small>{notifications.length ? `${notifications.length} item(ns) precisam de atenção` : "Tudo em dia por aqui"}</small></div><button onClick={() => setNotificationsOpen(false)} aria-label="Fechar notificações"><X size={16} /></button></header><div>{notifications.length ? notifications.map((item) => <button className="notification-item" key={item.id} onClick={() => openNotification(item)}><span className={item.tone}>{item.tone === "danger" ? <AlertTriangle size={15} /> : <Bell size={15} />}</span><span><b>{item.title}</b><small>{item.detail}</small></span><ChevronRight size={15} /></button>) : <div className="notification-empty"><Check size={20} /><b>Nenhuma pendência próxima</b><small>Pedidos e contas aparecerão aqui.</small></div>}</div></div>}
+            {notificationsOpen && <div className="notification-panel"><header><div><b>Notificações</b><small>{notifications.length ? notifications.length === 1 ? "1 pendência" : `${notifications.length} pendências` : "Tudo em dia por aqui"}</small></div><button onClick={() => setNotificationsOpen(false)} aria-label="Fechar notificações"><X size={16} /></button></header><div>{notifications.length ? notifications.map((item) => <button className="notification-item" key={item.id} onClick={() => openNotification(item)}><span className={item.tone}>{item.tone === "danger" ? <AlertTriangle size={15} /> : <Bell size={15} />}</span><span><b>{item.title}</b><small>{item.detail}</small></span><ChevronRight size={15} /></button>) : <div className="notification-empty"><Check size={20} /><b>Nenhuma pendência próxima</b><small>Veja aqui os avisos de pedidos, contas e compras.</small></div>}</div></div>}
           </div>
         </header>
 
@@ -2274,7 +2320,7 @@ function MoreView({ interfaceAppearance, firebaseState, dark, setDark, privateVa
     { value: "large", label: "Grande", hint: "114%" },
     { value: "extra-large", label: "Muito grande", hint: "128%" },
   ];
-  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1></div></div><AppearanceSettings {...interfaceAppearance} /><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar totais financeiros</b><small>Somente A pagar e A receber</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3></div><label><span><b>Notificações do sistema</b><small>No app mobile, todos os dias às 08:00, 14:00 e 19:00</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>No Android, os lembretes são agendados no dispositivo e funcionam mesmo com o app fechado.</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
+  return <><div className="page-heading compact"><div><span className="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1></div></div><AppearanceSettings {...interfaceAppearance} /><div className="settings-grid"><section className="panel settings-card"><div className="settings-icon"><Settings size={20} /></div><div><h3>Aparência e privacidade</h3></div><label><span><b>Tema escuro</b><small>Mais confortável à noite</small></span><input type="checkbox" checked={dark} onChange={(event) => setDark(event.target.checked)} /></label><label><span><b>Ocultar totais financeiros</b><small>Somente A pagar e A receber</small></span><input type="checkbox" checked={privateValues} onChange={(event) => requestPrivacy(event.target.checked)} /></label><div className="interface-size"><span><b>Tamanho das letras</b><small>Escolha um tamanho confortável para ler sem forçar a vista</small></span><div>{sizes.map((size) => <button key={size.value} type="button" aria-pressed={uiSize === size.value} className={uiSize === size.value ? "active" : ""} onClick={() => setUiSize(size.value)}><b>{size.label}</b><small>{size.hint}</small></button>)}</div></div></section><section className="panel settings-card"><div className="settings-icon"><Bell size={20} /></div><div><h3>Alertas importantes</h3></div><label><span><b>Notificações do sistema</b><small>{Capacitor.isNativePlatform() ? "Lembretes às 08:00, 14:00 e 19:00" : "Aviso de pendências ao abrir o Psyzon GO"}</small></span><input type="checkbox" checked={notificationsEnabled} onChange={(event) => setNotificationsEnabled(event.target.checked)} /></label><div className="settings-note"><AlertTriangle size={16} /><span>{Capacitor.isNativePlatform() ? "Os lembretes ficam agendados no dispositivo." : "No iPhone, abra o Psyzon GO pelo ícone da Tela de Início e permita as notificações."}</span></div></section><section className="panel settings-card settings-data"><div className="settings-icon"><BriefcaseBusiness size={20} /></div><div><h3>Dados e sincronização</h3></div><div className={`connection-box ${firebaseState}`}><span /><div><b>{firebaseState === "live" ? "Firestore conectado" : firebaseState === "error" ? "Falha na sincronização" : "Conectando ao Firestore"}</b><small>{firebaseState === "live" ? "Alterações sincronizadas em tempo real" : "Verificando a conexão com os dados"}</small></div></div><div className="account-row"><span><b>{user.displayName || "Conta Google"}</b><small>{user.email}</small></span><button className="secondary" onClick={onSignOut}><LogOut size={16} /> Sair</button></div><div className="danger-zone"><div><b>Resetar todos os dados</b><small>Apaga pedidos, clientes, contas e movimentações desta conta.</small></div><button className="danger-button" onClick={onReset} disabled={resetting}><RotateCcw size={16} /> {resetting ? "Apagando…" : "Resetar tudo"}</button></div></section></div></>;
 }
 
 function OrderDtfField({ value = "none" }: { value?: OrderDtfStatus }) {

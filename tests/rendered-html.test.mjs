@@ -78,10 +78,9 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(localNotifications, /LocalNotifications\.schedule/);
   assert.match(localNotifications, /Capacitor\.isPluginAvailable\("LocalNotifications"\)/);
   assert.match(localNotifications, /"unsupported"/);
-  assert.match(localNotifications, /priority\.title/);
-  assert.match(localNotifications, /priority\.detail/);
+  assert.match(localNotifications, /buildReminderContent\(attentionItems, fallbackBody\)/);
   assert.match(localNotifications, /largeBody: content\.body/);
-  assert.match(localNotifications, /outra\(s\) pendência\(s\)/);
+  assert.doesNotMatch(localNotifications, /summaryText:/);
   assert.match(androidManifest, /android\.permission\.SCHEDULE_EXACT_ALARM/);
   assert.match(page, /Notificações indisponíveis neste navegador/);
   assert.match(page, /sidebarCollapsed/);
@@ -95,6 +94,45 @@ test("service worker caches only safe same-origin app assets", async () => {
   assert.match(page, /editingOrder/);
   assert.match(page, /OrderEditModal/);
   assert.match(page, /Pedido e financeiro atualizados/);
+});
+
+test("clicking an attention notification opens the app's pending items", async () => {
+  const worker = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const listeners = new Map();
+  const origin = "https://psyzon-go.example";
+  const destination = `${origin}/#inicio?notificacoes=1`;
+  let existingWindow = true;
+  const actions = [];
+  const client = {
+    url: `${origin}/#financeiro`,
+    async navigate(url) { actions.push(["navigate", url]); return client; },
+    async focus() { actions.push(["focus"]); },
+  };
+  vm.runInNewContext(worker, {
+    URL,
+    self: {
+      location: { origin },
+      addEventListener: (name, handler) => listeners.set(name, handler),
+      clients: {
+        matchAll: async () => existingWindow ? [client] : [],
+        openWindow: async (url) => actions.push(["open", url]),
+      },
+    },
+  });
+
+  const click = () => {
+    let lifetime;
+    listeners.get("notificationclick")({
+      notification: { tag: "psyzon-attention", close: () => actions.push(["close"]) },
+      waitUntil: (promise) => { lifetime = promise; },
+    });
+    return lifetime;
+  };
+  await click();
+  assert.deepEqual(actions.splice(0), [["close"], ["navigate", destination], ["focus"]]);
+  existingWindow = false;
+  await click();
+  assert.deepEqual(actions, [["close"], ["open", destination]]);
 });
 
 test("service worker clones only a public static response before its body is consumed", async () => {

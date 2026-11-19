@@ -17,6 +17,7 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
   const [backup, setBackup] = useState<string>();
   const [session, setSession] = useState<Session>();
   const [lockEpoch, setLockEpoch] = useState(0);
+  const [capsLock, setCapsLock] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
@@ -27,6 +28,7 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
   function lock() {
     revision.current++;
     setLockEpoch(epoch => epoch + 1);
+    setCapsLock(false);
     setSession(undefined);
     setEditor(undefined);
     setRevealed("");
@@ -99,8 +101,8 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
     const password = String(fields.get("password") ?? "");
     const source = stored ?? backup;
     void run(async ticket => {
-      if (!source && (password.trim().length < 6 || password !== fields.get("confirmation"))) {
-        throw new Error("Use pelo menos 6 caracteres e confira a confirmação.");
+      if (!source && password.trim().length < 6) {
+        throw new Error("Use pelo menos 6 caracteres.");
       }
       const payload = source ? parseVault(source) : undefined;
       const salt = payload?.salt ?? newVaultSalt();
@@ -160,8 +162,12 @@ export default function VaultWorkspace({ uid }: { uid: string }) {
       <h2>{initializing ? "Criar cofre" : backup ? "Restaurar backup" : "Desbloquear cofre"}</h2>
       <p>Dica da senha: <strong>Cachorro</strong></p>
       {stored !== undefined && <form key={lockEpoch} onSubmit={unlock}>
-        <label>Senha principal<input type="password" name="password" autoComplete={initializing ? "new-password" : "current-password"} required minLength={initializing ? 6 : undefined} maxLength={512} /></label>
-        {initializing && <label>Confirmar senha<input type="password" name="confirmation" autoComplete="new-password" required minLength={6} maxLength={512} /></label>}
+        <label>Senha principal<input type="password" name="password" autoComplete={initializing ? "new-password" : "current-password"} required minLength={initializing ? 6 : undefined} maxLength={512}
+          aria-describedby={capsLock ? "vault-caps-lock" : undefined}
+          onKeyDown={event => setCapsLock(event.getModifierState("CapsLock"))}
+          onKeyUp={event => setCapsLock(event.getModifierState("CapsLock"))}
+          onBlur={() => setCapsLock(false)} /></label>
+        <span id="vault-caps-lock" role="status" hidden={!capsLock}>Caps Lock ativado</span>
         <button type="submit" className="primary" disabled={busy}>{busy ? "Aguarde…" : initializing ? "Criar cofre" : backup ? "Restaurar cofre" : "Desbloquear"}</button>
       </form>}
       {stored === null && <div className="vault-actions">

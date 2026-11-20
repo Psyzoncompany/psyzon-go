@@ -1,4 +1,5 @@
 import { expandProductionShorthand } from "./production-shorthand";
+import { productionHeadingSize, productionSizeHeadingPattern as sizeHeadingPattern } from "./production-size-heading";
 export const productionCollarLabels = { common: "Gola normal", polo: "Gola polo" } as const;
 export type ProductionCollar = keyof typeof productionCollarLabels;
 export type ProductionRow = { id: string; model: string; size: string; name: string; done: boolean; collar?: ProductionCollar };
@@ -7,7 +8,6 @@ export const productionCollar = (value: unknown): ProductionCollar | undefined =
 
 const sizeCollator = new Intl.Collator("pt-BR", { numeric: true, sensitivity: "base" });
 const standardSizes = ["PP", "P", "M", "G", "GG", "XGG"];
-const sizeHeadingPattern = /^(?:tamanho\s+)?(XGG|GG|G\d+|PP|P|M|G|\d+\s*anos?|sob medida|[úu]nico)\s*(?:\((\d+)\)|[-–—|:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i;
 const productionNotesPattern = /^(observa[çc][õo]es?|aten[çc][ãa]o(?: na produ[çc][ãa]o)?|cor(?: d[ao]s? [^:]+)?|malha|tecido|estampa)\s*:/i;
 const normalizeProductionText = (line: string) => line.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 const cleanProductionLine = (line: string) => line.trim().replace(/^#{1,6}\s+/, "").replace(/^[•\-*]+\s*/, "").replace(/\*\*/g, "").trim();
@@ -17,14 +17,15 @@ export function productionInputText(text: string) {
   return text.split(/\r?\n/).map(cleanProductionLine).filter(line => {
     const key = normalizeProductionText(line);
     if (/^valores\s*:?$/.test(key)) { section = "prices"; return false; }
-    if (/^resumo (?:por tamanho|financeiro)\s*:?$/.test(key)) { section = "summary"; return false; }
+    if (/^resumo(?:\s+(?:por tamanho|financeiro|do pedido|geral))?\s*:?$/.test(key)) { section = "summary"; return false; }
+    if (!line || /^[-–—_*\s]{3,}$/.test(line) || /^\|.*\|$/.test(line)) return false;
     if (/^(lista (?:original|adicional)|(?:camisas|camisetas|pecas) (?:adicionadas|adicionais))(?:\s*[-–—:]\s*\d+\s*(?:camis(?:a|eta)s?|pecas?|unidades?|un\.?))?\s*:?$/.test(key)) {
       section = undefined;
       return false;
     }
     if (/^(?:psyzon\s*[-–—]\s*)?orcamento (?:de|para) camis(?:a|eta)s\s*:?$/.test(key) ||
         /^(?:subtotal[^:]*|(?:valor )?total(?: geral| do pedido)?|lista original|camisas adicionais)\s*:/.test(key) ||
-        /^camis(?:a|eta) [^:]+:\s*r\s*\$/.test(key)) return false;
+        /^(?:(?:valor|preco)\s+(?:unitario|por (?:peca|camisa|camiseta))|camis(?:a|eta) [^:]+):\s*r\s*\$/.test(key)) return false;
     if (/^(?:observacoes?|atencao(?: na producao)?)\s*:/.test(key) || (section === "prices" && namedProductionPiece(line))) section = undefined;
     return !section || /^(cliente|pedido|prazo|entrega)\s*:/i.test(line);
   }).join("\n");
@@ -38,7 +39,7 @@ function namedProductionPiece(line: string) {
   const collar = details.map(normalizeProductionText).find(part => /^(?:polo|gola (?:polo|normal|comum))$/.test(part));
   const model = details.find(part => /^(?:masculin[ao]s?|feminin[ao]s?|infantil|unissex|baby\s*look)$/i.test(part));
   const collarType: ProductionCollar | undefined = collar ? (collar.endsWith("polo") ? "polo" : "common") : undefined;
-  return { name, size: match[1].toLocaleUpperCase("pt-BR"), model, collar: collarType };
+  return { name, size: productionHeadingSize(match[1]), model, collar: collarType };
 }
 
 function sizeOrder(size: string): [number, number, string] {
@@ -51,7 +52,7 @@ function sizeOrder(size: string): [number, number, string] {
   if (extended) return [1, 5 + Number(extended[1]), label];
   if (label === "ÚNICO" || label === "UNICO") return [2, 0, label];
   if (label === "SOB MEDIDA") return [3, 0, label];
-  if (!label || label === "A CONFIRMAR") return [5, 0, label];
+  if (!label || /^(?:PENDENTE|A CONFIRMAR|A DEFINIR|SEM TAMANHO)$/.test(label)) return [5, 0, label];
   return [4, 0, label];
 }
 
@@ -106,7 +107,7 @@ export function parseProductionOrder(text: string): ProductionChecklist {
     const heading = line.replace(/:\s*$/, "").match(/^(masculin[ao]s?|feminin[ao]s?|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*(\d+)\s*(?:unidades?|un\.?))?$/i);
     if (heading) { close("model"); model = heading[1]; size = "A confirmar"; if (heading[2]) expected.push({ label: model, count: Number(heading[2]), start: rows.length, level: "model" }); continue; }
     const sizeHeading = line.match(sizeHeadingPattern);
-    if (sizeHeading) { close("size"); size = sizeHeading[1].toLocaleUpperCase("pt-BR"); const count = sizeHeading[2] ?? sizeHeading[3]; if (count) expected.push({ label: `${model} / ${size}`, count: Number(count), start: rows.length, level: "size" }); continue; }
+    if (sizeHeading) { close("size"); size = productionHeadingSize(sizeHeading[1]); const count = sizeHeading[2] ?? sizeHeading[3]; if (count !== undefined) expected.push({ label: `${model} / ${size}`, count: Number(count), start: rows.length, level: "size" }); continue; }
     if (productionNotesPattern.test(line)) { notes.push(line); continue; }
     const piece = namedProductionPiece(line);
     if (piece) {

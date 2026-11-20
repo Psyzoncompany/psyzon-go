@@ -31,6 +31,61 @@ test("quantity size codes identify models and preserve the number of physical sh
   assert.throws(() => parseProductionOrder("500G\n1M"), /500/);
 });
 
+test("Markdown size sections preserve all 29 names and pending sizes without importing the financial summary", async () => {
+  const groups: Array<[string, string[]]> = [
+    ["P", ["Alice", "Cítia", "Fátima", "Isabelle", "Jhenifer", "Lívia", "Nara", "Seline", "Sophia", "Valentina"]],
+    ["M", ["Ashley", "Fernanda", "Fernando", "Ismael", "Luce", "Poliana Botelho", "Poliana Brito", "Rosana", "Samilly", "Sandra", "Talita"]],
+    ["G", ["Joelma", "José Aluísio", "Ruan"]],
+    ["GG", ["Gilson", "João Pedro", "Luís Fernando", "Robson"]],
+    ["Pendente", ["Gerciane"]],
+  ];
+  const source = groups.map(([size, names]) => `## TAMANHO ${size} — ${names.length} ${names.length === 1 ? "unidade" : "unidades"}\n\n${names.map(name => `- ${name}`).join("\n")}`).join("\n\n") + `
+---
+## RESUMO DO PEDIDO
+| Tamanho | Quantidade |
+| ------- | ---------- |
+| P | 10 |
+| M | 11 |
+| G | 3 |
+| GG | 4 |
+| Pendente | 1 |
+| **TOTAL** | **29** |
+**Valor unitário:** R$ 55,00
+**VALOR TOTAL: R$ 1.595,00**`;
+  const checklist = parseProductionOrder(source);
+  assert.equal(checklist.rows.length, 29);
+  assert.deepEqual(checklist.rows.map(row => [row.size, row.name]), groups.flatMap(([size, names]) => names.map(name => [size, name])));
+  assert.deepEqual(productionSummary(checklist.rows), groups.map(([size, names]) => ({ size, quantity: names.length })));
+  assert.deepEqual(checklist.warnings, []);
+  assert.equal(checklist.notes, "");
+  assert.ok(checklist.rows.every(row => row.model === "Masculina"));
+  const html = renderToStaticMarkup(createElement(ProductionSheets, { checklist }));
+  assert.match(html, /Gerciane/);
+  assert.match(html, /TAMANHO Pendente/);
+  assert.doesNotMatch(html, /1\.595|Valor unitário/);
+  const ai = await organizeProductionWithAI(source, [candidate(checklist)]);
+  assert.deepEqual(ai.rows.map(row => [row.size, row.name]), checklist.rows.map(row => [row.size, row.name]));
+});
+
+test("pending headings end shorthand groups, accept common count formats and flag mismatches", () => {
+  const checklist = parseProductionOrder(`1GF: Ana
+Tamanho: Pendente (1 unidade):
+- Gerciane
+Tamanho M: 2
+- José
+Valor unitário: R$ 55,00
+---
+Tamanho a definir — 1 un.
+- Alice`);
+  assert.equal(checklist.rows.length, 4);
+  assert.deepEqual(checklist.rows.map(row => [row.model, row.size, row.name]), [
+    ["Feminina", "G", "Ana"], ["Masculina", "M", "José"],
+    ["Masculina", "Pendente", "Gerciane"], ["Masculina", "Pendente", "Alice"],
+  ]);
+  assert.equal(checklist.warnings.length, 1);
+  assert.match(checklist.warnings[0], /informado 2, encontrados 1/);
+});
+
 test("compact groups accept names, keep explicit sections and warn about excess names", () => {
   const result = parseProductionOrder("Feminina\n2M\nAna\nJoão\nMasculina\n1GF: Maria\n1G - Pedro\nCor: azul");
   assert.equal(result.rows.find(row => row.name === "João")?.model, "Feminina");

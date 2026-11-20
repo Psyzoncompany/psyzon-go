@@ -3,7 +3,6 @@ const shortCode = new RegExp(`^(\\d+)\\s*(?:[x×]\\s*)?(${sizes})\\s*(F|M)?(?=$|
 const onlyCodes = new RegExp(`^\\d+\\s*(?:[x×]\\s*)?${sizes}\\s*[FM]?(?:[\\s,;+]+\\d+\\s*(?:[x×]\\s*)?${sizes}\\s*[FM]?)*$`, "i");
 const tokens = new RegExp(`\\d+\\s*(?:[x×]\\s*)?${sizes}\\s*[FM]?`, "gi");
 const heading = /^(masculin[ao]s?|feminin[ao]s?|infantil|unissex|manga curta(?:\s*[-–—]\s*padrão)?|manga comprida|sob medida|modelo\s+.+?)(?:\s*[-–—:]\s*\d+\s*(?:unidades?|un\.?))?:?$/i;
-const sizeHeading = /^(?:tamanho\s+)?(?:XGG|GG|G\d+|PP|P|M|G|\d+\s*anos?|sob medida|único)\s*(?:\(\d+\)|[-–—|:]\s*\d+\s*(?:unidades?|un\.?))?$/i;
 
 export function expandProductionShorthand(text: string) {
   const lines = text.split(/\r?\n/).flatMap(raw => {
@@ -42,3 +41,4 @@ export function expandProductionShorthand(text: string) {
   }
   return output.join("\n");
 }
+import { productionSizeHeadingPattern as sizeHeading } from "./production-size-heading";

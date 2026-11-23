@@ -1,6 +1,6 @@
 "use client";
 
-import { Aperture, Check, Layers, Palette, Scissors, Sparkles, WalletCards } from "lucide-react";
+import { Aperture, Gamepad2, Check, Layers, Palette, Scissors, Sparkles, WalletCards } from "lucide-react";
 import type { InterfaceAppearance } from "./interface-appearance";
 import "./appearance-settings.css";
 
@@ -15,6 +15,7 @@ const themes = [
   { theme: "liquid-glass-card", name: "Liquid Glass Card", detail: "Transparência, luz e superfícies de vidro.", icon: Sparkles },
   { theme: "ios-premium", name: "iOS Premium", detail: "Roxo, superfícies claras e acabamento suave.", icon: WalletCards },
   { theme: "studio-glass", name: "Studio Glass", detail: "Vidro fumê e um cenário próprio em cada aba.", icon: Aperture },
+  { theme: "ps5", name: "PS5", detail: "Central de atividades com seleção por blocos e ondas de luz.", icon: Gamepad2 },
   { theme: "atelier", name: "Psyzon Atelier", detail: "Vinho, papel e um painel de trabalho com foco nos prazos.", icon: Scissors },
 ] as const;
 
@@ -40,7 +41,7 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
     </fieldset>
     <div className="appearance-customize">
       {glass && <fieldset className="appearance-palettes"><legend>Cor do ambiente</legend><div>{palettes.map(({ value, label, color }) => <label key={value} data-selected={appearance.palette === value}><input type="radio" name="glass-palette" checked={appearance.palette === value} onChange={() => changeAppearance({ palette: value })} /><span style={{ background: color }} aria-hidden="true" />{label}</label>)}</div></fieldset>}
-      {appearance.theme !== "original" && appearance.theme !== "atelier" && <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>}
+      {appearance.theme !== "original" && appearance.theme !== "atelier" && appearance.theme !== "ps5" && <fieldset className="appearance-transparency"><legend>Transparência</legend><div>{[{ value: "balanced", label: "Vidro suave" }, { value: "reduced", label: "Mais contraste" }].map(({ value, label }) => <label key={value} data-selected={appearance.transparency === value}><input type="radio" name="glass-transparency" checked={appearance.transparency === value} onChange={() => changeAppearance({ transparency: value as InterfaceAppearance["transparency"] })} />{label}</label>)}</div></fieldset>}
       <div className="appearance-motion"><label htmlFor="glass-motion">Animações suaves</label><input id="glass-motion" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
 
     </div>

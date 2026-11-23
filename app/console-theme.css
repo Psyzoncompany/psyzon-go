@@ -1,0 +1,86 @@
+/* Console surfaces are screen-only so printed work orders keep their paper palette. */
+@media screen {
+  .appearance-preview[data-preview="ps5"] { background: #101d42 url("/console-wave.webp") center / cover; }
+  .appearance-preview[data-preview="ps5"] .preview-sidebar { display: none; }
+  .appearance-preview[data-preview="ps5"] .preview-metrics i { background: linear-gradient(145deg,#9bbaff,#3455aa); }
+  .appearance-preview[data-preview="ps5"] .preview-list { background: #b5d3ff55; }
+
+  :root[data-ui-theme="ps5"] {
+    color-scheme: dark;
+    --bg: #0a1020; --card: #182337; --card-subtle: #202e46;
+    --text: #f3f6ff; --muted: #c2cee1; --faint: #a3b1c9;
+    --blue: #a5d5ff; --blue-soft: #243e5f; --border: #758bab38;
+    --green: #83e4bf; --green-soft: #193d36; --red: #ffa7ad; --red-soft: #502c3b;
+    --yellow: #ffdb98; --yellow-soft: #463a28; --shadow: 0 12px 26px #02061125;
+    --structure-radius: 16px; --structure-dialog-radius: 20px;
+  }
+  :root[data-ui-theme="ps5"][data-theme="dark"] { --bg: #050912; --card: #101a2b; --card-subtle: #18243a; }
+  :root[data-ui-theme="ps5"] body { background: radial-gradient(ellipse at 83% 0%,#23365770,transparent 55%),var(--bg); }
+  :root[data-ui-theme="ps5"] .app-shell { background: transparent; }
+  :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] :is(.sidebar,.topbar,.mobile-nav,.mobile-menu-surface,.notification-panel,.search-results) { background: var(--bg); color: var(--text); border-color: var(--border); }
+  :root[data-ui-theme="ps5"] .app-shell :is(.sidebar nav button.active,.mobile-nav > button.active,.notes-page-nav button.active) { color: #fff; background: #2c405c; }
+  :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] :is(.panel,.metric-card,.customer-card,.finance-list-card,.settings-card,.materials-order,.dtf-order,.history-metrics article,.dtf-metrics article,.finance-premium-summary article) {
+    background: linear-gradient(125deg,#849ec610,transparent 60%),var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); color: var(--text);
+  }
+  :root[data-ui-theme="ps5"] .app-shell :is(.primary,.an-primary,.floating-new), :root[data-ui-theme="ps5"] dialog .primary { border-radius: 28px; border-color: transparent; background: #eaf4ff; color: #14223a; box-shadow: 0 3px 16px #080e242a; }
+  :root[data-ui-theme="ps5"] .secondary { background: var(--card-subtle); border-radius: 24px; color: var(--text); }
+  :root[data-ui-theme="ps5"] :is(.modal,.an-dialog,.finance-detail-sheet,.mobile-menu-dialog,.apple-notes,.an-document,.an-editor) { background-color: var(--card); color: var(--text); }
+  :root[data-ui-theme="ps5"] :is(button,a,input,select,textarea):focus-visible { outline: 2px solid #cde9ff; outline-offset: 3px; }
+  :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] :is(.page-heading,.production-heading,.dtf-title,.history-heading,.materials-heading,.tasks-heading) h1 { font-weight: 450; letter-spacing: -.04em; }
+  :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] .production-lane { border: 0; background: linear-gradient(180deg,color-mix(in srgb,var(--stage-color) 13%,var(--card)),var(--bg) 260px); border-radius: 17px; padding: 12px; }
+  :root[data-ui-theme="ps5"] .kanban-order-card { background: var(--card); border-radius: 13px; }
+  :root[data-ui-theme="ps5"] .kanban-card-open { background: transparent; }
+  :root[data-ui-theme="ps5"] .production-count { color: var(--text); background: var(--card-subtle); }
+  .console-home { margin-bottom: 22px; }
+  .console-banner { isolation: isolate; position: relative; overflow: hidden; border-radius: 18px; padding: clamp(20px,3vw,44px); color: #fff; background: #0a1734; }
+  .console-banner::before { content: ""; position: absolute; inset: 0; z-index: -2; background: url("/console-wave.webp") center / cover; }
+  .console-banner::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg,#050c20d9,transparent 82%); }
+  .console-banner[data-activity="dtf"]::before { filter: hue-rotate(32deg); }
+  .console-banner[data-activity="afazeres"]::before { filter: hue-rotate(-38deg); }
+  .console-banner[data-activity="clientes"]::before { filter: hue-rotate(64deg); }
+  .console-banner[data-activity="financeiro"]::before { filter: hue-rotate(-60deg); }
+  .console-launcher { display: flex; gap: clamp(8px,1.5vw,20px); overflow-x: auto; padding: 6px; margin: -6px; scrollbar-width: thin; }
+  .console-launcher button { appearance: none; background: none; border: 0; color: #d3ddec; flex: none; padding: 0; display: grid; justify-items: center; gap: 8px; font-size: 12px; cursor: pointer; }
+  .console-tile { position: relative; overflow: hidden; width: clamp(62px,6.5vw,92px); aspect-ratio: 1; display: grid; place-items: center; border-radius: 15%; background: radial-gradient(ellipse at 95% 0,#e4f4ff80,transparent 56%),linear-gradient(140deg,var(--tile-a),var(--tile-b)); box-shadow: inset 0 1px 1px #ffffff5a; }
+  .console-tile::before { content: ""; position: absolute; width: 135%; height: 78%; border: 1px solid #ffffff35; border-radius: 50%; transform: translate(10%,40%) rotate(-39deg); box-shadow: 0 4px 0 #ffffff13,0 10px 0 #ffffff0e,0 17px 0 #ffffff0c; }
+  .console-tile svg { width: 45%; height: 45%; stroke-width: 1.4; color: white; filter: drop-shadow(0 3px 4px #14243d55); }
+  [data-tile="producao"] { --tile-a:#4379df; --tile-b:#112f6f; }
+  [data-tile="dtf"] { --tile-a:#a064e0; --tile-b:#462968; }
+  [data-tile="afazeres"] { --tile-a:#389bc1; --tile-b:#164665; }
+  [data-tile="clientes"] { --tile-a:#c76885; --tile-b:#6b224a; }
+  [data-tile="financeiro"] { --tile-a:#379988; --tile-b:#174442; }
+  .console-launcher [aria-selected="true"] .console-tile { outline: 2px solid white; outline-offset: 3px; }
+  .console-launcher [aria-selected="true"] { color: white; font-weight: 650; }
+  .console-feature { padding-top: clamp(24px,3.5vw,52px); }
+  .console-feature h1 { margin: 0; font-size: clamp(36px,4.5vw,68px); font-weight: 360; line-height: 1.05; letter-spacing: -.055em; }
+  .console-feature p { color: #dae4f5; margin: 8px 0 18px; font-size: 14px; }
+  .console-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .console-actions button { min-height: 42px; border-radius: 28px; padding: 9px 18px; display: flex; gap: 9px; align-items: center; background: #f0f6ff; color: #13233c; border: 0; font-weight: 640; font-size: 13px; cursor: pointer; }
+  .console-actions button + button { background: #253451; color: #f3f6ff; }
+  @media (min-width: 1120px) {
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"][data-layout] .sidebar { position: relative; inset: auto; width: 100%; height: 63px; flex-direction: row; align-items: center; gap: 20px; padding: 0 32px; border: 0; }
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"][data-layout] .main { margin-left: 0; }
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] .sidebar :is(.sidebar-brand-row,.brand,.profile) { margin: 0; flex: none; }
+    :root[data-ui-theme="ps5"] .sidebar .sidebar-collapse-button, :root[data-ui-theme="ps5"] .sidebar .nav-group > small, :root[data-ui-theme="ps5"] .sidebar .sync-status { display: none; }
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] .sidebar nav { display: flex; flex-direction: row; gap: 3px; flex: 1; overflow: auto; }
+    :root[data-ui-theme="ps5"] .sidebar .nav-group { display: flex; flex-direction: row; gap: 3px; }
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] .sidebar nav button { display: flex; padding: 0 10px; gap: 6px; border-radius: 24px; white-space: nowrap; }
+    :root[data-ui-theme="ps5"] .sidebar nav button span { display: inline; }
+    :root[data-ui-theme="ps5"] .sidebar nav svg { width: 15px; }
+    :root[data-ui-theme="ps5"] .sidebar .profile > :not(:first-child) { display: none; }
+    :root[data-ui-theme="ps5"] .app-shell[data-design="ps5"] .topbar { height: 50px; }
+  }
+  @media (max-width: 760px) {
+    .console-banner { padding: 18px 16px; }
+    .console-tile { width: 54px; }
+    .console-launcher { gap: 10px; }
+    .console-launcher button { font-size: 10px; }
+    .console-feature { padding-top: 26px; }
+    .console-feature p { font-size: 12px; }
+    :root[data-ui-theme="ps5"] .app-shell .mobile-nav { background: #111c30f5; border-radius: 22px; }
+  }
+}
+@media screen and (min-width: 1120px) {
+  :root[data-ui-theme="ps5"] .app-shell[data-layout="premium"] .metric-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  :root[data-ui-theme="ps5"] .app-shell[data-layout="premium"] .metric-card { min-height: 125px; }
+}

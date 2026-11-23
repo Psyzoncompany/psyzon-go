@@ -16,6 +16,7 @@ import "./studio-glass.css";
 import "./compact-cards.css";
 import "./motion-design.css";
 import "./atelier.css";
+import "./console-theme.css";
 import "./liquid-glass-mobile.css";
 import { appearanceBootstrap } from "./interface-appearance";
 import AutoUpdate from "./AutoUpdate";

@@ -1,13 +1,17 @@
 export const interfaceSoundFiles = {
-  click: "/sounds/click-v1.mp3",
-  navigate: "/sounds/navigate-v1.mp3",
+  click: "/sounds/ps5-press-bottan-v1.mp3",
+  navigate: "/sounds/ps5-selection-button-v1.mp3",
   type: "/sounds/type-v1.mp3",
+  startup: "/sounds/ps5_start-v1.mp3",
+  notification: "/sounds/ps5-notification-v1.mp3",
+  success: "/sounds/ps5-original-trophy-v1.mp3",
 } as const;
 export type InterfaceSound = keyof typeof interfaceSoundFiles;
-export type SoundPreferences = { enabled: boolean; volume: number; click: boolean; navigate: boolean; type: boolean };
-export const defaultSoundPreferences: SoundPreferences = { enabled: true, volume: 18, click: true, navigate: true, type: true };
+export type SoundPreferences = { enabled: boolean; volume: number } & Record<InterfaceSound, boolean>;
+export const defaultSoundPreferences: SoundPreferences = { enabled: true, volume: 18, click: true, navigate: true, type: true, startup: true, notification: true, success: true };
 export const soundPreferenceKey = (uid: string) => `psy-interface-sounds-v1:${uid}`;
 export const interfaceNavigationEvent = "psyzon-interface-navigation";
+export const interfaceAudioUnlockEvent = "psyzon-interface-audio-unlock";
 
 export function readSoundPreferences(raw: string | null): SoundPreferences {
   try {
@@ -18,6 +22,9 @@ export function readSoundPreferences(raw: string | null): SoundPreferences {
       click: value.click !== false,
       navigate: value.navigate !== false,
       type: value.type !== false,
+      startup: value.startup !== false,
+      notification: value.notification !== false,
+      success: value.success !== false,
     };
   } catch { return defaultSoundPreferences; }
 }

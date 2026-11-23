@@ -1,6 +1,6 @@
 "use client";
 
-import { Keyboard, MousePointer2, Play, PanelsTopLeft, Volume2, VolumeX } from "lucide-react";
+import { Bell, Keyboard, MousePointer2, Play, PanelsTopLeft, Power, Trophy, Volume2, VolumeX } from "lucide-react";
 import type useInterfaceSounds from "./useInterfaceSounds";
 import "./interface-sounds.css";
 
@@ -8,11 +8,14 @@ const actions = [
   { kind: "click", label: "Cliques e toques", detail: "Botões, menus e marcações.", icon: MousePointer2 },
   { kind: "navigate", label: "Mudanças de página", detail: "Uma transição leve entre as áreas.", icon: PanelsTopLeft },
   { kind: "type", label: "Digitação", detail: "Um toque discreto enquanto você escreve.", icon: Keyboard },
+  { kind: "startup", label: "Abertura do sistema", detail: "PS5 Startup · no primeiro toque ao abrir.", icon: Power },
+  { kind: "notification", label: "Notificações", detail: "PS5 Notification · novos avisos com o site aberto.", icon: Bell },
+  { kind: "success", label: "Conclusões", detail: "PS5 Trophy · checklists, etapas e confirmações.", icon: Trophy },
 ] as const;
 
 export default function InterfaceSoundSettings({ preferences, changePreferences, preview, storageError }: ReturnType<typeof useInterfaceSounds>) {
   return <section className="panel interface-sounds" aria-labelledby="interface-sounds-title" data-ui-sound="off">
-    <header><span className="sound-settings-icon">{preferences.enabled ? <Volume2 size={21} /> : <VolumeX size={21} />}</span><div><h2 id="interface-sounds-title">Sons da interface</h2><p>Toques suaves para acompanhar suas ações.</p></div></header>
+    <header><span className="sound-settings-icon">{preferences.enabled ? <Volume2 size={21} /> : <VolumeX size={21} />}</span><div><h2 id="interface-sounds-title">Sons da interface</h2><p>Efeitos PS5 com volume e ativação por ação.</p></div></header>
     <div className="sound-master"><div><label htmlFor="interface-sounds-enabled">Ativar sons da interface</label><small id="interface-sounds-description">A preferência fica salva para sua conta neste navegador.</small></div><input id="interface-sounds-enabled" aria-describedby="interface-sounds-description" type="checkbox" checked={preferences.enabled} onChange={event => changePreferences({ enabled: event.target.checked })} /></div>
     <div className="sound-volume"><label htmlFor="interface-volume">Volume <output htmlFor="interface-volume">{preferences.volume}%</output></label><input id="interface-volume" type="range" min="0" max="100" step="1" value={preferences.volume} disabled={!preferences.enabled} onChange={event => changePreferences({ volume: Number(event.target.value) })} /></div>
     <div className="sound-action-list">{actions.map(({ kind, label, detail, icon: Icon }) => <div className="sound-action" key={kind}>

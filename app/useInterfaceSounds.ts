@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { InterfaceAudio } from "./interface-audio";
-import { defaultSoundPreferences, interfaceNavigationEvent, isTypingSoundTarget, readSoundPreferences, soundControl, soundPreferenceKey, type InterfaceSound, type SoundPreferences } from "./interface-sound-model";
+import { defaultSoundPreferences, interfaceAudioUnlockEvent, interfaceNavigationEvent, isTypingSoundTarget, readSoundPreferences, soundControl, soundPreferenceKey, type InterfaceSound, type SoundPreferences } from "./interface-sound-model";
+import { paymentFeedbackEvent, paymentPreferences, type PaymentSuccess } from "./payment-feedback";
 
 export default function useInterfaceSounds(uid: string) {
   const [saved, setSaved] = useState({ uid: "", preferences: defaultSoundPreferences });
@@ -26,7 +27,23 @@ export default function useInterfaceSounds(uid: string) {
       setSaved({ uid, preferences: restored });
     });
     let pendingClick: number | undefined;
-    const unlock = (event: Event) => { if (event.isTrusted) audio.unlock(); };
+    let startupHandled = false;
+    const unlock = (event: Event) => {
+      if (!event.isTrusted) return;
+      audio.unlock();
+      if (!startupHandled) {
+        startupHandled = true;
+        if (!(event.target instanceof Element && event.target.closest('[data-ui-sound="off"]'))) void audio.playWhenReady("startup");
+      }
+    };
+    const prepare = (event: Event) => { if ((event as CustomEvent<string>).detail === uid) audio.unlock(); };
+    const success = (event: Event) => {
+      const value = (event as CustomEvent<PaymentSuccess>).detail;
+      if (value?.uid === uid && paymentPreferences(uid).sound) {
+        window.clearTimeout(pendingClick);
+        void audio.playWhenReady("success");
+      }
+    };
     const click = (event: MouseEvent) => {
       if (!event.isTrusted || !soundControl(event.target)) return;
       audio.unlock();
@@ -59,6 +76,8 @@ export default function useInterfaceSounds(uid: string) {
     document.addEventListener("input", input);
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener(interfaceNavigationEvent, navigate);
+    window.addEventListener(interfaceAudioUnlockEvent, prepare);
+    window.addEventListener(paymentFeedbackEvent, success);
     window.addEventListener("storage", sync);
     return () => {
       disposed = true;
@@ -69,6 +88,8 @@ export default function useInterfaceSounds(uid: string) {
       document.removeEventListener("input", input);
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener(interfaceNavigationEvent, navigate);
+      window.removeEventListener(interfaceAudioUnlockEvent, prepare);
+      window.removeEventListener(paymentFeedbackEvent, success);
       window.removeEventListener("storage", sync);
       audio.dispose();
       if (engine.current === audio) engine.current = null;
@@ -86,5 +107,6 @@ export default function useInterfaceSounds(uid: string) {
   }
 
   const preview = (kind: InterfaceSound) => { void engine.current?.preview(kind); };
-  return { preferences, changePreferences, preview, storageError };
+  const notify = useCallback(() => { engine.current?.play("notification"); }, []);
+  return { preferences, changePreferences, preview, notify, storageError };
 }

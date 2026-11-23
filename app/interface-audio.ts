@@ -10,7 +10,7 @@ export class InterfaceAudio {
   private loading?: Promise<void>;
   private controller = new AbortController();
   private closed = false;
-  private played: Record<InterfaceSound, number> = { click: -Infinity, navigate: -Infinity, type: -Infinity };
+  private played: Record<InterfaceSound, number> = { click: -Infinity, navigate: -Infinity, type: -Infinity, startup: -Infinity, notification: -Infinity, success: -Infinity };
 
   constructor(private preferences: SoundPreferences) {
     this.warm();
@@ -67,7 +67,8 @@ export class InterfaceAudio {
     if (this.closed || !this.preferences.enabled || this.preferences.volume === 0 || (!preview && !this.preferences[kind]) || document.hidden) return;
     const fallback = this.fallback.get(kind);
     if (fallback ? !preview && fallback.readyState < 2 : !context || context.state !== "running" || !buffer || !this.output) return;
-    if (!preview && now - this.played[kind] < (kind === "type" ? 65 : 100)) return;
+    const interval = kind === "type" ? 65 : kind === "notification" || kind === "success" ? 1200 : 100;
+    if (!preview && now - this.played[kind] < interval) return;
     // A navigation replaces the click that initiated it.
     if (kind === "click" && now - this.played.navigate < 110) return;
     this.played[kind] = now;
@@ -93,8 +94,13 @@ export class InterfaceAudio {
   }
 
   async preview(kind: InterfaceSound) {
+    await this.playWhenReady(kind, true);
+  }
+
+  async playWhenReady(kind: InterfaceSound, preview = false) {
+    const requestedAt = performance.now();
     await Promise.all([this.unlock(), this.loading]);
-    this.play(kind, true);
+    if (performance.now() - requestedAt < 1500) this.play(kind, preview);
   }
 
   private level(kind: InterfaceSound) {

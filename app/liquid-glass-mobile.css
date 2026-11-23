@@ -1,0 +1,24 @@
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(
+    .panel, .metric-card, .attention-card, .customer-card, .settings-card,
+    .production-lane, .production-order-card, .kanban-order-card, .production-delivered,
+    .dtf-pipeline, .dtf-order, .dtf-metrics article,
+    .materials-order, .materials-empty, .materials-totals article,
+    .history-metrics article, .history-summary article, .materials-summary article,
+    .finance-premium-summary article, .finance-list-card,
+    .glass-shortcuts button, .apple-notes
+  ) {
+    border: 0 !important;
+    box-shadow: 0 5px 20px #233e5e0a;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] .app-shell :is(
+    .panel, .metric-card, .attention-card, .customer-card, .settings-card,
+    .production-lane, .production-order-card, .kanban-order-card, .production-delivered,
+    .dtf-pipeline, .dtf-order, .dtf-metrics article,
+    .materials-order, .materials-empty, .materials-totals article,
+    .history-metrics article, .history-summary article, .materials-summary article,
+    .finance-premium-summary article, .finance-list-card,
+    .glass-shortcuts button, .apple-notes
+  ) { box-shadow: 0 5px 20px #0000001a; }
+}

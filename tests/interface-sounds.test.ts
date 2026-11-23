@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
-import { defaultSoundPreferences, readSoundPreferences, soundPreferenceKey } from "../app/interface-sound-model";
+import { defaultSoundPreferences, interfaceSoundFiles, readSoundPreferences, soundPreferenceKey } from "../app/interface-sound-model";
 
 test("sound preferences stay account-scoped and invalid volume cannot produce an unbounded gain", () => {
   assert.notEqual(soundPreferenceKey("one"), soundPreferenceKey("two"));
@@ -21,10 +21,11 @@ test("offline audio caches accept only the known public MP3 files without an aut
   function allowed(path: string, authenticated = false) {
     return vm.runInContext(`isPublicStaticRequest({ method: "GET", destination: "", headers: { has: () => ${authenticated} } }, new URL(${JSON.stringify(path)}, "https://psyzon.test"))`, scope);
   }
-  assert.equal(allowed("/sounds/click-v1.mp3"), true);
-  assert.equal(allowed("/sounds/navigate-v1.mp3"), true);
-  assert.equal(allowed("/sounds/type-v1.mp3"), true);
-  assert.equal(allowed("/sounds/click-v1.mp3", true), false);
+  for (const path of Object.values(interfaceSoundFiles)) {
+    assert.equal(allowed(path), true);
+    assert.equal(allowed(path, true), false);
+  }
+  assert.equal(allowed("/sounds/click-v1.mp3"), false);
   assert.equal(allowed("/api/private.mp3"), false);
   assert.equal(allowed("/private.mp3"), false);
   assert.equal(allowed("https://elsewhere.test/sounds/click-v1.mp3"), false);

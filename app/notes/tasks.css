@@ -100,3 +100,21 @@
 .tasks-history-heading { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap; }
 .tasks-history-heading select { color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:9px;min-height:42px;padding:6px 10px; }
 .tasks-history-empty { color:var(--muted);font-size:12px; }
+@media screen {
+  :root[data-ui-theme] .app-shell[data-layout="premium"] .tasks-workspace { max-width: none; width: 100%; }
+  .task-topics { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,340px),1fr)); gap: 12px; align-items: start; padding: 12px; }
+  .task-topic { min-width: 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--card); }
+  .task-topic h3 { margin: 0; padding: 10px 12px; color: var(--text); font-size: 14px; font-weight: 650; background: var(--card-subtle); overflow-wrap: anywhere; }
+  .task-topic ol { padding: 0; margin: 0; list-style: none; }
+  .task-number { font-size: 11px; font-variant-numeric: tabular-nums; font-weight: 650; color: var(--muted); flex-shrink: 0; }
+  .task-topic .task-row { min-width: 0; }
+  .task-topic .task-inline-edit { flex-wrap: wrap; }
+  @media (max-width: 540px) {
+    .task-topics { padding: 6px; gap: 8px; }
+    .task-topic .task-row { padding-inline: 5px; gap: 3px; }
+  }
+}
+@media screen and (min-width: 1040px) {
+  .tasks-columns { display: grid; grid-template-columns: minmax(0,3fr) minmax(0,2fr); gap: 14px; align-items: start; padding: 0 18px 18px; }
+  .tasks-columns .tasks-list { margin: 0; min-width: 0; }
+}

@@ -26,6 +26,7 @@ import { changedFields } from "./changed-fields";
 import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
 import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./payment-feedback";
+import useConsoleKeys from "./useConsoleKeys";
 import useInterfaceSounds from "./useInterfaceSounds";
 import { operationCosts } from "./operations-data";
 import type { PurchaseCostInput } from "./notes/PurchaseCostReview";
@@ -335,6 +336,7 @@ export default function HomePage() {
   const [studioSidebarCollapsed, setStudioSidebarCollapsed] = useState(true);
   const studio = interfaceAppearance.appearance.theme === "studio-glass";
   const consoleTheme = interfaceAppearance.appearance.theme === "ps5";
+  useConsoleKeys(consoleTheme);
   const atelier = interfaceAppearance.appearance.theme === "atelier";
   const sidebarCollapsed = studio ? studioSidebarCollapsed : standardSidebarCollapsed;
   const setSidebarCollapsed = studio ? setStudioSidebarCollapsed : setStandardSidebarCollapsed;

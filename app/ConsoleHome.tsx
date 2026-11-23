@@ -42,6 +42,11 @@ export default function ConsoleHome(props: Props) {
   ];
 
   function handleKeys(event: KeyboardEvent<HTMLButtonElement>, current: number) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      props.navigate(activities[current].view);
+      return;
+    }
     let next = current;
     switch (event.key) {
       case "ArrowRight": next = (current + 1) % activities.length; break;
@@ -60,7 +65,7 @@ export default function ConsoleHome(props: Props) {
       <div className="console-launcher" role="tablist" aria-label="Selecionar atividade">
         {activities.map(({ view, title, icon: Icon }, i) => <button key={view} type="button" role="tab" id={id + view}
           aria-controls={id + "detail"} aria-selected={i === index} tabIndex={i === index ? 0 : -1}
-          ref={element => { tabs.current[i] = element; }} onKeyDown={event => handleKeys(event, i)} onClick={() => setIndex(i)}>
+          onFocus={() => setIndex(i)} ref={element => { tabs.current[i] = element; }} onKeyDown={event => handleKeys(event, i)} onClick={() => setIndex(i)}>
           <span className="console-tile" data-tile={view}><Icon aria-hidden="true" /></span><span>{title}</span>
         </button>)}
       </div>

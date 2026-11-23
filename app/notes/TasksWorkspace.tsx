@@ -75,8 +75,22 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
     }, "Tarefa atualizada.");
   }
 
-  function renderTask(task: Task) {
+  function renderTopics(items: Task[]) {
+    const topics = new Map<string, Task[]>();
+    for (const task of items) {
+      const topic = splitTask(task.title).topic || (task.customerId && customerNames.get(task.customerId)) || "Geral";
+      const group = topics.get(topic);
+      if (group) group.push(task);
+      else topics.set(topic, [task]);
+    }
+    return <div className="task-topics">{[...topics].sort(([a], [b]) => a.localeCompare(b, "pt-BR")).map(([topic, group]) =>
+      <section key={topic} className="task-topic"><h3>{topic}</h3><ol>{group.map(renderTask)}</ol></section>
+    )}</div>;
+  }
+
+  function renderTask(task: Task, index: number) {
     return <li key={task.id} className="task-row" data-celebrate={task.completed && celebrate === task.id ? true : undefined}>
+      <span className="task-number">{String(index + 1).padStart(2, "0")}</span>
       <label className="task-check">
         <input type="checkbox" checked={task.completed} disabled={disabled} aria-label={`${task.completed ? "Reabrir" : "Concluir"} ${task.title}`} onChange={() => void run(task.id, async () => {
           await onToggle(task.id, !task.completed);
@@ -90,7 +104,7 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
         <button type="submit" aria-label="Salvar tarefa" disabled={disabled}><Check size={17} /></button>
         <button type="button" aria-label="Cancelar edição" disabled={disabled} onClick={() => setEditing(undefined)}><X size={17} /></button>
       </form> : <>
-        <span className={task.completed ? "task-title done" : "task-title"}>{task.title}{task.customerId && <small className="task-customer-name">{customerNames.get(task.customerId) ?? "Cliente indisponível"}</small>}</span>
+        <span className={task.completed ? "task-title done" : "task-title"}>{splitTask(task.title).title}{task.customerId && splitTask(task.title).topic && <small className="task-customer-name">{customerNames.get(task.customerId) ?? "Cliente indisponível"}</small>}</span>
         <div className="task-actions">
           <button type="button" aria-label={`Editar ${task.title}`} title="Editar" disabled={disabled} onClick={() => setEditing(task.id)}><Pencil size={16} /></button>
           <button type="button" aria-label={`Excluir ${task.title}`} title="Excluir" disabled={disabled} onClick={() => {
@@ -104,7 +118,7 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
   return <section className="tasks-workspace">
     <button type="button" className="tasks-back" onClick={back}><ArrowLeft size={17} /> Bloco de notas</button>
     <header className="tasks-heading">
-      <div><span className="eyebrow">BLOCO DE NOTAS</span><h1>Afazeres</h1><p>Anote, marque e acompanhe suas tarefas do dia a dia.</p></div>
+      <div><span className="eyebrow">BLOCO DE NOTAS</span><h1>Afazeres</h1><p>Para criar um tópico, escreva “Corte: separar moldes”.</p></div>
       <button type="button" className="secondary" disabled={!tasks.length} onClick={() => setPrintOpen(true)}><Printer size={17} /> PDF / Imprimir</button>
     </header>
     <section className="tasks-board panel" aria-label="Lista de afazeres">
@@ -120,17 +134,24 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
       </form>
       {!ready && <p className="tasks-feedback" role="status">{connection === "error" ? "A lista não sincronizou. Confira a conexão e recarregue a página." : "Sincronizando afazeres…"}</p>}
       {feedback && <p className={feedback.error ? "form-error tasks-feedback" : "tasks-feedback"} role={feedback.error ? "alert" : "status"}>{feedback.message}</p>}
+      <div className="tasks-columns">
       <div className="tasks-list">
         <h2>Pendentes <span>{pending.length}</span></h2>
-        {pending.length ? <ul>{pending.map(renderTask)}</ul> : <div className="tasks-empty"><CircleCheck size={23} /><p>{tasks.length ? "Tudo em dia. Todas as tarefas foram concluídas." : "Adicione sua primeira tarefa acima."}</p></div>}
+        {pending.length ? renderTopics(pending) : <div className="tasks-empty"><CircleCheck size={23} /><p>{tasks.length ? "Tudo em dia. Todas as tarefas foram concluídas." : "Adicione sua primeira tarefa acima."}</p></div>}
       </div>
       <div className="tasks-list">
         <div className="tasks-history-heading"><h2>Concluídas <span>{completed.length}</span></h2><select aria-label="Mês do histórico de afazeres" value={historyMonth} onChange={event=>setHistoryMonth(event.target.value)}>{historyMonths.map(month=><option key={month} value={month}>{month?month.split("-").reverse().join("/"):"Sem data"}</option>)}</select></div>
-        {completed.length?<ul>{completed.map(renderTask)}</ul>:<p className="tasks-history-empty">Nenhum afazer concluído neste mês.</p>}
+        {completed.length?renderTopics(completed):<p className="tasks-history-empty">Nenhum afazer concluído neste mês.</p>}
+      </div>
       </div>
     </section>
     {printOpen && <TasksPrint customerNames={customerNames} pending={pending} completed={completed} today={today} close={() => setPrintOpen(false)} />}
   </section>;
+}
+
+function splitTask(value: string) {
+  const match = /^([^:\n]{1,60}):\s+(.+)$/u.exec(value);
+  return match ? { topic: match[1].trim(), title: match[2].trim() } : { topic: "", title: value };
 }
 
 function TaskCustomerSelect({ customers, selected }: { customers: Customer[]; selected?: string }) {

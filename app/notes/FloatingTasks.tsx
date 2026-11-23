@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, CheckCheck, ListChecks } from "lucide-react";
+import { ArrowUpRight, CheckCheck, ListChecks, Moon, Sun } from "lucide-react";
 import { millis } from "../notes-model";
 import { groupTasks, splitTask } from "./task-topics";
 import type { Task } from "./task-model";
@@ -19,6 +19,7 @@ const styles = `
   .ft-header p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
   button { font: inherit; cursor: pointer; }
   .ft-open { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; margin-left: auto; border: 0; border-radius: 10px; background: var(--card); color: var(--accent); }
+  .ft-open + .ft-open { margin-left: 0; }
   ol { list-style: none; padding: 0 12px; margin: 0; background: var(--card); border-radius: 16px; }
   li + li { border-top: 1px solid var(--line); }
   label { display: flex; align-items: flex-start; gap: 10px; min-height: 48px; padding: 13px 0; cursor: pointer; }
@@ -43,8 +44,9 @@ const styles = `
   input:disabled { opacity: .5; cursor: wait; }
 `;
 
-export default function FloatingTasks({ host, tasks, customers, connection, dark, onToggle, openTasks }: {
+export default function FloatingTasks({ host, uid, tasks, customers, connection, dark, onToggle, openTasks }: {
   host: Window;
+  uid: string;
   tasks: Task[];
   customers: { id: string; name: string }[];
   connection: "connecting" | "live" | "error";
@@ -52,6 +54,17 @@ export default function FloatingTasks({ host, tasks, customers, connection, dark
   onToggle: (id: string, completed: boolean) => Promise<void>;
   openTasks: () => void;
 }) {
+  const themeKey = "psy-floating-theme:" + uid;
+  const [preference, setPreference] = useState<string | null>(() => {
+    try { return localStorage.getItem(themeKey); } catch { return null; }
+  });
+  const isDark = preference === null ? dark : preference === "dark";
+  const themeAction = isDark ? "Usar tema claro" : "Usar tema escuro";
+  function toggleTheme() {
+    const next = isDark ? "light" : "dark";
+    setPreference(next);
+    try { localStorage.setItem(themeKey, next); } catch { /* Keep the session preference. */ }
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const working = useRef(false);
@@ -69,8 +82,8 @@ export default function FloatingTasks({ host, tasks, customers, connection, dark
     finally { working.current = false; setBusy(false); }
   }
 
-  return createPortal(<><style>{styles}</style><section className="ft-panel" data-dark={dark} aria-label="Afazeres flutuantes">
-    <header className="ft-header"><span className="ft-symbol"><ListChecks size={21} /></span><div><h1>Afazeres</h1><p aria-live="polite">{pending.length} {pending.length === 1 ? "pendente" : "pendentes"}</p></div><button type="button" className="ft-open" aria-label="Abrir todos os afazeres" title="Abrir todos os afazeres" onClick={openTasks}><ArrowUpRight size={19} /></button></header>
+  return createPortal(<><style>{styles}</style><section className="ft-panel" data-dark={isDark} aria-label="Afazeres flutuantes">
+    <header className="ft-header"><span className="ft-symbol"><ListChecks size={21} /></span><div><h1>Afazeres</h1><p aria-live="polite">{pending.length} {pending.length === 1 ? "pendente" : "pendentes"}</p></div><button type="button" className="ft-open" aria-label={themeAction} title={themeAction} onClick={toggleTheme}>{isDark ? <Sun size={18} /> : <Moon size={18} />}</button><button type="button" className="ft-open" aria-label="Abrir todos os afazeres" title="Abrir todos os afazeres" onClick={openTasks}><ArrowUpRight size={19} /></button></header>
     {!ready && <p className="ft-message" role="status">{connection === "error" ? "Não foi possível sincronizar os afazeres. Atualize a página do sistema." : "Sincronizando afazeres…"}</p>}
     {error && <p className="ft-message ft-error" role="alert">{error}</p>}
     {pending.length > 0 ? <FloatingTaskRows customers={customers} items={pending} disabled={!ready || busy} onToggle={toggle} /> : ready && <div className="ft-empty"><CheckCheck size={24} /><p>{completed.length ? "Tudo em dia!" : "Nenhum afazer cadastrado."}</p></div>}

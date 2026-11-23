@@ -1,3 +1,14 @@
+/* Open Finance / Pluggy */
+
+/* Central financeira */
+
+/* PSYZON AI */
+/* Compact working area and manual accounts. */
+:root[data-ui-theme="studio-glass"] {
+  --psy-ai-launcher-background: linear-gradient(145deg, #86512c, #48291b);
+  --psy-ai-launcher-shadow: #49271877;
+}
+
 @media screen {
   :root[data-ui-theme="studio-glass"] {
     color-scheme: dark;
@@ -39,16 +50,6 @@
     --studio-blur: none;
     --studio-shade: #120d0bb3;
   }
-
-  .appearance-preview[data-preview="studio-glass"] {
-    border-color: #785f4e;
-    background: linear-gradient(#180f0b40, #180f0b78), #31241c url("/studio-glass/inicio-preview.webp") center / cover;
-  }
-  .appearance-preview[data-preview="studio-glass"] .preview-sidebar { width: 13%; background: #261a14b8; border: 1px solid #ffefdb40; }
-  .appearance-preview[data-preview="studio-glass"] i { background: #f2deca80; }
-  .appearance-preview[data-preview="studio-glass"] .preview-sidebar i:first-child { background: #ffae62; }
-  .appearance-preview[data-preview="studio-glass"] .preview-heading { background: #f8ebdb !important; }
-  .appearance-preview[data-preview="studio-glass"] :is(.preview-metrics i, .preview-list) { background: #2e211bcc !important; border: 1px solid #ffefdb40; }
 
   :root[data-ui-theme="studio-glass"] .app-shell { isolation: isolate; }
   :root[data-ui-theme="studio-glass"] .app-shell[data-view="inicio"] { --studio-photo: url("/studio-glass/inicio.webp"); }

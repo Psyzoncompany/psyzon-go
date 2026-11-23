@@ -19,10 +19,11 @@ const themes = [
   { theme: "atelier", name: "Psyzon Atelier", detail: "Vinho, papel e um painel de trabalho com foco nos prazos.", icon: Scissors },
 ] as const;
 
-export default function AppearanceSettings({ appearance, changeAppearance, storageError }: {
+export default function AppearanceSettings({ appearance, changeAppearance, storageError, styleError }: {
   appearance: InterfaceAppearance;
   changeAppearance: (patch: Partial<InterfaceAppearance>) => void;
   storageError: boolean;
+  styleError: boolean;
 }) {
   const glass = appearance.theme === "liquid-glass-card";
   return <section className="appearance-settings panel" aria-labelledby="appearance-title">
@@ -45,6 +46,7 @@ export default function AppearanceSettings({ appearance, changeAppearance, stora
       <div className="appearance-motion"><label htmlFor="glass-motion">Animações suaves</label><input id="glass-motion" type="checkbox" checked={appearance.motion === "full"} onChange={event => changeAppearance({ motion: event.target.checked ? "full" : "reduced" })} /></div>
 
     </div>
+    {styleError && <p role="alert">Não foi possível carregar o tema. Selecione-o para tentar novamente.</p>}
     {storageError && <p className="form-error" role="status">A escolha foi aplicada. Este navegador está impedindo o salvamento da preferência.</p>}
     <p className="appearance-status" role="status"><Check size={14} /> {themes.find(option => option.theme === appearance.theme)?.name} ativo</p>
   </section>;

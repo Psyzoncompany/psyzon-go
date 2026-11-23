@@ -80,19 +80,6 @@
     box-shadow: var(--shadow);
   }
 
-  .appearance-preview[data-preview="atelier"] {
-    background: #f2e7df;
-    border-color: #dfc4c2;
-  }
-  .appearance-preview[data-preview="atelier"] .preview-sidebar { background: #542033; }
-  .appearance-preview[data-preview="atelier"] .preview-sidebar i { background: #d69aaa; }
-  .appearance-preview[data-preview="atelier"] .preview-heading {
-    width: 100%;
-    height: 43%;
-    background: #542033 url("/atelier/preview.webp") right center / cover;
-  }
-  .appearance-preview[data-preview="atelier"] :is(.preview-metrics i,.preview-list) { background: #e0bbc1; }
-
   .atelier-desk {
     display: grid;
     min-width: 0;

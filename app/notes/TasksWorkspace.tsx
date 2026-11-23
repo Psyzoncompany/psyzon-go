@@ -4,6 +4,7 @@ import { CountUp, ProgressBar } from "../MotionValue";
 import { ArrowLeft, Check, CircleCheck, ListChecks, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { groupTasks, splitTask } from "./task-topics";
 import { millis } from "../notes-model";
 import NoteDialog from "./NoteDialog";
 import PdfDownloadButton from "../PdfDownloadButton";
@@ -76,14 +77,7 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
   }
 
   function renderTopics(items: Task[]) {
-    const topics = new Map<string, Task[]>();
-    for (const task of items) {
-      const topic = splitTask(task.title).topic || (task.customerId && customerNames.get(task.customerId)) || "Geral";
-      const group = topics.get(topic);
-      if (group) group.push(task);
-      else topics.set(topic, [task]);
-    }
-    return <div className="task-topics">{[...topics].sort(([a], [b]) => a.localeCompare(b, "pt-BR")).map(([topic, group]) =>
+    return <div className="task-topics">{groupTasks(items, customerNames).map(([topic, group]) =>
       <section key={topic} className="task-topic"><h3>{topic}</h3><ol>{group.map(renderTask)}</ol></section>
     )}</div>;
   }
@@ -147,11 +141,6 @@ export default function TasksWorkspace({ tasks, customers, connection, today, ba
     </section>
     {printOpen && <TasksPrint customerNames={customerNames} pending={pending} completed={completed} today={today} close={() => setPrintOpen(false)} />}
   </section>;
-}
-
-function splitTask(value: string) {
-  const match = /^([^:\n]{1,60}):\s+(.+)$/u.exec(value);
-  return match ? { topic: match[1].trim(), title: match[2].trim() } : { topic: "", title: value };
 }
 
 function TaskCustomerSelect({ customers, selected }: { customers: Customer[]; selected?: string }) {

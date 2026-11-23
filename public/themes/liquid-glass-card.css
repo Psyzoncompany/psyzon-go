@@ -1,3 +1,24 @@
+/* Open Finance / Pluggy */
+
+/* Central financeira */
+
+/* PSYZON AI */
+/* Compact working area and manual accounts. */
+:root[data-ui-theme="liquid-glass-card"] {
+  --psy-ai-launcher-background: linear-gradient(145deg, #0e6784, #154361);
+  --psy-ai-launcher-shadow: #104d6c66;
+}
+:root[data-ui-theme="liquid-glass-card"][data-glass-palette="amethyst"] {
+  --psy-ai-launcher-background: linear-gradient(145deg, #7144a7, #412761);
+}
+:root[data-ui-theme="liquid-glass-card"][data-glass-palette="graphite"] {
+  --psy-ai-launcher-background: linear-gradient(145deg, #516878, #293944);
+}
+:root[data-ui-theme="liquid-glass-card"] .ai-floating-button {
+  border-color: #ffffff59;
+  box-shadow: inset 0 1px 0 #ffffff40, 0 14px 36px var(--psy-ai-launcher-shadow);
+}
+
 /* This skin is opt-in and screen-only. Reports use their own paper materials. */
 @media screen {
   :root[data-ui-theme="liquid-glass-card"] {
@@ -450,4 +471,35 @@
     :root[data-ui-theme="liquid-glass-card"] *::before,
     :root[data-ui-theme="liquid-glass-card"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   }
+}
+
+/* One application layout for every visual model. Theme files own colors, materials and finishes. */
+@media screen {
+  :root[data-ui-theme="liquid-glass-card"] { --structure-radius: 18px; --structure-dialog-radius: 26px; --structure-nav-radius: 26px; }
+  :root[data-ui-theme="liquid-glass-card"] .finance-detail-sheet { background: var(--glass-surface); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter); box-shadow: var(--glass-shadow); }
+}
+
+@media screen and (max-width: 760px) {
+  :root[data-ui-theme="liquid-glass-card"] .app-shell :is(
+    .panel, .metric-card, .attention-card, .customer-card, .settings-card,
+    .production-lane, .production-order-card, .kanban-order-card, .production-delivered,
+    .dtf-pipeline, .dtf-order, .dtf-metrics article,
+    .materials-order, .materials-empty, .materials-totals article,
+    .history-metrics article, .history-summary article, .materials-summary article,
+    .finance-premium-summary article, .finance-list-card,
+    .glass-shortcuts button, .apple-notes
+  ) {
+    border: 0 !important;
+    box-shadow: 0 5px 20px #233e5e0a;
+  }
+
+  :root[data-ui-theme="liquid-glass-card"][data-theme="dark"] .app-shell :is(
+    .panel, .metric-card, .attention-card, .customer-card, .settings-card,
+    .production-lane, .production-order-card, .kanban-order-card, .production-delivered,
+    .dtf-pipeline, .dtf-order, .dtf-metrics article,
+    .materials-order, .materials-empty, .materials-totals article,
+    .history-metrics article, .history-summary article, .materials-summary article,
+    .finance-premium-summary article, .finance-list-card,
+    .glass-shortcuts button, .apple-notes
+  ) { box-shadow: 0 5px 20px #0000001a; }
 }

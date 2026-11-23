@@ -1536,26 +1536,3 @@ html.pluggy-connect-visible .floating-new, html.pluggy-connect-visible .ai-float
 @media screen and (max-width: 760px) {
   .app-shell:has(.an-mobile-editor) .psyzon-ai-launch { display: none; }
 }
-
-:root[data-ui-theme="ios-premium"] {
-  --psy-ai-launcher-background: linear-gradient(145deg, #6735b6, #432582);
-  --psy-ai-launcher-shadow: #5930a666;
-}
-:root[data-ui-theme="studio-glass"] {
-  --psy-ai-launcher-background: linear-gradient(145deg, #86512c, #48291b);
-  --psy-ai-launcher-shadow: #49271877;
-}
-:root[data-ui-theme="liquid-glass-card"] {
-  --psy-ai-launcher-background: linear-gradient(145deg, #0e6784, #154361);
-  --psy-ai-launcher-shadow: #104d6c66;
-}
-:root[data-ui-theme="liquid-glass-card"][data-glass-palette="amethyst"] {
-  --psy-ai-launcher-background: linear-gradient(145deg, #7144a7, #412761);
-}
-:root[data-ui-theme="liquid-glass-card"][data-glass-palette="graphite"] {
-  --psy-ai-launcher-background: linear-gradient(145deg, #516878, #293944);
-}
-:root[data-ui-theme="liquid-glass-card"] .ai-floating-button {
-  border-color: #ffffff59;
-  box-shadow: inset 0 1px 0 #ffffff40, 0 14px 36px var(--psy-ai-launcher-shadow);
-}

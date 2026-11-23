@@ -1,22 +1,5 @@
 /* The iOS Premium model is opt-in. Paper reports keep their own styles. */
 @media screen {
-  :root[data-ui-theme="ios-premium"] { --brand-mark-filter: hue-rotate(42deg) saturate(.7); }
-  :root[data-ui-theme="ios-premium"] { --bg:#f5f5f7;--card:#fff;--card-subtle:#faf9fc;--text:#1c1c20;--muted:#73717d;--faint:#85828d;--border:#eeedf2;--blue:#7144c6;--blue-soft:#f1ebfc;--green:#197653;--green-soft:#eaf6ef;--red:#bd3545;--red-soft:#fbeced;--yellow:#af5b0b;--yellow-soft:#fff1df;--shadow:0 2px 5px #24203603,0 10px 28px #24203606;--finance-lilac:#f5f0ff; }
-  :root[data-ui-theme="ios-premium"][data-theme="dark"] { --bg:#141417;--card:#202026;--card-subtle:#27272e;--text:#f6f5f8;--muted:#b1adb9;--faint:#96919e;--border:#33313c;--blue:#b99af6;--blue-soft:#35294a;--green:#73cba4;--green-soft:#203a30;--red:#ff929d;--red-soft:#43282e;--yellow:#f1b36b;--yellow-soft:#403221;--finance-lilac:#30263f;--shadow:0 6px 24px #0002; }
-  :root[data-ui-theme="ios-premium"] body { font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif; }
-  :root[data-ui-theme="ios-premium"] .app-shell :is(.panel,.metric-card,.history-summary article,.materials-summary article) { border:1px solid var(--border);border-radius:24px;background:var(--card);box-shadow:var(--shadow); }
-  :root[data-ui-theme="ios-premium"] .app-shell :is(.primary,.an-primary) { border-color:transparent;border-radius:12px;background:var(--blue);color:var(--card);box-shadow:none; }
-  :root[data-ui-theme="ios-premium"] .app-shell .secondary { border-color:var(--border);border-radius:12px;background:var(--card); }
-  :root[data-ui-theme="ios-premium"] .app-shell .topbar { background:color-mix(in srgb,var(--card) 88%,transparent);border-color:var(--border);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px); }
-  :root[data-ui-theme="ios-premium"] .app-shell .sidebar { background:var(--card);border-color:var(--border); }
-  :root[data-ui-theme="ios-premium"] .appearance-options { grid-template-columns:repeat(3,minmax(0,1fr)); }
-  .appearance-preview[data-preview="ios-premium"] { background:#f5f5f7;border-radius:18px; }
-  .appearance-preview[data-preview="ios-premium"] .preview-sidebar { border-radius:10px; }
-  .appearance-preview[data-preview="ios-premium"] .preview-sidebar i:first-child { background:#7144c6; }
-  .appearance-preview[data-preview="ios-premium"] .preview-metrics i { border-radius:8px;background:#f1eafa; }
-  .appearance-preview[data-preview="ios-premium"] .preview-list { height:17px!important;border-radius:6px;box-shadow:0 1px 4px #28203509; }
-  :root[data-ui-theme="ios-premium"] .app-shell .finance-workspace .page-heading { margin-bottom:24px; }
-  :root[data-ui-theme="ios-premium"] .app-shell .finance-workspace .page-heading h1 { font-size:30px;font-weight:720;letter-spacing:-.045em; }
   .finance-premium { --finance-lilac:var(--blue-soft);font-variant-numeric:tabular-nums; }
   .finance-premium-summary { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:24px; }
   .finance-premium-summary article { display:grid;align-content:start;gap:8px;min-width:0;padding:20px 24px;border-radius:24px;background:var(--card);box-shadow:var(--shadow); }
@@ -90,10 +73,6 @@
   .finance-sheet-error { color:var(--red);font-size:13px;line-height:1.5;padding:12px 0 0; }
   .finance-detail-sheet button:disabled { opacity:.5;cursor:wait; }
   .finance-detail-sheet button:focus-visible,.finance-premium button:focus-visible { outline:2px solid var(--blue);outline-offset:2px; }
-  :root[data-ui-theme="ios-premium"] .app-shell .modal-backdrop { align-items:flex-end;justify-content:center; }
-  :root[data-ui-theme="ios-premium"] .app-shell .modal { height:auto;width:min(100%,520px);max-height:92dvh;border-radius:28px 28px 0 0;padding-bottom:env(safe-area-inset-bottom,0px); }
-  :root[data-ui-theme="ios-premium"] .app-shell .modal :is(label,input,select,textarea) { font-size:14px; }
-  :root[data-ui-theme="ios-premium"][data-glass-transparency="reduced"] :is(.topbar,.mobile-nav),:root[data-ui-theme="ios-premium"][data-glass-transparency="reduced"] .finance-detail-sheet::backdrop { backdrop-filter:none;-webkit-backdrop-filter:none; }
   @keyframes finance-sheet-in { from { opacity:0;transform:var(--sheet-rest-transform) translateY(32px); } to { opacity:1;transform:var(--sheet-rest-transform); } }
 }
 @media screen and (min-width:761px) {
@@ -104,9 +83,6 @@
   .finance-premium-columns { grid-template-columns:1fr; }
 }
 @media screen and (max-width:760px) {
-  :root[data-ui-theme="ios-premium"] .app-shell .content { padding-bottom:calc(120px + env(safe-area-inset-bottom,0px)); }
-  :root[data-ui-theme="ios-premium"] .app-shell .mobile-nav { left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));width:auto;height:72px;padding:4px 6px;border:1px solid var(--border);border-radius:24px;background:color-mix(in srgb,var(--card) 92%,transparent);box-shadow:0 6px 24px #20193412;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px); }
-  :root[data-ui-theme="ios-premium"] .app-shell .mobile-nav>button { height:60px; }
   .finance-premium-summary { grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:20px; }
   .finance-premium-summary article { padding:16px;gap:6px;border-radius:20px; }
   .finance-premium-summary strong { font-size:clamp(15px,4.5vw,24px); }
@@ -129,9 +105,7 @@
   .finance-next-month { margin-inline:16px; }
   .finance-month-controls { padding-inline:16px;gap:12px; }
   .finance-month-controls>span { font-size:11px; }
-  :root[data-ui-theme="ios-premium"] .app-shell .modal :is(input,select,textarea),.finance-month-controls input { font-size:16px; }
-  :root[data-ui-theme="ios-premium"] .appearance-options { grid-template-columns:1fr; }
+  .finance-month-controls input { font-size:16px; }
 }
 @media (prefers-reduced-motion:reduce) { .finance-detail-sheet[open],.finance-row { animation:none!important;transition:none!important; } }
-:root[data-ui-theme="ios-premium"][data-glass-motion="reduced"] :is(.finance-detail-sheet[open],.finance-row) { animation:none;transition:none; }
-@media (prefers-reduced-transparency:reduce) { :root[data-ui-theme="ios-premium"] :is(.topbar,.mobile-nav),.finance-detail-sheet::backdrop { backdrop-filter:none!important;-webkit-backdrop-filter:none!important; } }
+@media (prefers-reduced-transparency:reduce) { .finance-detail-sheet::backdrop { backdrop-filter:none!important;-webkit-backdrop-filter:none!important; } }

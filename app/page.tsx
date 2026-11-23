@@ -2212,7 +2212,7 @@ export default function HomePage() {
       {productionList && <ProductionChecklistWindow customer={productionList.order.customer} close={() => setProductionList(null)}>
         {notes.some(note => note.id === productionList.noteId) ? <NotesWorkspace pendingNoteIds={pendingNoteIds} online={online} expenses={transactions} reviewPurchase={reviewPurchaseCost} key={`${uid}-${productionList.noteId}`} productionOnly uid={uid} initialNoteId={productionList.noteId} notes={notes.filter(note => note.id === productionList.noteId)} orders={photoOrders} customers={visibleCustomers} materialsOpen={false} openMaterials={() => {}} openTasks={() => {}} openNote={() => {}} onCompleteMaterials={(id, ids, purchase) => updateMaterialPurchase(id, ids, purchase ? "complete" : "reopen", undefined, purchase)} /> : <p role="status">Carregando lista vinculada…</p>}
       </ProductionChecklistWindow>}
-      {floatingHost && <FloatingTasks key={uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
+      {floatingHost && <FloatingTasks key={"floating-" + uid} host={floatingHost} customers={customers} tasks={tasks} connection={taskConnection} dark={dark} onToggle={toggleTask} openTasks={() => { setView("afazeres"); window.focus(); }} />}
 
       {modal && <CreateModalV2 customers={visibleCustomers} kind={modal} setKind={setModal} close={() => setModal(null)} onSubmit={submitCreate} />}
       {editingOrder && <OrderEditModal busy={savingOrder} order={editingOrder} close={() => {if(!savingOrderRef.current)setEditingOrder(null);}} onSubmit={(event) => {event.preventDefault();if(savingOrderRef.current)return;savingOrderRef.current=true;setSavingOrder(true);void saveOrder(event).catch((error:unknown)=>showToast(error instanceof Error && !error.name.startsWith("Firebase")?error.message:"Não foi possível salvar o pedido. Confira os dados e tente novamente.")).finally(()=>{savingOrderRef.current=false;setSavingOrder(false);});}} />}
@@ -2220,7 +2220,7 @@ export default function HomePage() {
 
 
       {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={confirmPrivacy} />}
-      <PaymentFeedback key={uid} uid={uid} />
+      <PaymentFeedback key={"payment-feedback-" + uid} uid={uid} />
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );

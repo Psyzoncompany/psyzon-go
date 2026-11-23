@@ -4,8 +4,6 @@
   :root[data-ui-theme][data-theme="dark"] .app-shell .notification-panel { background: #20252d; }
   :root[data-ui-theme] .app-shell .topbar:has(.notification-panel) { z-index: 95; }
   :root { --structure-radius: 12px; --structure-dialog-radius: 20px; --structure-nav-radius: 16px; }
-  :root[data-ui-theme="liquid-glass-card"] { --structure-radius: 18px; --structure-dialog-radius: 26px; --structure-nav-radius: 26px; }
-  :root[data-ui-theme="ios-premium"] { --structure-radius: 24px; --structure-dialog-radius: 28px; --structure-nav-radius: 24px; }
   :root[data-ui-theme="original"] { --brand-mark-filter: hue-rotate(8deg) saturate(.95); }
   :root[data-ui-theme] .app-shell .brand-mark { filter: var(--brand-mark-filter, none); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .main { margin-left: 236px; }
@@ -56,7 +54,6 @@
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal-backdrop:not(.compact-modal-backdrop) { align-items: flex-end; justify-content: center; padding: 0; }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal:not(.compact-modal) { width: min(100%, 520px); height: auto; max-height: 92dvh; border-radius: var(--structure-dialog-radius) var(--structure-dialog-radius) 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
   :root[data-ui-theme] .app-shell[data-layout="premium"] .modal :is(label, input, select, textarea) { font-size: 14px; }
-  :root[data-ui-theme="liquid-glass-card"] .finance-detail-sheet { background: var(--glass-surface); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter); box-shadow: var(--glass-shadow); }
 }
 @media screen and (max-width: 1250px) {
   :root[data-ui-theme] .app-shell[data-layout="premium"] .apple-notes.an-has-calculator,

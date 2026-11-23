@@ -58,3 +58,49 @@
   .appearance-customize { grid-template-columns: 1fr; gap: 15px; }
   .appearance-customize fieldset label { min-height: 44px; }
 }
+
+/* The iOS Premium model is opt-in. Paper reports keep their own styles. */
+@media screen {
+  .appearance-preview[data-preview="ios-premium"] { background:#f5f5f7;border-radius:18px; }
+  .appearance-preview[data-preview="ios-premium"] .preview-sidebar { border-radius:10px; }
+  .appearance-preview[data-preview="ios-premium"] .preview-sidebar i:first-child { background:#7144c6; }
+  .appearance-preview[data-preview="ios-premium"] .preview-metrics i { border-radius:8px;background:#f1eafa; }
+  .appearance-preview[data-preview="ios-premium"] .preview-list { height:17px!important;border-radius:6px;box-shadow:0 1px 4px #28203509; }
+}
+
+@media screen {
+
+  .appearance-preview[data-preview="studio-glass"] {
+    border-color: #785f4e;
+    background: linear-gradient(#180f0b40, #180f0b78), #31241c url("/studio-glass/inicio-preview.webp") center / cover;
+  }
+  .appearance-preview[data-preview="studio-glass"] .preview-sidebar { width: 13%; background: #261a14b8; border: 1px solid #ffefdb40; }
+  .appearance-preview[data-preview="studio-glass"] i { background: #f2deca80; }
+  .appearance-preview[data-preview="studio-glass"] .preview-sidebar i:first-child { background: #ffae62; }
+  .appearance-preview[data-preview="studio-glass"] .preview-heading { background: #f8ebdb !important; }
+  .appearance-preview[data-preview="studio-glass"] :is(.preview-metrics i, .preview-list) { background: #2e211bcc !important; border: 1px solid #ffefdb40; }
+}
+
+@media screen {
+
+  .appearance-preview[data-preview="atelier"] {
+    background: #f2e7df;
+    border-color: #dfc4c2;
+  }
+  .appearance-preview[data-preview="atelier"] .preview-sidebar { background: #542033; }
+  .appearance-preview[data-preview="atelier"] .preview-sidebar i { background: #d69aaa; }
+  .appearance-preview[data-preview="atelier"] .preview-heading {
+    width: 100%;
+    height: 43%;
+    background: #542033 url("/atelier/preview.webp") right center / cover;
+  }
+  .appearance-preview[data-preview="atelier"] :is(.preview-metrics i,.preview-list) { background: #e0bbc1; }
+}
+
+/* Console surfaces are screen-only so printed work orders keep their paper palette. */
+@media screen {
+  .appearance-preview[data-preview="ps5"] { background: #101d42 url("/console-wave.webp") center / cover; }
+  .appearance-preview[data-preview="ps5"] .preview-sidebar { display: none; }
+  .appearance-preview[data-preview="ps5"] .preview-metrics i { background: linear-gradient(145deg,#9bbaff,#3455aa); }
+  .appearance-preview[data-preview="ps5"] .preview-list { background: #b5d3ff55; }
+}

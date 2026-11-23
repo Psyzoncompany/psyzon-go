@@ -1,9 +1,5 @@
 /* Console surfaces are screen-only so printed work orders keep their paper palette. */
 @media screen {
-  .appearance-preview[data-preview="ps5"] { background: #101d42 url("/console-wave.webp") center / cover; }
-  .appearance-preview[data-preview="ps5"] .preview-sidebar { display: none; }
-  .appearance-preview[data-preview="ps5"] .preview-metrics i { background: linear-gradient(145deg,#9bbaff,#3455aa); }
-  .appearance-preview[data-preview="ps5"] .preview-list { background: #b5d3ff55; }
 
   :root[data-ui-theme="ps5"] {
     color-scheme: dark;

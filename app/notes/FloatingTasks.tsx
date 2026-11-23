@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowUpRight, CheckCheck, ListChecks } from "lucide-react";
 import { millis } from "../notes-model";
+import { groupTasks, splitTask } from "./task-topics";
 import type { Task } from "./task-model";
 
 const styles = `
@@ -18,7 +19,7 @@ const styles = `
   .ft-header p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
   button { font: inherit; cursor: pointer; }
   .ft-open { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; margin-left: auto; border: 0; border-radius: 10px; background: var(--card); color: var(--accent); }
-  ul { list-style: none; padding: 0 12px; margin: 0; background: var(--card); border-radius: 16px; }
+  ol { list-style: none; padding: 0 12px; margin: 0; background: var(--card); border-radius: 16px; }
   li + li { border-top: 1px solid var(--line); }
   label { display: flex; align-items: flex-start; gap: 10px; min-height: 48px; padding: 13px 0; cursor: pointer; }
   input { width: 19px; height: 19px; flex: 0 0 19px; margin: 1px 0 0; accent-color: var(--accent); }
@@ -31,6 +32,14 @@ const styles = `
   .ft-empty p { margin: 0; }
   .ft-error { color: #c33349; }
   button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .ft-groups { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,270px),1fr)); align-items: start; gap: 9px; }
+  .ft-topic { border-radius: 12px; background: var(--card); min-width: 0; overflow: hidden; }
+  .ft-topic h2 { font-size: 12px; margin: 0; padding: 8px 10px; color: var(--accent); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+  .ft-topic ol { padding: 0 8px; }
+  .ft-topic label { align-items: center; min-height: 40px; gap: 7px; padding: 6px 0; }
+  .ft-number { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .ft-topic small { display: block; color: var(--muted); }
+  @media (max-width:360px) { .ft-panel { padding: 9px; } .ft-header { margin-bottom: 9px; } }
   input:disabled { opacity: .5; cursor: wait; }
 `;
 
@@ -61,7 +70,7 @@ export default function FloatingTasks({ host, tasks, customers, connection, dark
   }
 
   return createPortal(<><style>{styles}</style><section className="ft-panel" data-dark={dark} aria-label="Afazeres flutuantes">
-    <header className="ft-header"><span className="ft-symbol"><ListChecks size={21} /></span><div><h1>Afazeres</h1><p aria-live="polite">{pending.length} {pending.length === 1 ? "pendente" : "pendentes"} · PSYZON GO</p></div><button type="button" className="ft-open" aria-label="Abrir todos os afazeres" title="Abrir todos os afazeres" onClick={openTasks}><ArrowUpRight size={19} /></button></header>
+    <header className="ft-header"><span className="ft-symbol"><ListChecks size={21} /></span><div><h1>Afazeres</h1><p aria-live="polite">{pending.length} {pending.length === 1 ? "pendente" : "pendentes"}</p></div><button type="button" className="ft-open" aria-label="Abrir todos os afazeres" title="Abrir todos os afazeres" onClick={openTasks}><ArrowUpRight size={19} /></button></header>
     {!ready && <p className="ft-message" role="status">{connection === "error" ? "Não foi possível sincronizar os afazeres. Atualize a página do sistema." : "Sincronizando afazeres…"}</p>}
     {error && <p className="ft-message ft-error" role="alert">{error}</p>}
     {pending.length > 0 ? <FloatingTaskRows customers={customers} items={pending} disabled={!ready || busy} onToggle={toggle} /> : ready && <div className="ft-empty"><CheckCheck size={24} /><p>{completed.length ? "Tudo em dia!" : "Nenhum afazer cadastrado."}</p></div>}
@@ -70,7 +79,21 @@ export default function FloatingTasks({ host, tasks, customers, connection, dark
 }
 
 function FloatingTaskRows({ items, customers, disabled, onToggle }: { items: Task[]; customers: { id: string; name: string }[]; disabled: boolean; onToggle: (task: Task) => Promise<void> }) {
-  return <ul>{items.map(task => <li key={task.id}>
-    <label className={task.completed ? "ft-done" : undefined}><input type="checkbox" checked={task.completed} disabled={disabled} aria-label={`${task.completed ? "Reabrir" : "Concluir"} ${task.title}`} onChange={() => void onToggle(task)} /><span>{task.title}{task.customerId && <small style={{display:"block",opacity:.75}}>{customers.find(customer => customer.id === task.customerId)?.name ?? "Cliente indisponível"}</small>}</span></label>
-  </li>)}</ul>;
+  const names = new Map(customers.map(customer => [customer.id, customer.name]));
+  return <div className="ft-groups">{groupTasks(items, names).map(([topic, group]) =>
+    <section className="ft-topic" key={topic}>
+      <h2>{topic}</h2>
+      <ol>{group.map((task, index) => {
+        const parsed = splitTask(task.title);
+        return <li key={task.id}>
+          <label className={task.completed ? "ft-done" : undefined}>
+            <b className="ft-number">{String(index + 1).padStart(2, "0")}</b>
+            <input type="checkbox" checked={task.completed} disabled={disabled}
+              aria-label={(task.completed ? "Reabrir " : "Concluir ") + task.title} onChange={() => void onToggle(task)} />
+            <span>{parsed.title}{task.customerId && (parsed.topic || !names.has(task.customerId)) && <small>{names.get(task.customerId) ?? "Cliente indisponível"}</small>}</span>
+          </label>
+        </li>;
+      })}</ol>
+    </section>
+  )}</div>;
 }

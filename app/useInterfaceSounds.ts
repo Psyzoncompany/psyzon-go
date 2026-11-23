@@ -27,16 +27,18 @@ export default function useInterfaceSounds(uid: string) {
       setSaved({ uid, preferences: restored });
     });
     let pendingClick: number | undefined;
-    let startupHandled = false;
+    let navigationClick = false;
+    const openWindows = () => [...document.querySelectorAll('[role="dialog"], dialog[open]')].filter(element => element.getClientRects().length > 0);
+    let windowsBeforeClick: Element[] = [];
     const unlock = (event: Event) => {
       if (!event.isTrusted) return;
+      if (event.type === "click") {
+        navigationClick = false;
+        windowsBeforeClick = openWindows();
+      }
       // A touch pointerdown is not an audio activation gesture in iOS Safari.
       if (event.type === "pointerdown" && (event as PointerEvent).pointerType !== "mouse") return;
       audio.unlock();
-      if (!startupHandled) {
-        startupHandled = true;
-        if (!(event.target instanceof Element && event.target.closest('[data-ui-sound="off"]'))) void audio.playWhenReady("startup");
-      }
     };
     const prepare = (event: Event) => { if ((event as CustomEvent<string>).detail === uid) audio.unlock(); };
     const success = (event: Event) => {
@@ -47,10 +49,12 @@ export default function useInterfaceSounds(uid: string) {
       }
     };
     const click = (event: MouseEvent) => {
-      if (!event.isTrusted || !soundControl(event.target)) return;
+      if (!event.isTrusted || navigationClick || !soundControl(event.target)) return;
       audio.unlock();
       window.clearTimeout(pendingClick);
-      pendingClick = window.setTimeout(() => audio.play("click"), 0);
+      pendingClick = window.setTimeout(() => {
+        if (!navigationClick && !openWindows().some(element => !windowsBeforeClick.includes(element))) audio.play("click");
+      }, 0);
     };
     const input = (event: Event) => {
       if (!event.isTrusted || (event as InputEvent).isComposing || !isTypingSoundTarget(event.target)) return;
@@ -60,8 +64,8 @@ export default function useInterfaceSounds(uid: string) {
       audio.play("type");
     };
     const navigate = () => {
+      navigationClick = true;
       window.clearTimeout(pendingClick);
-      void audio.playWhenReady("navigate");
     };
     const visibility = () => {
       if (document.hidden) { window.clearTimeout(pendingClick); audio.suspend(); }

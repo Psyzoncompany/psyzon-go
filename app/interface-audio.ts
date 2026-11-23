@@ -15,7 +15,7 @@ export class InterfaceAudio {
   private resetOnUnlock = false;
   private generation = 0;
   private session?: { value: { type: string }; previousType: string };
-  private played: Record<InterfaceSound, number> = { click: -Infinity, navigate: -Infinity, type: -Infinity, startup: -Infinity, notification: -Infinity, success: -Infinity };
+  private played: Record<InterfaceSound, number> = { click: -Infinity, type: -Infinity, notification: -Infinity, success: -Infinity };
 
   constructor(private preferences: SoundPreferences) {
     this.warm();
@@ -136,11 +136,8 @@ export class InterfaceAudio {
     if (fallback ? !preview && fallback.readyState < 2 : !context || context.state !== "running" || !buffer || !this.output) return;
     const interval = kind === "type" ? 65 : kind === "notification" || kind === "success" ? 1200 : 100;
     if (!preview && now - this.played[kind] < interval) return;
-    // A navigation replaces the click that initiated it.
-    if (kind === "click" && now - this.played.navigate < 110) return;
     this.played[kind] = now;
     try {
-      if (kind === "navigate") this.stop();
       if (fallback) {
         fallback.currentTime = 0;
         void fallback.play().catch(() => {});

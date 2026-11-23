@@ -5,9 +5,7 @@ const PUBLIC_ASSETS = [
   "/icon-192-v3.png",
   "/icon-512-v3.png",
   "/sounds/ps5-press-bottan-v1.mp3",
-  "/sounds/ps5-selection-button-v1.mp3",
   "/sounds/type-v1.mp3",
-  "/sounds/ps5_start-v1.mp3",
   "/sounds/ps5-notification-v1.mp3",
   "/sounds/ps5-original-trophy-v1.mp3",
 ];

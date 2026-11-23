@@ -69,13 +69,13 @@ test("preloading before the first tap does not create a locked context; the tap 
   t.after(() => audio.dispose());
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(env.contexts.length, 0);
-  const playback = audio.playWhenReady("startup");
+  const playback = audio.playWhenReady("success");
   assert.equal(env.contexts.length, 1, "creation must happen before the gesture handler returns");
   assert.equal(env.contexts[0].resumes, 1);
   assert.equal(env.starts[0].length, 1, "prime Safari synchronously with a silent sample");
   await playback;
   for (const kind of Object.keys(interfaceSoundFiles) as (keyof typeof interfaceSoundFiles)[]) audio.play(kind, true);
-  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 7);
+  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 5);
   assert.equal(env.contexts[0].gain.gain.value, .18);
 });
 
@@ -101,7 +101,7 @@ test("returning to the iPhone app renews the output on a tap, retaining loaded s
   env.document.hidden = false;
   await audio.unlock(false);
   assert.equal(env.contexts.length, 1, "visibility alone must not create an unactivated context");
-  await audio.preview("navigate");
+  await audio.preview("notification");
   assert.equal(env.contexts.length, 2);
   assert.equal(env.contexts[0].state, "closed");
   assert.equal(env.contexts[1].gain.gain.value, .31);

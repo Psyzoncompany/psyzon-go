@@ -1,14 +1,12 @@
 "use client";
 
-import { Bell, Keyboard, MousePointer2, Play, PanelsTopLeft, Power, Trophy, Volume2, VolumeX } from "lucide-react";
+import { Bell, Keyboard, MousePointer2, Play, Trophy, Volume2, VolumeX } from "lucide-react";
 import type useInterfaceSounds from "./useInterfaceSounds";
 import "./interface-sounds.css";
 
 const actions = [
-  { kind: "click", label: "Cliques e toques", detail: "Botões, menus e marcações.", icon: MousePointer2 },
-  { kind: "navigate", label: "Mudanças de página", detail: "Uma transição leve entre as áreas.", icon: PanelsTopLeft },
+  { kind: "click", label: "Cliques e toques", detail: "Botões de ação e marcações.", icon: MousePointer2 },
   { kind: "type", label: "Digitação", detail: "Um toque discreto enquanto você escreve.", icon: Keyboard },
-  { kind: "startup", label: "Abertura do sistema", detail: "PS5 Startup · no primeiro toque ao abrir.", icon: Power },
   { kind: "notification", label: "Notificações", detail: "PS5 Notification · novos avisos com o site aberto.", icon: Bell },
   { kind: "success", label: "Conclusões", detail: "PS5 Trophy · checklists, etapas e confirmações.", icon: Trophy },
 ] as const;

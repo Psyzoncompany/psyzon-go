@@ -30,6 +30,8 @@ export default function useInterfaceSounds(uid: string) {
     let startupHandled = false;
     const unlock = (event: Event) => {
       if (!event.isTrusted) return;
+      // A touch pointerdown is not an audio activation gesture in iOS Safari.
+      if (event.type === "pointerdown" && (event as PointerEvent).pointerType !== "mouse") return;
       audio.unlock();
       if (!startupHandled) {
         startupHandled = true;
@@ -59,9 +61,13 @@ export default function useInterfaceSounds(uid: string) {
     };
     const navigate = () => {
       window.clearTimeout(pendingClick);
-      audio.play("navigate");
+      void audio.playWhenReady("navigate");
     };
-    const visibility = () => { if (document.hidden) { window.clearTimeout(pendingClick); audio.suspend(); } };
+    const visibility = () => {
+      if (document.hidden) { window.clearTimeout(pendingClick); audio.suspend(); }
+      else audio.unlock(false);
+    };
+    const pagehide = () => { window.clearTimeout(pendingClick); audio.suspend(); };
     const sync = (event: StorageEvent) => {
       if (event.key !== key && event.key !== null) return;
       let next = defaultSoundPreferences;
@@ -71,10 +77,14 @@ export default function useInterfaceSounds(uid: string) {
       setSaved({ uid, preferences: next });
     };
     document.addEventListener("pointerdown", unlock, { capture: true, passive: true });
+    document.addEventListener("touchend", unlock, { capture: true, passive: true });
+    document.addEventListener("click", unlock, { capture: true });
     document.addEventListener("keydown", unlock, { capture: true });
     document.addEventListener("click", click);
     document.addEventListener("input", input);
     document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("pageshow", visibility);
+    window.addEventListener("pagehide", pagehide);
     window.addEventListener(interfaceNavigationEvent, navigate);
     window.addEventListener(interfaceAudioUnlockEvent, prepare);
     window.addEventListener(paymentFeedbackEvent, success);
@@ -83,10 +93,14 @@ export default function useInterfaceSounds(uid: string) {
       disposed = true;
       window.clearTimeout(pendingClick);
       document.removeEventListener("pointerdown", unlock, true);
+      document.removeEventListener("touchend", unlock, true);
+      document.removeEventListener("click", unlock, true);
       document.removeEventListener("keydown", unlock, true);
       document.removeEventListener("click", click);
       document.removeEventListener("input", input);
       document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("pageshow", visibility);
+      window.removeEventListener("pagehide", pagehide);
       window.removeEventListener(interfaceNavigationEvent, navigate);
       window.removeEventListener(interfaceAudioUnlockEvent, prepare);
       window.removeEventListener(paymentFeedbackEvent, success);

@@ -7,8 +7,10 @@ export class InterfaceAudio {
   private buffers = new Map<InterfaceSound, AudioBuffer>();
   private encoded = new Map<InterfaceSound, ArrayBuffer>();
   private decoding = new Map<InterfaceSound, Promise<void>>();
-  private sources = new Set<AudioBufferSourceNode>();
+  private sources = new Map<AudioBufferSourceNode, { gain: GainNode; kind: InterfaceSound }>();
   private fallback = new Map<InterfaceSound, HTMLAudioElement>();
+  private fallbackVoices = new Map<HTMLAudioElement, InterfaceSound>();
+  private fallbackFades = new Map<HTMLAudioElement, number>();
   private loading?: Promise<void>;
   private controller = new AbortController();
   private closed = false;
@@ -25,7 +27,8 @@ export class InterfaceAudio {
     this.preferences = preferences;
     if (this.output && this.context) this.output.gain.setTargetAtTime(preferences.volume / 100, this.context.currentTime, .015);
     this.fallback.forEach((audio, kind) => { audio.volume = preferences.volume / 100 * this.level(kind); });
-    if (!preferences.enabled || preferences.volume === 0) { this.stop(); this.releaseSession(); }
+    this.fallbackVoices.forEach((kind, audio) => { if (!this.fallbackFades.has(audio)) audio.volume = preferences.volume / 100 * this.level(kind); });
+    if (!preferences.enabled || preferences.volume === 0) { this.stop(true); this.releaseSession(); }
     else this.warm();
   }
 
@@ -139,19 +142,26 @@ export class InterfaceAudio {
     this.played[kind] = now;
     try {
       if (fallback) {
-        fallback.currentTime = 0;
-        void fallback.play().catch(() => {});
+        if (kind === "click") this.fallbackVoices.forEach((playingKind, audio) => { if (playingKind === kind) this.releaseFallback(audio); });
+        if (this.fallbackVoices.size >= 4) this.releaseFallback(this.fallbackVoices.keys().next().value!);
+        const voice = fallback.cloneNode(true) as HTMLAudioElement;
+        voice.volume = this.preferences.volume / 100 * this.level(kind);
+        this.fallbackVoices.set(voice, kind);
+        voice.onended = () => this.finishFallback(voice);
+        void voice.play().catch(() => this.finishFallback(voice));
         return;
       }
       if (!context || !buffer || !this.output) return;
-      if (this.sources.size >= 4) this.sources.values().next().value?.stop();
+      if (kind === "click") this.sources.forEach((voice, source) => { if (voice.kind === kind) this.releaseSource(source); });
+      if (this.sources.size >= 4) this.releaseSource(this.sources.keys().next().value!);
       const source = context.createBufferSource();
       const gain = context.createGain();
       source.buffer = buffer;
-      gain.gain.value = this.level(kind);
+      gain.gain.setValueAtTime(0, context.currentTime);
+      gain.gain.linearRampToValueAtTime(this.level(kind), context.currentTime + .006);
       source.connect(gain);
       gain.connect(this.output);
-      this.sources.add(source);
+      this.sources.set(source, { gain, kind });
       source.onended = () => { this.sources.delete(source); source.disconnect(); gain.disconnect(); };
       source.start();
     } catch { /* Feedback must never interrupt an action or a save. */ }
@@ -180,15 +190,51 @@ export class InterfaceAudio {
     return kind === "type" ? .4 : kind === "click" ? .7 : .85;
   }
 
-  stop() {
+  private releaseSource(source: AudioBufferSourceNode, immediate = false) {
+    const voice = this.sources.get(source);
+    if (!voice || !this.context) return;
+    const now = this.context.currentTime;
+    try {
+      const level = voice.gain.gain.value;
+      voice.gain.gain.cancelScheduledValues(now);
+      voice.gain.gain.setValueAtTime(level, now);
+      voice.gain.gain.linearRampToValueAtTime(0, now + (immediate ? 0 : .06));
+      source.stop(now + (immediate ? 0 : .065));
+    } catch { /* Already ended. */ }
+    this.sources.delete(source);
+  }
+
+  private finishFallback(audio: HTMLAudioElement) {
+    const frame = this.fallbackFades.get(audio);
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    this.fallbackFades.delete(audio);
+    this.fallbackVoices.delete(audio);
+    audio.onended = null;
+    audio.pause();
+  }
+
+  private releaseFallback(audio: HTMLAudioElement, immediate = false) {
+    if (immediate || audio.paused) { this.finishFallback(audio); return; }
+    if (this.fallbackFades.has(audio)) return;
+    const started = performance.now();
+    const level = audio.volume;
+    const fade = (now: number) => {
+      const progress = Math.min(1, (now - started) / 60);
+      audio.volume = level * (1 - progress);
+      if (progress === 1) this.finishFallback(audio);
+      else this.fallbackFades.set(audio, requestAnimationFrame(fade));
+    };
+    this.fallbackFades.set(audio, requestAnimationFrame(fade));
+  }
+
+  stop(immediate = false) {
     this.generation++;
-    this.sources.forEach(source => { try { source.stop(); } catch { /* Already ended. */ } });
-    this.sources.clear();
-    this.fallback.forEach(audio => { audio.pause(); });
+    this.sources.forEach((_voice, source) => this.releaseSource(source, immediate));
+    this.fallbackVoices.forEach((_kind, audio) => this.releaseFallback(audio, immediate));
   }
 
   suspend() {
-    this.stop();
+    this.stop(true);
     this.releaseSession();
     // Safari/iPadOS may keep a stale output even when state says "running".
     this.resetOnUnlock = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
@@ -197,7 +243,7 @@ export class InterfaceAudio {
 
   dispose() {
     this.closed = true;
-    this.stop();
+    this.stop(true);
     this.releaseSession();
     this.controller.abort();
     this.fallback.forEach(audio => { audio.removeAttribute("src"); audio.load(); });

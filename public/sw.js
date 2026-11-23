@@ -1,10 +1,10 @@
-const CACHE = "psyzon-go-v9-offline";
+const CACHE = "psyzon-go-v10-offline";
 const SHELL_KEY = "/__psyzon-offline-shell";
 const PUBLIC_ASSETS = [
   "/manifest.webmanifest",
   "/icon-192-v3.png",
   "/icon-512-v3.png",
-  "/sounds/ps5-press-bottan-v1.mp3",
+  "/sounds/ps5-press-bottan-v2.mp3",
   "/sounds/type-v1.mp3",
   "/sounds/ps5-notification-v1.mp3",
   "/sounds/ps5-original-trophy-v1.mp3",

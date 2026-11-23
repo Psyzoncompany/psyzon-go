@@ -1,5 +1,5 @@
 export const interfaceSoundFiles = {
-  click: "/sounds/ps5-press-bottan-v1.mp3",
+  click: "/sounds/ps5-press-bottan-v2.mp3",
   type: "/sounds/type-v1.mp3",
   notification: "/sounds/ps5-notification-v1.mp3",
   success: "/sounds/ps5-original-trophy-v1.mp3",

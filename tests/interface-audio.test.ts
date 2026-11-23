@@ -6,6 +6,8 @@ import { defaultSoundPreferences, interfaceSoundFiles } from "../app/interface-s
 function browser(t: TestContext, ios = true) {
   const contexts: Context[] = [];
   const starts: { length: number }[] = [];
+  const stops: { length: number; at: number }[] = [];
+  const ramps: { value: number; at: number }[] = [];
   let stallResume = false;
   const pending: (() => void)[] = [];
   const document = { hidden: false };
@@ -15,7 +17,7 @@ function browser(t: TestContext, ios = true) {
     onended?: () => void;
     connect() {}
     disconnect() {}
-    stop() { this.onended?.(); }
+    stop(at = 0) { if (this.buffer) stops.push({ length: this.buffer.length, at }); this.onended?.(); }
     start() { if (this.buffer) starts.push(this.buffer); }
   }
   class Context {
@@ -28,7 +30,13 @@ function browser(t: TestContext, ios = true) {
     get gain() { return this.gains[0]; }
     constructor() { contexts.push(this); }
     createGain() {
-      const gain = { gain: { value: 0, setTargetAtTime(value: number) { this.value = value; } }, connect() {}, disconnect() {} };
+      const gain = { gain: {
+        value: 0,
+        setTargetAtTime(value: number) { this.value = value; },
+        setValueAtTime(value: number) { this.value = value; },
+        cancelScheduledValues() {},
+        linearRampToValueAtTime(value: number, at: number) { ramps.push({ value, at }); this.value = value; },
+      }, connect() {}, disconnect() {} };
       this.gains.push(gain);
       return gain;
     }
@@ -60,8 +68,20 @@ function browser(t: TestContext, ios = true) {
       else Reflect.deleteProperty(globalThis, key);
     });
   }
-  return { contexts, starts, document, session, stall() { stallResume = true; }, release() { pending.splice(0).forEach(resolve => resolve()); } };
+  return { contexts, starts, stops, ramps, document, session, stall() { stallResume = true; }, release() { pending.splice(0).forEach(resolve => resolve()); } };
 }
+
+test("repeated clicks fade the previous voice to silence before stopping it", async t => {
+  const env = browser(t, false);
+  const audio = new InterfaceAudio({ ...defaultSoundPreferences });
+  t.after(() => audio.dispose());
+  await audio.preview("click");
+  await audio.preview("click");
+  const stop = env.stops.find(source => source.length === 16);
+  assert.ok(stop && stop.at > .05, "the previous click must not stop immediately");
+  assert.ok(env.ramps.some(ramp => ramp.value === 0 && ramp.at > 0 && ramp.at < stop.at), "the previous voice reaches zero before its source stops");
+  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 2);
+});
 
 test("preloading before the first tap does not create a locked context; the tap decodes every action", async t => {
   const env = browser(t);

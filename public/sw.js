@@ -1,9 +1,12 @@
-const CACHE = "psyzon-go-v7-offline";
+const CACHE = "psyzon-go-v8-offline";
 const SHELL_KEY = "/__psyzon-offline-shell";
 const PUBLIC_ASSETS = [
   "/manifest.webmanifest",
   "/icon-192-v3.png",
   "/icon-512-v3.png",
+  "/sounds/click-v1.mp3",
+  "/sounds/navigate-v1.mp3",
+  "/sounds/type-v1.mp3",
 ];
 const SAFE_DESTINATIONS = new Set(["style", "script", "image", "font", "manifest"]);
 const SAFE_PUBLIC_EXTENSION = /\.(?:css|js|mjs|woff2?|ttf|otf|png|jpe?g|gif|webp|avif|svg|ico|webmanifest)$/i;
@@ -85,8 +88,8 @@ function isPublicStaticRequest(request, url) {
   if (request.method !== "GET" || request.headers.has("authorization")) return false;
   if (url.origin !== self.location.origin) return false;
   if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/signin") || url.pathname.startsWith("/callback") || url.pathname.startsWith("/auth") || url.pathname.startsWith("/__/auth")) return false;
-  if (!SAFE_DESTINATIONS.has(request.destination)) return false;
-  return url.pathname.startsWith("/_next/static/") || SAFE_PUBLIC_EXTENSION.test(url.pathname);
+  if (!SAFE_DESTINATIONS.has(request.destination) && !PUBLIC_ASSETS.includes(url.pathname)) return false;
+  return PUBLIC_ASSETS.includes(url.pathname) || url.pathname.startsWith("/_next/static/") || SAFE_PUBLIC_EXTENSION.test(url.pathname);
 }
 
 function mayCacheResponse(response) {

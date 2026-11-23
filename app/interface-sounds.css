@@ -1,0 +1,26 @@
+.interface-sounds { padding: 22px; margin-block: 18px; }
+.interface-sounds > header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.sound-settings-icon { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border-radius: 13px; color: var(--blue); background: var(--blue-soft); }
+.interface-sounds h2 { margin: 0; color: var(--text); font-size: 18px; font-weight: 650; letter-spacing: -.025em; }
+.interface-sounds p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.sound-master { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; border-bottom: 1px solid var(--border); }
+.sound-master label { font-size: 13px; font-weight: 600; cursor: pointer; }
+.sound-master small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.5; }
+.interface-sounds label b { display: block; font-size: 13px; font-weight: 600; }
+.interface-sounds label small { display: block; font-size: 11px; line-height: 1.5; color: var(--muted); margin-top: 3px; }
+.interface-sounds input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--blue); flex-shrink: 0; cursor: pointer; }
+.sound-volume { padding-block: 16px; }
+.sound-volume > label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; }
+.sound-volume output { color: var(--blue); font-variant-numeric: tabular-nums; }
+.sound-volume input { width: 100%; min-height: 30px; margin-top: 5px; accent-color: var(--blue); }
+.sound-action { display: flex; align-items: center; gap: 12px; padding-block: 13px; border-top: 1px solid var(--border); }
+.sound-action > svg { flex-shrink: 0; color: var(--muted); }
+.sound-action > label { flex: 1; min-width: 0; cursor: pointer; }
+.sound-action .secondary { min-height: 36px; height: 36px; padding-inline: 10px; font-size: 11px; }
+.interface-sounds :disabled { opacity: .45; cursor: default; }
+@media (max-width: 540px) {
+  .interface-sounds { padding: 17px; }
+  .sound-action { gap: 9px; }
+  .sound-action > svg { display: none; }
+  .sound-action .secondary { min-height: 42px; }
+}

@@ -26,6 +26,7 @@ import { changedFields } from "./changed-fields";
 import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
 import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./payment-feedback";
+import useInterfaceSounds from "./useInterfaceSounds";
 import { operationCosts } from "./operations-data";
 import type { PurchaseCostInput } from "./notes/PurchaseCostReview";
 import { toDraft, type NoteMaterial } from "./notes-model";
@@ -164,6 +165,7 @@ const ProductionBoard = dynamic(() => import("./ProductionBoard"), { ssr: false 
 const SewingWorkspace = dynamic(() => import("./SewingWorkspace"), { ssr: false });
 const MonthlyClosingWorkspace = dynamic(() => import("./MonthlyClosingWorkspace"), { ssr: false });
 const AppearanceSettings = dynamic(() => import("./AppearanceSettings"), { ssr: false });
+const InterfaceSoundSettings = dynamic(() => import("./InterfaceSoundSettings"), { ssr: false });
 const AtelierDashboard = dynamic(() => import("./AtelierDashboard"), { ssr: false });
 const OrderPhotoField = dynamic(() => import("./OrderPhotoField"), { ssr: false });
 const PhotoOptimization = dynamic(() => import("./PhotoOptimization"), { ssr: false });
@@ -290,6 +292,7 @@ export default function HomePage() {
   const [financeQueue, setFinanceQueue] = useState<FinanceIntent[]>([]);
   const processingFinance = useRef(false);
   const [uid, setUid] = useState("");
+  const interfaceSounds = useInterfaceSounds(uid);
   const interfaceAppearance = useInterfaceAppearance(uid);
   const [user, setUser] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -2184,7 +2187,7 @@ export default function HomePage() {
           />}
 
 
-          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
+          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><InterfaceSoundSettings {...interfaceSounds} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
         </section>
       </main>
 

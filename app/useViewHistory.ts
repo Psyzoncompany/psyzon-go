@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { interfaceNavigationEvent } from "./interface-sound-model";
 
 export const views = ["inicio", "producao", "dtf", "notas", "materiais", "afazeres", "reposicao", "costureiras", "clientes", "financeiro", "historico", "cofre", "mais", "ai"] as const;
 export type View = (typeof views)[number];
@@ -32,6 +33,7 @@ export default function useViewHistory() {
   const navigate = useCallback((hash: string, scroll: boolean) => {
     const next = locationFromHash(hash);
     const previous = requestedView.current;
+    if (requestedHash.current !== undefined && previous !== next.view) window.dispatchEvent(new Event(interfaceNavigationEvent));
     requestedView.current = next.view;
     requestedHash.current = hash;
     const ticket = ++revision.current;

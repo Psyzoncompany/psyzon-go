@@ -29,7 +29,6 @@ export function soundControl(target: EventTarget | null) {
   if (!(target instanceof Element) || target.closest('[data-ui-sound="off"], [data-view="cofre"]')) return null;
   const control = target.closest('button, a[href], summary, select, input[type="checkbox"], input[type="radio"], [role="button"], [role="tab"]');
   if (!control || control.matches(':disabled, [aria-disabled="true"]') || control.closest("[inert]")) return null;
-  if (control.matches('a[href], summary, [role="tab"], [aria-haspopup], [aria-expanded]') || control.closest('nav, [role="tablist"]')) return null;
   return control;
 }
 

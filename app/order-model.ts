@@ -40,6 +40,7 @@ export type Order = {
   childQuantity?: number;
   checklistChildQuantity?: number;
   checklistQuantity?: number;
+  checklistPoloQuantity?: number;
   total: number;
   paid: number;
   receivable?: number;

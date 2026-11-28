@@ -92,7 +92,7 @@ async function getProductionData(identity: FirebaseIdentity) {
     listAllUserCollection(identity, "notes"),
   ]);
   const effective = new Map(synchronizedOrderQuantities(stored as unknown as Order[],notes as unknown as BusinessNote[],customers as unknown as Customer[]).map(order=>[order.id,order]));
-  const orders = stored.map((order): (typeof stored)[number]=>({...order,status:normalizeOrderStatus(order.status),quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total}));
+  const orders = stored.map((order): (typeof stored)[number]=>({...order,status:normalizeOrderStatus(order.status),quantity:effective.get(order.id)?.quantity??order.quantity,total:effective.get(order.id)?.total??order.total,checklistPoloQuantity:effective.get(order.id)?.checklistPoloQuantity}));
   return { orders, customers, notes };
 }
 

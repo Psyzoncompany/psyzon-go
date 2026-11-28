@@ -10,10 +10,10 @@ import {
   sewingEntryTotals,
   sewingOrderBalances,
   sewingPerson,
+  sewingPoloPieces,
   type SewingLedger,
   type SewingEntry,
 } from "./sewing-model";
-import { poloPieces } from "./order-pricing";
 import { CountUp } from "./MotionValue";
 import "./sewing.css";
 import NoteDialog from "./notes/NoteDialog";
@@ -369,8 +369,9 @@ export default function SewingWorkspace({
         {!visible.length && <p className="sewing-empty">Nenhum pedido nesta seleção.</p>}
         {visible.map(({ order, cost, paid, offset, remaining, excluded }) => {
           const expanded = expandedOrderId === order.id;
-          const rate = ledger.rates[order.id] ?? null;
-          const polos = poloPieces(order);
+          const checklistRate = order.checklistPoloQuantity !== undefined;
+          const rate = checklistRate ? null : ledger.rates[order.id] ?? null;
+          const polos = sewingPoloPieces(order);
           const automaticRate = polos === 0 ? "Automática · R$ 4" : polos === order.quantity ? "Automática · R$ 7" : "Automática · R$ 4 e R$ 7";
           const linkedPayments = ledger.entries.filter(entry => entry.orderId === order.id && entry.kind === "payment");
           const lastPayment = linkedPayments.findLast(entry => entry.person === current.person);
@@ -406,10 +407,10 @@ export default function SewingWorkspace({
                 <label>Costureira<select aria-label={`Costureira de ${order.customer}`} disabled={busy} value={current.person} onChange={event =>
                   void run({ type: "assign", orderId: order.id, person: event.target.value, rate })
                 }>{ledger.people.map(name => <option key={name}>{name}</option>)}</select></label>
-                <label>Tarifa<select aria-label={`Tipo de costura de ${order.customer}`} disabled={busy} value={rate ?? ""} onChange={event =>
+                <label>{checklistRate ? "Tarifa vinculada ao checklist" : "Tarifa"}<select aria-label={`Tipo de costura de ${order.customer}`} disabled={busy || checklistRate} value={rate ?? ""} onChange={event =>
                   void run({ type: "assign", orderId: order.id, person: current.person, rate: event.target.value === "" ? null : Number(event.target.value) })
                 }><option value="">{automaticRate}</option><option value={4}>Camisa · R$ 4</option><option value={7}>Polo · R$ 7</option></select></label>
-                <span className="sewing-linked-breakdown"><small>Costura {money(cost)}</small><small>Pago {money(paid)}</small>{offset > 0 && <small>Crédito utilizado {money(offset)}</small>}</span>
+                <span className="sewing-linked-breakdown">{checklistRate && <><small>{order.quantity - polos} normal · {money(4)} cada</small><small>{polos} polo · {money(7)} cada</small></>}<small>Costura {money(cost)}</small><small>Pago {money(paid)}</small>{offset > 0 && <small>Crédito utilizado {money(offset)}</small>}</span>
                 {linkedPayments.length === 0 && <button type="button" className="secondary" disabled={busy} onClick={() => {
                   if (confirm("Remover a cobrança de costura deste pedido?"))
                     void run({ type: "exclude-order", orderId: order.id, excluded: true });

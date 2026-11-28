@@ -80,10 +80,16 @@ export function sewingEntryTotals(entries: SewingEntry[]) {
   }
   return { paid: Math.round(paid * 100) / 100, printCredit: Math.round((printCredit - offsets) * 100) / 100, offsets: Math.round(offsets * 100) / 100 };
 }
+export function sewingPoloPieces(order: Order) {
+  return order.checklistPoloQuantity === undefined ? poloPieces(order)
+    : Math.min(order.quantity, Math.max(0, order.checklistPoloQuantity));
+}
+
 function sewingOrderCost(order: Order, ledger: SewingLedger) {
   if (ledger.excludedOrderIds?.includes(order.id)) return 0;
   const rate = ledger.rates[order.id];
-  return rate == null ? order.quantity * 4 + poloPieces(order) * 3 : order.quantity * rate;
+  return order.checklistPoloQuantity !== undefined || rate == null
+    ? order.quantity * 4 + sewingPoloPieces(order) * 3 : order.quantity * rate;
 }
 export function sewingBalances(orders: Order[], ledger: SewingLedger) {
   const confirmed = confirmedEntries(orders, ledger);

@@ -14,7 +14,7 @@ import { customerBalances, customerReceipt } from "../app/finance-model";
 import { documentPrefix, type BusinessNote } from "../app/notes-model";
 import type { Order } from "../app/order-model";
 import { suggestedShirtPrice } from "../app/order-pricing";
-import { sewingBalances, readSewing, sewingOrderBalances } from "../app/sewing-model";
+import { sewingBalances, readSewing, sewingOrderBalances, sewingBills } from "../app/sewing-model";
 test("custom child prices preserve the default discount and support free items", () => {
   assert.equal(shirtTotal(45, 17, 3), 750);
   assert.equal(shirtTotal(45, 17, 3, 35), 735);
@@ -157,6 +157,38 @@ test("mixed orders price each polo separately and apply the matching sewing rate
   assert.equal(expanded.total, 870);
   assert.throws(() => validateShirtOrderPrice({ ...pricing, poloQuantity: 15 }), /gola polo/);
   assert.throws(() => validateShirtOrderPrice({ ...pricing, poloQuantity: null }), /gola polo/);
+});
+
+test("checklist collars update sewing debt across default, individual and paid pieces", () => {
+  const source = { ...order, quantity: 14, childQuantity: 0, unitPrice: 45, shirtType: "polo" as const };
+  const linked = note(Array(14).fill("M"));
+  const document = JSON.parse(linked.content.slice(documentPrefix.length));
+  const snapshot = () => ({ ...linked, content: documentPrefix + JSON.stringify(document) });
+  document.productionChecklist.defaultCollar = "polo";
+  document.productionChecklist.rows[9].collar = "common";
+  const ledger = { ...readSewing([]), rates: { a: 4 }, entries: [{ id: "paid", person: "Zefa", kind: "payment" as const, amount: 50, quantity: 0, date: "2026-11-28", orderId: "a" }] };
+  const synchronize = () => synchronizedOrderQuantities([source], [snapshot()], []);
+  const initial = synchronize();
+  assert.equal(initial[0].checklistPoloQuantity, 13);
+  assert.equal(initial[0].shirtType, source.shirtType);
+  assert.equal(initial[0].total, 840);
+  assert.equal(sewingOrderBalances(initial, ledger, "Zefa")[0].cost, 95);
+  assert.equal(sewingOrderBalances(initial, ledger, "Zefa")[0].remaining, 45);
+  assert.equal(sewingBills(initial, ledger)[0].amount, 45);
+  document.productionChecklist.rows[0].collar = "common";
+  assert.equal(sewingBills(synchronize(), ledger)[0].amount, 42);
+  document.productionChecklist.defaultCollar = "common";
+  assert.equal(synchronize()[0].checklistPoloQuantity, 0);
+  assert.equal(sewingBills(synchronize(), ledger)[0].amount, 6);
+  document.productionChecklist.rows[1].collar = "polo";
+  assert.equal(sewingBills(synchronize(), ledger)[0].amount, 9);
+  assert.equal(sewingBills(synchronize(), { ...ledger, excludedOrderIds: ["a"] }).length, 0);
+  delete document.productionChecklist.defaultCollar;
+  for (const row of document.productionChecklist.rows) delete row.collar;
+  const legacy = synchronizedOrderQuantities(initial, [snapshot()], []);
+  assert.equal(legacy[0].checklistPoloQuantity, undefined);
+  assert.equal(sewingOrderBalances(legacy, ledger, "Zefa")[0].cost, 56);
+  assert.equal(synchronizedOrderQuantities(initial, [], [])[0].checklistPoloQuantity, undefined);
 });
 
 test("repair fees stay manual and collection orders affect receivables without adding sewing costs", async () => {

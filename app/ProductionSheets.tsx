@@ -1,4 +1,5 @@
 import { productionCollarLabels, productionPages, productionSummary, type ProductionChecklist, type ProductionRow } from "./production-checklist";
+import { productionSizeColor } from "./production-size-color";
 
 const productionStages = ["Corte", "Estampa", "Prensagem", "Embalagem"];
 
@@ -55,7 +56,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
   const sizeSummary = (opening = false) => <section className={opening ? "production-summary production-opening-summary" : "production-summary"}><h2>RESUMO POR TAMANHO</h2>
         <div className="production-summary-models">{summary.map(([model, items]) => <section className="production-summary-model" key={model}>
           <h3><span>{model}</span><b>{items.length} un.</b></h3>
-          <div className="production-summary-sizes">{productionSummary(items).map(item => <span key={item.size}><small>{item.size}</small><b>{item.quantity} un.</b></span>)}</div>
+          <div className="production-summary-sizes">{productionSummary(items).map(item => <span key={item.size} style={productionSizeColor(item.size)}><small>{item.size}</small><b>{item.quantity} un.</b></span>)}</div>
         </section>)}</div>
       </section>;
   const footer = (index: number) => <footer className="production-sheet-footer">
@@ -78,7 +79,7 @@ export default function ProductionSheets({ checklist, photoData }: { checklist: 
     {pageIndex === 0 && attention && !extra.length && !photoNotes && <section className="production-attention"><h2>ATENÇÃO NA PRODUÇÃO</h2><p>{attention}</p></section>}
     <div className="production-sheet-columns">{columns.map((rows, column) => <div key={column}>{groups(rows, "model").map(([model, items]) => <section className="production-group" key={model}>
       {firstModel.get(model) === items[0].id && <h2><span>{model}</span><b>{modelTotals.get(model)} un.</b></h2>}
-      {groups(items, "size").map(([size, pieces]) => <div className="production-size" key={size}>
+      {groups(items, "size").map(([size, pieces]) => <div className="production-size" key={size} style={productionSizeColor(size)}>
         <h3><span>TAMANHO {size}{firstSize.get(JSON.stringify([model, size])) !== pieces[0].id && <small className="production-continuation"> · continuação</small>}</span><b>{sizeTotals.get(JSON.stringify([model, size]))} un.</b></h3>
         <div className="production-piece-head"><span>{pieces.some(row => !isUnnamed(row)) ? "Nome" : "Quantidade"}</span>{productionStages.map(stage => <span key={stage}>{stage}</span>)}</div>
         {pieces.filter(row => !isUnnamed(row)).map(row => <div className="production-piece" key={row.id}>

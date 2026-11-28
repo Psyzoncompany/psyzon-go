@@ -62,7 +62,12 @@
   .checklist-row-check { display: flex; align-items: center; min-height: 36px; cursor: pointer; }
   .checklist-collar { display: block; width: 100%; min-width: 0; min-height: 28px; margin-bottom: 3px; padding-inline: 3px; border: 1px solid var(--border); border-radius: 6px; background: var(--card-subtle); color: var(--text); font-size: 11px; }
   .production-checklist .checklist-table td:last-child button { display: grid; place-items: center; width: 100%; min-height: 36px; padding: 0; }
-  .production-checklist .checklist-table tbody tr:hover:not(.done) { background: var(--card-subtle); }
+  .production-checklist .checklist-table tbody tr {
+    background: linear-gradient(100deg, color-mix(in srgb, hsl(var(--size-hue, 215) 70% 65%) 12%, transparent), color-mix(in srgb, hsl(var(--size-hue, 215) 70% 65%) 4%, transparent));
+  }
+  .production-checklist .checklist-table tbody tr:hover:not(.done) {
+    background: linear-gradient(100deg, color-mix(in srgb, hsl(var(--size-hue, 215) 70% 65%) 18%, transparent), color-mix(in srgb, hsl(var(--size-hue, 215) 70% 65%) 8%, transparent));
+  }
   .checklist-table-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; align-items: start; }
   .checklist-table-columns[data-columns="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

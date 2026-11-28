@@ -32,14 +32,15 @@
   .production-sheet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5mm; padding-top: 4mm; }
   .production-group { border: .25mm solid var(--sheet-line); border-radius: 3mm; overflow: hidden; margin-bottom: 2mm; }
   .production-group h2 { display: flex; justify-content: space-between; gap: 3mm; margin: 0; padding: 2.5mm 3mm; background: var(--sheet-accent, #142b55); color: var(--sheet-on-accent, white); box-shadow: inset 0 -1px var(--sheet-line); font-size: 10pt; font-weight: 700; text-transform: uppercase; }
-  .production-size { padding: 1mm 2.5mm .5mm; }
+  .production-size { padding: 1mm 2.5mm .5mm; background: linear-gradient(100deg, hsl(var(--size-hue, 215) 65% 96%), hsl(var(--size-hue, 215) 65% 99%)); }
   .production-continuation { font-size: 7pt; font-weight: 400; text-transform: none; }
-  .production-size h3 { display: flex; justify-content: space-between; gap: 3mm; margin: 0 0 1mm; padding: 1.25mm 2mm; background: var(--sheet-tint); color: var(--sheet-ink); border-radius: 1.5mm; font-size: 9pt; font-weight: 700; }
+  .production-size h3 { display: flex; justify-content: space-between; gap: 3mm; margin: 0 0 1mm; padding: 1.25mm 2mm; background: hsl(var(--size-hue, 215) 55% 92%); color: var(--sheet-ink); border-radius: 1.5mm; font-size: 9pt; font-weight: 700; }
   .production-piece, .production-piece-head { display: grid; grid-template-columns: minmax(0, 1fr) 8mm 10mm 13mm 14mm; align-items: center; column-gap: 1mm; padding-inline: 1mm; }
   .production-piece-head { padding-block: 1mm; font-size: 6.5pt; font-weight: 700; color: var(--sheet-ink); break-after: avoid; }
   .production-piece-head > span:not(:first-child) { text-align: center; }
   .production-piece { padding-block: 1.4mm; font-size: 10pt; color: #1a2436; break-inside: avoid; }
-  .production-piece:nth-child(even) { background: color-mix(in srgb, var(--sheet-tint) 38%, white); }
+  .production-piece:nth-child(even) { background: #ffffff60; }
+  .production-summary-sizes > span { background: hsl(var(--size-hue, 215) 65% 96%); border-radius: 1mm; padding-inline: 1mm; }
   .production-piece span { overflow-wrap: anywhere; }
   .production-size-checks span { font-size: 8pt; }
   .production-size { break-inside: avoid; }

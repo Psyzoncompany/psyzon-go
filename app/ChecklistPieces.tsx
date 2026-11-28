@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { productionCollar, type ProductionCollar, type ProductionRow } from "./production-checklist";
+import { productionSizeColor } from "./production-size-color";
 
 export default function ChecklistPieces({ rows, defaultCollar, onUpdate, onRemove }: {
   rows: ProductionRow[];
@@ -29,7 +30,7 @@ export default function ChecklistPieces({ rows, defaultCollar, onUpdate, onRemov
         <thead><tr><th scope="col">OK</th><th scope="col">Modelo</th><th scope="col">Tamanho</th><th scope="col">Nome na peça</th><th scope="col"><span className="sr-only">Excluir</span></th></tr></thead>
         <tbody>{items.map((row, index) => {
           const number = column * split + index + 1;
-          return <tr key={row.id} className={row.done ? "done" : ""}>
+          return <tr key={row.id} className={row.done ? "done" : ""} style={productionSizeColor(row.size)}>
             <td><label className="checklist-row-check"><input type="checkbox" checked={row.done} onChange={event => onUpdate(row.id, { done: event.target.checked })} aria-label={`Conferir peça ${number}: ${row.name}`} /></label></td>
             <td>
               <input value={row.model} maxLength={80} aria-label={`Modelo da peça ${number}`} onChange={event => onUpdate(row.id, { model: event.target.value })} />

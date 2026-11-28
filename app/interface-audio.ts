@@ -1,14 +1,19 @@
 import { interfaceSoundFiles, type InterfaceSound, type SoundPreferences } from "./interface-sound-model";
 
-/** One decoded MP3 per action, shared across interactions in the current account. */
+const isInteraction = (kind: InterfaceSound) => kind === "click" || kind === "navigate" || kind === "close";
+
+/** One decoded clip per action, shared across interactions in the current account. */
 export class InterfaceAudio {
   private context?: AudioContext;
   private output?: GainNode;
   private buffers = new Map<InterfaceSound, AudioBuffer>();
   private encoded = new Map<InterfaceSound, ArrayBuffer>();
   private decoding = new Map<InterfaceSound, Promise<void>>();
-  private sources = new Map<AudioBufferSourceNode, { gain: GainNode; kind: InterfaceSound }>();
+  private sources = new Map<AudioBufferSourceNode, { gain: GainNode; kind: InterfaceSound; startedAt: number; duration: number }>();
   private fallback = new Map<InterfaceSound, HTMLAudioElement>();
+  private fallbackPool = new Map<InterfaceSound, HTMLAudioElement[]>();
+  private fallbackUnlocked = new WeakSet<HTMLAudioElement>();
+  private fallbackUnlocking = new WeakSet<HTMLAudioElement>();
   private fallbackVoices = new Map<HTMLAudioElement, InterfaceSound>();
   private fallbackFades = new Map<HTMLAudioElement, number>();
   private loading?: Promise<void>;
@@ -16,8 +21,9 @@ export class InterfaceAudio {
   private closed = false;
   private resetOnUnlock = false;
   private generation = 0;
+  private interactionRevision = 0;
   private session?: { value: { type: string }; previousType: string };
-  private played: Record<InterfaceSound, number> = { click: -Infinity, type: -Infinity, notification: -Infinity, success: -Infinity };
+  private played: Record<InterfaceSound, number> = { click: -Infinity, navigate: -Infinity, close: -Infinity, type: -Infinity, notification: -Infinity, success: -Infinity };
 
   constructor(private preferences: SoundPreferences) {
     this.warm();
@@ -26,7 +32,9 @@ export class InterfaceAudio {
   configure(preferences: SoundPreferences) {
     this.preferences = preferences;
     if (this.output && this.context) this.output.gain.setTargetAtTime(preferences.volume / 100, this.context.currentTime, .015);
-    this.fallback.forEach((audio, kind) => { audio.volume = preferences.volume / 100 * this.level(kind); });
+    this.fallbackPool.forEach((pool, kind) => pool.forEach(audio => {
+      if (!this.fallbackUnlocking.has(audio)) audio.volume = preferences.volume / 100 * this.level(kind);
+    }));
     this.fallbackVoices.forEach((kind, audio) => { if (!this.fallbackFades.has(audio)) audio.volume = preferences.volume / 100 * this.level(kind); });
     if (!preferences.enabled || preferences.volume === 0) { this.stop(true); this.releaseSession(); }
     else this.warm();
@@ -44,6 +52,10 @@ export class InterfaceAudio {
           audio.volume = this.preferences.volume / 100 * this.level(kind as InterfaceSound);
           this.fallback.set(kind as InterfaceSound, audio);
           audio.load();
+          const second = audio.cloneNode(true) as HTMLAudioElement;
+          second.preload = "auto";
+          second.load();
+          this.fallbackPool.set(kind as InterfaceSound, [audio, second]);
         }
         this.loading = Promise.resolve();
         return;
@@ -96,7 +108,20 @@ export class InterfaceAudio {
     this.warm();
     try {
       const Audio = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Audio) return;
+      if (!Audio) {
+        if (gesture) this.fallbackPool.forEach(pool => pool.forEach(audio => {
+          if (this.fallbackUnlocked.has(audio) || this.fallbackUnlocking.has(audio) || this.fallbackVoices.has(audio)) return;
+          // Unlock each reusable media element in the actual touch gesture.
+          // Cloning at playback time loses Safari's per-element permission.
+          this.fallbackUnlocking.add(audio);
+          audio.volume = 0;
+          void audio.play().then(() => {
+            this.fallbackUnlocked.add(audio);
+            if (!this.fallbackVoices.has(audio)) audio.pause();
+          }).catch(() => {}).finally(() => { this.fallbackUnlocking.delete(audio); });
+        }));
+        return;
+      }
       if (!gesture && (!this.context || this.resetOnUnlock)) return;
       if (gesture) this.activateSession();
       // iOS can report a running context whose output died while backgrounded.
@@ -142,9 +167,12 @@ export class InterfaceAudio {
     this.played[kind] = now;
     try {
       if (fallback) {
-        if (kind === "click") this.fallbackVoices.forEach((playingKind, audio) => { if (playingKind === kind) this.releaseFallback(audio); });
+        if (isInteraction(kind)) this.fallbackVoices.forEach((playingKind, audio) => { if (isInteraction(playingKind)) this.releaseFallback(audio); });
         if (this.fallbackVoices.size >= 4) this.releaseFallback(this.fallbackVoices.keys().next().value!);
-        const voice = fallback.cloneNode(true) as HTMLAudioElement;
+        const pool = this.fallbackPool.get(kind)!;
+        const voice = pool.find(audio => !this.fallbackVoices.has(audio) && audio.readyState >= 2) ?? pool.find(audio => !this.fallbackVoices.has(audio)) ?? pool[0];
+        if (this.fallbackVoices.has(voice)) this.finishFallback(voice);
+        if (voice.readyState >= 1) voice.currentTime = 0;
         voice.volume = this.preferences.volume / 100 * this.level(kind);
         this.fallbackVoices.set(voice, kind);
         voice.onended = () => this.finishFallback(voice);
@@ -152,16 +180,22 @@ export class InterfaceAudio {
         return;
       }
       if (!context || !buffer || !this.output) return;
-      if (kind === "click") this.sources.forEach((voice, source) => { if (voice.kind === kind) this.releaseSource(source); });
+      if (isInteraction(kind)) this.sources.forEach((voice, source) => { if (isInteraction(voice.kind)) this.releaseSource(source); });
       if (this.sources.size >= 4) this.releaseSource(this.sources.keys().next().value!);
       const source = context.createBufferSource();
       const gain = context.createGain();
       source.buffer = buffer;
       gain.gain.setValueAtTime(0, context.currentTime);
       gain.gain.linearRampToValueAtTime(this.level(kind), context.currentTime + .006);
+      // Keep natural reverb, then reach zero before the buffer ends.
+      const duration = buffer.duration;
+      if (duration > .02) {
+        gain.gain.setValueAtTime(this.level(kind), context.currentTime + Math.max(.006, duration - .04));
+        gain.gain.linearRampToValueAtTime(0, context.currentTime + duration);
+      }
       source.connect(gain);
       gain.connect(this.output);
-      this.sources.set(source, { gain, kind });
+      this.sources.set(source, { gain, kind, startedAt: context.currentTime, duration });
       source.onended = () => { this.sources.delete(source); source.disconnect(); gain.disconnect(); };
       source.start();
     } catch { /* Feedback must never interrupt an action or a save. */ }
@@ -174,16 +208,30 @@ export class InterfaceAudio {
   async playWhenReady(kind: InterfaceSound, preview = false) {
     const requestedAt = performance.now();
     const generation = this.generation;
+    const interaction = isInteraction(kind) ? ++this.interactionRevision : undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let removeReadyListener: (() => void) | undefined;
     try {
+      const fallback = this.fallback.get(kind);
+      // Safari can have metadata before it has playable audio. Wait for this
+      // clip, with the same short expiry as a pending AudioContext resume.
+      const ready = !fallback || fallback.readyState >= 2 ? Promise.resolve() : new Promise<void>(resolve => {
+        const done = () => { removeReadyListener?.(); resolve(); };
+        removeReadyListener = () => {
+          fallback.removeEventListener("canplay", done);
+          fallback.removeEventListener("error", done);
+        };
+        fallback.addEventListener("canplay", done, { once: true });
+        fallback.addEventListener("error", done, { once: true });
+      });
       // Some iOS versions leave resume() pending indefinitely. Do not retain a
       // stale startup/confirmation that could play after the next interaction.
       await Promise.race([
-        Promise.all([this.unlock(), this.loading]).then(() => this.decode(kind)),
+        Promise.all([this.unlock(), this.loading, ready]).then(() => this.decode(kind)),
         new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); }),
       ]);
-      if (generation === this.generation && performance.now() - requestedAt < 1500) this.play(kind, preview);
-    } finally { clearTimeout(timer); }
+      if (generation === this.generation && (interaction === undefined || interaction === this.interactionRevision) && performance.now() - requestedAt < 1500) this.play(kind, preview);
+    } finally { clearTimeout(timer); removeReadyListener?.(); }
   }
 
   private level(kind: InterfaceSound) {
@@ -195,7 +243,11 @@ export class InterfaceAudio {
     if (!voice || !this.context) return;
     const now = this.context.currentTime;
     try {
-      const level = voice.gain.gain.value;
+      // AudioParam.value can already hold the final scheduled zero. Hold the
+      // actual envelope at this instant before fading an interrupted voice.
+      const elapsed = now - voice.startedAt;
+      const level = this.level(voice.kind) * Math.max(0, Math.min(1, elapsed / .006,
+        voice.duration > .02 ? (voice.duration - elapsed) / .04 : 1));
       voice.gain.gain.cancelScheduledValues(now);
       voice.gain.gain.setValueAtTime(level, now);
       voice.gain.gain.linearRampToValueAtTime(0, now + (immediate ? 0 : .06));
@@ -246,7 +298,8 @@ export class InterfaceAudio {
     this.stop(true);
     this.releaseSession();
     this.controller.abort();
-    this.fallback.forEach(audio => { audio.removeAttribute("src"); audio.load(); });
+    this.fallbackPool.forEach(pool => pool.forEach(audio => { audio.pause(); audio.removeAttribute("src"); audio.load(); }));
+    this.fallbackPool.clear();
     this.fallback.clear();
     void this.context?.close().catch(() => {});
   }

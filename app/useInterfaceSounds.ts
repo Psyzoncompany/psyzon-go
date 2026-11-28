@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { InterfaceAudio } from "./interface-audio";
-import { defaultSoundPreferences, interfaceAudioUnlockEvent, isTypingSoundTarget, readSoundPreferences, soundControl, soundPreferenceKey, type InterfaceSound, type SoundPreferences } from "./interface-sound-model";
+import { controlSound, defaultSoundPreferences, interfaceAudioUnlockEvent, interfaceNavigationEvent, isTypingSoundTarget, readSoundPreferences, soundControl, soundPreferenceKey, type InterfaceSound, type SoundPreferences } from "./interface-sound-model";
 import { paymentFeedbackEvent, paymentPreferences, type PaymentSuccess } from "./payment-feedback";
 
 export default function useInterfaceSounds(uid: string) {
@@ -27,6 +27,36 @@ export default function useInterfaceSounds(uid: string) {
       setSaved({ uid, preferences: restored });
     });
     let pendingClick: number | undefined;
+    let pendingAction: "click" | "close" | "navigate" | undefined;
+    const consoleTheme = () => document.documentElement.dataset.uiTheme === "ps5";
+    const clearPending = () => {
+      window.clearTimeout(pendingClick);
+      pendingClick = undefined;
+      pendingAction = undefined;
+    };
+    const queue = (kind: "click" | "close" | "navigate") => {
+      const priority = { click: 0, close: 1, navigate: 2 };
+      if (pendingAction && priority[kind] < priority[pendingAction]) return;
+      pendingAction = kind;
+      window.clearTimeout(pendingClick);
+      // Capture the control before React removes it. Coalesce its click with
+      // the navigation/close produced by the same interaction.
+      pendingClick = window.setTimeout(() => {
+        const action = pendingAction;
+        clearPending();
+        if (action) void audio.playWhenReady(action);
+      }, 0);
+    };
+    const afterDismiss = (element: Element) => {
+      if (!element.isConnected || !element.getClientRects().length) return;
+      // Native event dispatch may run microtasks between capture and target
+      // listeners. Wait for the complete event and React's close commit.
+      window.setTimeout(() => {
+        if (disposed) return;
+        const closed = !element.isConnected || (element instanceof HTMLDialogElement ? !element.open : !element.getClientRects().length);
+        if (closed) queue("close");
+      }, 0);
+    };
     const unlock = (event: Event) => {
       if (!event.isTrusted) return;
       // A touch pointerdown is not an audio activation gesture in iOS Safari.
@@ -37,15 +67,30 @@ export default function useInterfaceSounds(uid: string) {
     const success = (event: Event) => {
       const value = (event as CustomEvent<PaymentSuccess>).detail;
       if (value?.uid === uid && paymentPreferences(uid).sound) {
-        window.clearTimeout(pendingClick);
+        clearPending();
         void audio.playWhenReady("success");
       }
     };
     const click = (event: MouseEvent) => {
-      if (!event.isTrusted || !soundControl(event.target)) return;
+      if (!event.isTrusted) return;
+      const control = soundControl(event.target);
+      if (consoleTheme() && event.target instanceof HTMLDialogElement && event.target.open) afterDismiss(event.target);
+      if (!control) return;
       audio.unlock();
-      window.clearTimeout(pendingClick);
-      pendingClick = window.setTimeout(() => audio.play("click"), 0);
+      queue(controlSound(control, consoleTheme()));
+    };
+    const navigate = () => { if (consoleTheme()) queue("navigate"); };
+    const escape = (event: KeyboardEvent) => {
+      if (!event.isTrusted || event.key !== "Escape" || event.repeat || !consoleTheme()) return;
+      document.querySelectorAll('dialog[open], [role="dialog"]').forEach(afterDismiss);
+    };
+    const backdrop = (event: MouseEvent) => {
+      if (!event.isTrusted || !consoleTheme() || !(event.target instanceof Element) || !event.target.matches(".an-modal-backdrop")) return;
+      const dialog = event.target.querySelector('[role="dialog"]');
+      if (dialog) afterDismiss(dialog);
+    };
+    const cancel = (event: Event) => {
+      if (event.isTrusted && consoleTheme() && event.target instanceof HTMLDialogElement) afterDismiss(event.target);
     };
     const input = (event: Event) => {
       if (!event.isTrusted || (event as InputEvent).isComposing || !isTypingSoundTarget(event.target)) return;
@@ -55,10 +100,10 @@ export default function useInterfaceSounds(uid: string) {
       audio.play("type");
     };
     const visibility = () => {
-      if (document.hidden) { window.clearTimeout(pendingClick); audio.suspend(); }
+      if (document.hidden) { clearPending(); audio.suspend(); }
       else audio.unlock(false);
     };
-    const pagehide = () => { window.clearTimeout(pendingClick); audio.suspend(); };
+    const pagehide = () => { clearPending(); audio.suspend(); };
     const sync = (event: StorageEvent) => {
       if (event.key !== key && event.key !== null) return;
       let next = defaultSoundPreferences;
@@ -71,27 +116,35 @@ export default function useInterfaceSounds(uid: string) {
     document.addEventListener("touchend", unlock, { capture: true, passive: true });
     document.addEventListener("click", unlock, { capture: true });
     document.addEventListener("keydown", unlock, { capture: true });
-    document.addEventListener("click", click);
+    document.addEventListener("click", click, true);
+    document.addEventListener("keydown", escape, true);
+    document.addEventListener("mousedown", backdrop, true);
+    document.addEventListener("cancel", cancel, true);
     document.addEventListener("input", input);
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pageshow", visibility);
     window.addEventListener("pagehide", pagehide);
     window.addEventListener(interfaceAudioUnlockEvent, prepare);
+    window.addEventListener(interfaceNavigationEvent, navigate);
     window.addEventListener(paymentFeedbackEvent, success);
     window.addEventListener("storage", sync);
     return () => {
       disposed = true;
-      window.clearTimeout(pendingClick);
+      clearPending();
       document.removeEventListener("pointerdown", unlock, true);
       document.removeEventListener("touchend", unlock, true);
       document.removeEventListener("click", unlock, true);
       document.removeEventListener("keydown", unlock, true);
-      document.removeEventListener("click", click);
+      document.removeEventListener("click", click, true);
+      document.removeEventListener("keydown", escape, true);
+      document.removeEventListener("mousedown", backdrop, true);
+      document.removeEventListener("cancel", cancel, true);
       document.removeEventListener("input", input);
       document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pageshow", visibility);
       window.removeEventListener("pagehide", pagehide);
       window.removeEventListener(interfaceAudioUnlockEvent, prepare);
+      window.removeEventListener(interfaceNavigationEvent, navigate);
       window.removeEventListener(paymentFeedbackEvent, success);
       window.removeEventListener("storage", sync);
       audio.dispose();

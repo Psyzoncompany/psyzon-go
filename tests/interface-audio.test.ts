@@ -42,7 +42,7 @@ function browser(t: TestContext, ios = true) {
     }
     createBufferSource() { return new Source(); }
     createBuffer() { return { length: 1 }; }
-    async decodeAudioData() { return { length: 16 }; }
+    async decodeAudioData() { return { length: 16, duration: .6 }; }
     resume() {
       this.resumes++;
       return new Promise<void>(resolve => {
@@ -83,6 +83,19 @@ test("repeated clicks fade the previous voice to silence before stopping it", as
   assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 2);
 });
 
+test("navigation fades a playing click, and every clip reaches silence at its natural end", async t => {
+  const env = browser(t, false);
+  const audio = new InterfaceAudio({ ...defaultSoundPreferences });
+  t.after(() => audio.dispose());
+  await audio.preview("click");
+  env.contexts[0].currentTime = .1;
+  await audio.preview("navigate");
+  assert.ok(env.stops.some(source => source.length === 16 && Math.abs(source.at - .165) < .001));
+  assert.ok(env.ramps.some(ramp => ramp.value === 0 && Math.abs(ramp.at - .6) < .001));
+  assert.ok(env.ramps.some(ramp => ramp.value === 0 && Math.abs(ramp.at - .7) < .001));
+  assert.ok(env.contexts[0].gains[1].gain.value === 0);
+});
+
 test("preloading before the first tap does not create a locked context; the tap decodes every action", async t => {
   const env = browser(t);
   const audio = new InterfaceAudio({ ...defaultSoundPreferences });
@@ -95,7 +108,7 @@ test("preloading before the first tap does not create a locked context; the tap 
   assert.equal(env.starts[0].length, 1, "prime Safari synchronously with a silent sample");
   await playback;
   for (const kind of Object.keys(interfaceSoundFiles) as (keyof typeof interfaceSoundFiles)[]) audio.play(kind, true);
-  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 5);
+  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 1 + Object.keys(interfaceSoundFiles).length);
   assert.equal(env.contexts[0].gain.gain.value, .18);
 });
 
@@ -174,6 +187,18 @@ test("a delayed resume cannot play an old confirmation after backgrounding or di
   assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 0);
 });
 
+test("a newer interaction replaces a click that is still waiting for audio activation", async t => {
+  const env = browser(t);
+  const audio = new InterfaceAudio({ ...defaultSoundPreferences });
+  t.after(() => audio.dispose());
+  env.stall();
+  const click = audio.playWhenReady("click");
+  const navigation = audio.playWhenReady("navigate");
+  env.release();
+  await Promise.all([click, navigation]);
+  assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 1);
+});
+
 test("an indefinitely pending Safari resume expires without a delayed sound", async t => {
   const env = browser(t);
   const audio = new InterfaceAudio({ ...defaultSoundPreferences });
@@ -224,4 +249,39 @@ test("unsupported audio-session setters cannot prevent playback", async t => {
   t.after(() => audio.dispose());
   await audio.preview("click");
   assert.equal(env.starts.filter(buffer => buffer.length === 16).length, 1);
+});
+
+test("media fallback unlocks silently in the gesture and reuses the same playable elements", async t => {
+  browser(t, false);
+  const created: Media[] = [];
+  const plays: { audio: Media; volume: number }[] = [];
+  class Media {
+    readyState = 2;
+    preload = "";
+    volume = 1;
+    currentTime = 0;
+    paused = true;
+    onended: (() => void) | null = null;
+    constructor(public src: string) { created.push(this); }
+    cloneNode() { return new Media(this.src); }
+    load() {}
+    pause() { this.paused = true; }
+    removeAttribute() {}
+    play() { this.paused = false; plays.push({ audio: this, volume: this.volume }); return Promise.resolve(); }
+  }
+  Object.assign(window, { AudioContext: undefined, Audio: Media });
+  const audio = new InterfaceAudio({ ...defaultSoundPreferences });
+  t.after(() => audio.dispose());
+  const count = created.length;
+  audio.unlock();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(plays.length > 0 && plays.every(play => play.volume === 0));
+  assert.ok(created.every(media => media.paused));
+  await audio.preview("click");
+  const first = plays.at(-1)!;
+  assert.ok(first.volume > 0);
+  audio.stop(true);
+  await audio.preview("click");
+  assert.equal(plays.at(-1)!.audio, first.audio, "retain Safari's per-element activation");
+  assert.equal(created.length, count, "no fresh unactivated clone at playback");
 });

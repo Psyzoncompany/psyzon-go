@@ -2198,7 +2198,7 @@ export default function HomePage() {
           />}
 
 
-          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><InterfaceSoundSettings {...interfaceSounds} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
+          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><InterfaceSoundSettings {...interfaceSounds} consoleTheme={consoleTheme} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
         </section>
       </main>
 

@@ -47,3 +47,7 @@ firebase-adminsdk*.json
 /work/
 *.tsbuildinfo
 .openai/site-version-*.tar.gz
+
+# Firebase emulator and deploy diagnostics
+/firestore-debug.log*
+/firebase-debug.log*

@@ -5,13 +5,21 @@ export type { FirebaseIdentity } from "./firebase-admin";
 export type BusinessCollection = "orders" | "customers" | "transactions" | "bills" | "notes";
 export type UserCollection = BusinessCollection | "tasks" | "dtfOrders" | "aiSettings" | "aiConversations" | "aiMessages" | "aiConfirmations" | "aiAuditLogs" | "aiUsage" | "aiRateLimits" | "mercadoPagoPayments" | "mercadoPagoReconciliation" | "integrationSyncState" | "pluggyItems" | "pluggyAccounts" | "pluggyTransactions" | "financialCategories" | "financialRules";
 
-export async function authenticateFirebaseRequest(request: Request): Promise<FirebaseIdentity> {
+export async function authenticateFirebaseRequest(request: Request, allowRecovery = false): Promise<FirebaseIdentity> {
   const authorization = request.headers.get("authorization") ?? "";
   const match = authorization.match(/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/);
   if (!match || match[1].length > 8_192) throw new Response("Sessão ausente ou inválida.", { status: 401 });
   try {
-    return await verifyFirebaseIdToken(match[1]);
+    const identity = await verifyFirebaseIdToken(match[1]);
+    if (!allowRecovery) {
+      const lock = await getAdminFirestore().collection("backupLocks").doc(identity.uid).get().catch(() => {
+        throw new Response("Não foi possível conferir o estado da conta. Tente novamente.", { status: 503 });
+      });
+      if (lock.get("operation") === "restore" && lock.get("status") === "working" && lock.get("expiresAt")?.toMillis() > Date.now()) throw new Response("Os dados estão sendo recuperados. Aguarde a conclusão.", { status: 423 });
+    }
+    return identity;
   } catch (error) {
+    if (error instanceof Response) throw error;
     if (error instanceof Error && error.name === "FirebaseAdminConfigurationError") {
       throw new Response("Firebase Admin não configurado.", { status: 500 });
     }

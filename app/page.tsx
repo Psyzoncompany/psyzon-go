@@ -25,6 +25,7 @@ import CollectionAgenda from "./CollectionAgenda";
 import { changedFields } from "./changed-fields";
 import { prepareReloadEvent, type PrepareReload } from "./update-events";
 import PaymentFeedback, { PaymentFeedbackSettings } from "./PaymentFeedback";
+import BackupRecoveryGuard from "./BackupRecoveryGuard";
 import { preparePaymentSound, paymentSucceeded, activitySucceeded } from "./payment-feedback";
 import useConsoleKeys from "./useConsoleKeys";
 import useInterfaceSounds from "./useInterfaceSounds";
@@ -161,6 +162,7 @@ type Transaction = {
 type View = import("./useViewHistory").View;
 
 const CustomersWorkspace = dynamic(() => import("./CustomersWorkspace"), { ssr: false });
+const BackupSettings = dynamic(() => import("./BackupSettings"));
 const FinanceWorkspace = dynamic(() => import("./FinanceWorkspace"), { ssr: false });
 const ProductionBoard = dynamic(() => import("./ProductionBoard"), { ssr: false });
 const SewingWorkspace = dynamic(() => import("./SewingWorkspace"), { ssr: false });
@@ -2198,7 +2200,7 @@ export default function HomePage() {
           />}
 
 
-          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><InterfaceSoundSettings {...interfaceSounds} consoleTheme={consoleTheme} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
+          {view === "mais" && <><MoreView interfaceAppearance={interfaceAppearance} firebaseState={firebaseState} dark={dark} setDark={setDark} privateValues={privateValues} requestPrivacy={requestPrivacy} uiSize={uiSize} setUiSize={setUiSize} notificationsEnabled={notificationsEnabled} setNotificationsEnabled={changeNotifications} notificationBusy={notificationBusy} webPushReady={!!webPushSetup} webPushMessage={webPushMessage} testNotifications={testNotifications} user={user} onSignOut={signOutGoogle} onReset={resetAllData} resetting={resetting} /><BackupSettings key={uid} user={user} /><InterfaceSoundSettings {...interfaceSounds} consoleTheme={consoleTheme} /><PaymentFeedbackSettings key={uid} uid={uid} /></>}
         </section>
       </main>
 
@@ -2220,7 +2222,7 @@ export default function HomePage() {
 
 
       {privacyTarget !== null && <ValuesPrivacyDialog hide={privacyTarget} getToken={() => user.getIdToken()} close={closePrivacy} confirm={confirmPrivacy} />}
-      <PaymentFeedback key={"payment-feedback-" + uid} uid={uid} />
+      <PaymentFeedback key={"payment-feedback-" + uid} uid={uid} /><BackupRecoveryGuard key={"backup-guard-" + uid} uid={uid} />
       {toast && <div className="toast"><Check size={17} />{toast}</div>}
     </div>
   );

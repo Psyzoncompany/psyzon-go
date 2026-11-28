@@ -65,6 +65,28 @@ before(async () => {
 beforeEach(async () => environment.clearFirestore());
 after(async () => environment.cleanup());
 
+test("backups remain server-only and a recovery lease freezes writes without exposing other accounts", async () => {
+  const uid = "backup-lock-owner";
+  const owner = environment.authenticatedContext(uid).firestore();
+  const other = environment.authenticatedContext("other").firestore();
+  const order = doc(owner, `users/${uid}/orders/a`);
+  await assertSucceeds(setDoc(order, validOrder()));
+  await environment.withSecurityRulesDisabled(async context => {
+    await setDoc(doc(context.firestore(), `backupLocks/${uid}`), { operation: "restore", status: "working", expiresAt: Timestamp.fromMillis(Date.now() + 60_000) });
+    await setDoc(doc(context.firestore(), `accountBackups/${uid}/snapshots/one`), { status: "ready", uid });
+  });
+  await assertSucceeds(getDoc(doc(owner, `backupLocks/${uid}`)));
+  await assertFails(getDoc(doc(other, `backupLocks/${uid}`)));
+  await assertFails(setDoc(doc(owner, `backupLocks/${uid}`), { operation: "backup" }));
+  await assertFails(getDoc(doc(owner, `accountBackups/${uid}/snapshots/one`)));
+  await assertFails(setDoc(doc(owner, `accountBackups/${uid}/snapshots/fake`), { status: "ready" }));
+  await assertSucceeds(getDoc(order));
+  await assertFails(updateDoc(order, { paid: 500 }));
+  await assertFails(deleteDoc(order));
+  await environment.withSecurityRulesDisabled(async context => { await updateDoc(doc(context.firestore(), `backupLocks/${uid}`), { status: "ready" }); });
+  await assertSucceeds(updateDoc(order, { paid: 500 }));
+});
+
 test("offline finance receipts can only be read and created once by their owner", async () => {
   const path = "users/offline-user/financeIntentReceipts/af65a360-0305-41ec-8eb1-81fa505eeee2";
   const owner = doc(environment.authenticatedContext("offline-user").firestore(), path);

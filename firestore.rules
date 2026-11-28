@@ -6,6 +6,20 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    // Backup archives and preview tokens are server-only. This owner-readable
+    // status document freezes account writes only during a confirmed recovery.
+    function writable(uid) {
+      let lock = /databases/$(database)/documents/backupLocks/$(uid);
+      return owns(uid) && (!exists(lock)
+        || get(lock).data.get("operation", "") != "restore"
+        || get(lock).data.get("status", "") != "working"
+        || get(lock).data.expiresAt <= request.time);
+    }
+
+    match /backupLocks/{uid} {
+      allow get: if owns(uid);
+    }
+
     function text(value, minimum, maximum) {
       return value is string && value.size() >= minimum && value.size() <= maximum;
     }
@@ -205,9 +219,10 @@ service cloud.firestore {
     }
 
     match /users/{uid}/historyEntries/{documentId} {
-      allow get, list, delete: if owns(uid);
-      allow create: if owns(uid) && validHistoryEntry(request.resource.data);
-      allow update: if owns(uid) && validHistoryEntry(request.resource.data) && unchanged("source");
+      allow get, list: if owns(uid);
+      allow delete: if writable(uid);
+      allow create: if writable(uid) && validHistoryEntry(request.resource.data);
+      allow update: if writable(uid) && validHistoryEntry(request.resource.data) && unchanged("source");
     }
 
     function validTask(data) {
@@ -219,14 +234,16 @@ service cloud.firestore {
     }
 
     match /users/{uid}/tasks/{documentId} {
-      allow get, list, delete: if owns(uid);
-      allow create: if owns(uid) && validTask(request.resource.data) && request.resource.data.createdAt == request.time;
-      allow update: if owns(uid) && validTask(request.resource.data) && unchanged("createdAt");
+      allow get, list: if owns(uid);
+      allow delete: if writable(uid);
+      allow create: if writable(uid) && validTask(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if writable(uid) && validTask(request.resource.data) && unchanged("createdAt");
     }
 
     match /users/{uid}/monthlyClosings/{month} {
-      allow get, list, delete: if owns(uid);
-      allow create: if owns(uid) && month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
+      allow get, list: if owns(uid);
+      allow delete: if writable(uid);
+      allow create: if writable(uid) && month.matches("^[0-9]{4}-(0[1-9]|1[0-2])$")
         && request.resource.data.keys().hasOnly(["month", "snapshot", "createdAt"])
         && request.resource.data.month == month
         && text(request.resource.data.snapshot, 2, 900000)
@@ -235,38 +252,40 @@ service cloud.firestore {
 
     match /users/{uid}/financeIntentReceipts/{intentId} {
       allow get: if owns(uid);
-      allow create: if owns(uid) && intentId.matches("^[a-f0-9-]{36}$")
+      allow create: if writable(uid) && intentId.matches("^[a-f0-9-]{36}$")
         && request.resource.data.keys().hasOnly(["createdAt"])
         && request.resource.data.createdAt == request.time;
     }
 
     match /users/{uid}/orders/{documentId} {
       allow get, list: if owns(uid);
-      allow create: if owns(uid) && validOrder(request.resource.data);
-      allow update: if owns(uid) && validOrder(request.resource.data) && unchanged("createdAt") && unchanged("orderKind");
-      allow delete: if owns(uid);
+      allow create: if writable(uid) && validOrder(request.resource.data);
+      allow update: if writable(uid) && validOrder(request.resource.data) && unchanged("createdAt") && unchanged("orderKind");
+      allow delete: if writable(uid);
     }
 
     match /users/{uid}/customers/{documentId} {
       allow get, list: if owns(uid);
-      allow create, update: if owns(uid) && validCustomer(request.resource.data);
-      allow delete: if owns(uid);
+      allow create, update: if writable(uid) && validCustomer(request.resource.data);
+      allow delete: if writable(uid);
     }
 
     match /users/{uid}/dtfOrders/{documentId} {
-      allow get, list, delete: if owns(uid);
-      allow create: if owns(uid) && validDtfOrder(request.resource.data) && request.resource.data.createdAt == request.time;
-      allow update: if owns(uid) && validDtfOrder(request.resource.data) && unchanged("createdAt");
+      allow get, list: if owns(uid);
+      allow delete: if writable(uid);
+      allow create: if writable(uid) && validDtfOrder(request.resource.data) && request.resource.data.createdAt == request.time;
+      allow update: if writable(uid) && validDtfOrder(request.resource.data) && unchanged("createdAt");
     }
 
     match /users/{uid}/balanceEntries/{entryId} {
-      allow get, list, delete: if owns(uid);
-      allow update: if owns(uid) && entryId.matches('^material-.*$')
+      allow get, list: if owns(uid);
+      allow delete: if writable(uid);
+      allow update: if writable(uid) && entryId.matches('^material-.*$')
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["amount", "date"])
         && request.resource.data.amount is number
         && request.resource.data.amount >= -100000000 && request.resource.data.amount <= 0
         && calendarDate(request.resource.data.date);
-      allow create: if owns(uid)
+      allow create: if writable(uid)
         && request.resource.data.keys().hasOnly(["amount", "description", "date", "createdAt"])
         && request.resource.data.amount is number
         && request.resource.data.amount == request.resource.data.amount
@@ -286,39 +305,39 @@ service cloud.firestore {
           && data.archiveId is string && (data.archiveId == "" || data.archiveId.matches('^[a-f0-9-]{36}$'));
       }
       allow get: if owns(uid);
-      allow create: if owns(uid) && validVault(request.resource.data)
+      allow create: if writable(uid) && validVault(request.resource.data)
         && ((documentId == "main" && request.resource.data.previous == "")
           || (documentId == request.resource.data.revision && documentId != "main"));
-      allow update: if owns(uid) && documentId == "main" && validVault(request.resource.data)
+      allow update: if writable(uid) && documentId == "main" && validVault(request.resource.data)
         && request.resource.data.previous == resource.data.revision
         && request.resource.data.revision != resource.data.revision;
     }
 
     match /users/{uid}/transactions/{documentId} {
       allow get, list: if owns(uid);
-      allow create: if owns(uid) && validTransaction(request.resource.data);
-      allow update: if owns(uid)
+      allow create: if writable(uid) && validTransaction(request.resource.data);
+      allow update: if writable(uid)
         && validTransaction(request.resource.data)
         && unchanged("createdAt")
         && unchanged("source")
         && unchanged("provider")
         && unchanged("providerTransactionId")
         && unchanged("externalReference");
-      allow delete: if owns(uid);
+      allow delete: if writable(uid);
     }
 
     match /users/{uid}/bills/{documentId} {
       allow get, list: if owns(uid);
-      allow create: if owns(uid) && validBill(request.resource.data);
-      allow update: if owns(uid) && validBill(request.resource.data) && unchanged("createdAt");
-      allow delete: if owns(uid);
+      allow create: if writable(uid) && validBill(request.resource.data);
+      allow update: if writable(uid) && validBill(request.resource.data) && unchanged("createdAt");
+      allow delete: if writable(uid);
     }
 
     match /users/{uid}/notes/{documentId} {
       allow get, list: if owns(uid);
-      allow create: if owns(uid) && validNote(request.resource.data);
-      allow update: if owns(uid) && validNote(request.resource.data) && unchanged("createdAt");
-      allow delete: if owns(uid);
+      allow create: if writable(uid) && validNote(request.resource.data);
+      allow update: if writable(uid) && validNote(request.resource.data) && unchanged("createdAt");
+      allow delete: if writable(uid);
     }
 
     // All undeclared user subcollections, collection-group access, root user listing,

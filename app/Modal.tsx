@@ -8,7 +8,7 @@ export default function Modal({ titleId, busy, close, children, compact = false 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     (ref.current?.querySelector<HTMLElement>("[data-initial-focus]") ?? ref.current?.querySelector<HTMLElement>("input, select, button"))?.focus();
-    return () => previous?.focus();
+    return () => { if (previous?.isConnected) previous.focus({ preventScroll: true }); };
   }, []);
   useEffect(() => {
     const element = ref.current;
